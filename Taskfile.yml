@@ -1,0 +1,49 @@
+version: "3"
+
+env:
+  AWS_SAM_DIR: .aws-sam
+  BUILD_DIR: "{{.AWS_SAM_DIR}}/build"
+  AWS_REGION: "ap-southeast-2"
+
+tasks:
+  deploy:
+    cmds:
+      - sam deploy --guided --region $AWS_REGION --config-file samconfig.yaml
+  build:
+    vars:
+      HANDLERS:
+        [
+          ConnectFunction,
+          DisconnectFunction,
+          MakeMoveFunction,
+          StartGameFunction,
+        ]
+    cmds:
+      - sam build --region $AWS_REGION --config-file samconfig.yaml
+      - for: { var: HANDLERS }
+        cmd: chmod +x $BUILD_DIR/{{.ITEM}}/bootstrap
+  local_invoke_start_game:
+    cmds:
+      - sam local invoke StartGameFunction --event events/start-game.json --debug --config-file samconfig.yaml
+  local_invoke_connect:
+    cmds:
+      - sam local invoke ConnectFunction --event events/connect.json --debug --config-file samconfig.yaml
+  local_invoke_disconnect:
+    cmds:
+      - sam local invoke DisconnectFunction --event events/disconnect.json --debug --config-file samconfig.yaml
+  local_invoke_make_make:
+    cmds:
+      - sam local invoke MakeMoveFunction --event events/make-move.json --debug --config-file samconfig.yaml
+  clean:
+    cmds:
+      - rm -rf $AWS_SAM_DIR
+  test:
+    cmds:
+      - go test ./...
+  fmt:
+    cmds:
+      - go fmt ./...
+  lint:
+    cmds:
+      - govulncheck
+      - golangci-lint run
