@@ -1,5 +1,3 @@
-# almight
-
 ## **1. Project Overview**
 
 ### **Objective**:  
