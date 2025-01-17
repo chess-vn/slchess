@@ -14,7 +14,7 @@ tags: []
   "Country": "Vietnam",
   "Elo": 1900
 
-  "SubscriptionStatus": "active", # active/cancelled/inactive
+  "SubscriptionStatus": "active", # active/inactive
   "SubscriptionStartDate: "2025-01-01T00:00:00Z",
   
 }
