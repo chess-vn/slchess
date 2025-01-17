@@ -13,6 +13,10 @@ tags: []
   "Avatar": "s3://asdfdf",
   "Country": "Vietnam",
   "Elo": 1900
+
+  "SubscriptionStatus": "active", # active/cancelled/inactive
+  "SubscriptionStartDate: "2025-01-01T00:00:00Z",
+  
 }
 ```
 
@@ -64,6 +68,7 @@ After game ended, push the game replay data to S3
 
 ```json
 {
+  "MessageId" mss_123
   "GameId": "game_123",
   "Sender": "player_1_uid",
   "Content": "Hello World",
