@@ -64,8 +64,8 @@ After game ended, push the game replay data to S3
 {
   "gameId": "game_123",
   "players": {
-    "player1": {"timeRemaining": 100000, "lastMoveTimestamp": None, status: "connecting"},
-    "player2": {"timeRemaining": 100000, "lastMoveTimestamp": None, status: "connecting"},
+    "player1": {"timeRemaining": 100000, "lastMoveTimestamp": None, status: "connecting", "LastDisconnectTime": None},
+    "player2": {"timeRemaining": 100000, "lastMoveTimestamp": None, status: "connecting", "LastDisconnectTime": None},
   },
   "increment": 2000,  # 2 seconds increment
   "delay": 0,          # No delay
