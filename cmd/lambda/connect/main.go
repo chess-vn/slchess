@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/yelaco/graduation-thesis/internal/handlers"
+	"github.com/bucket-sort/slchess/internal/handlers"
 )
 
 func main() {
