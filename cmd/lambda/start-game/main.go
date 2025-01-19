@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/yelaco/graduation-thesis/internal/handlers"
+	"github.com/bucket-sort/slchess/internal/handlers"
 
 	"github.com/aws/aws-lambda-go/lambda"
 )
