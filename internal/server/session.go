@@ -2,131 +2,103 @@ package server
 
 import (
 	"errors"
-	"log"
-	"sync"
 
+	"github.com/bucket-sort/slchess/pkg/logging"
 	"github.com/gorilla/websocket"
 	"github.com/notnil/chess"
+	"go.uber.org/zap"
 )
 
-type GameSession struct {
+type Session struct {
 	Players map[string]*Player
 	Game    *chess.Game
-}
-
-type GameState struct {
-	Status      string       `json:"status"`
-	Board       [8][8]string `json:"board"`
-	IsWhiteTurn bool         `json:"is_white"`
-}
-
-type SessionResponse struct {
-	Type      string    `json:"type"`
-	GameState GameState `json:"game_state"`
+	MoveCh  chan move
 }
 
 type Player struct {
 	Conn *websocket.Conn
-	ID   string `json:"id"`
+	Id   string `json:"id"`
 }
 
-type PlayerState struct {
-	IsWhiteSide bool `json:"is_white_side"`
+type move struct {
+	playerId string
+	uci      string
 }
 
-var (
-	gameSessions    = make(map[string]*GameSession)
-	mu              sync.RWMutex
-	gameOverHandler = func(session *GameSession, sessionID string) {
-		CloseSession(sessionID)
-		for _, player := range session.Players {
-			player.Conn.Close()
-		}
-	}
-)
-
-func InitSession(sessionID string, player1, player2 *Player) {
-	playersMap := map[string]*Player{
-		player1.ID: player1,
-		player2.ID: player2,
-	}
-	gameSessions[sessionID] = &GameSession{
-		Players: playersMap,
-		Game:    chess.NewGame(),
-	}
+type gameStateResponse struct {
+	Outcome string `json:"outcome"`
+	Method  string `json:"method"`
+	Fen     string `json:"fen"`
 }
 
-func CloseSession(sessionID string) {
-	mu.Lock()
-	defer mu.Unlock()
-	delete(gameSessions, sessionID)
+type sessionResponse struct {
+	Type      string            `json:"type"`
+	GameState gameStateResponse `json:"game_state"`
 }
 
-func SetGameOverHandler(govHandler func(*GameSession, string)) {
-	gameOverHandler = govHandler
+type errorResponse struct {
+	Type  string `json:"type"`
+	Error string `json:"error"`
 }
 
-func StartGame(session *GameSession) {
-	for _, player := range session.Players {
-		err := player.Conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"start"}`))
+func (session *Session) Start() {
+	for move := range session.MoveCh {
+		err := session.Game.MoveStr(move.uci)
 		if err != nil {
-			log.Println("Error sending start message:", err)
+			session.Players[move.playerId].Conn.WriteJSON(errorResponse{
+				Type:  "error",
+				Error: ErrStatusInvalidMove,
+			})
+			return
 		}
-	}
-}
 
-func GetGameState(sessionID string) (GameState, error) {
-	mu.RLock()
-	defer mu.RUnlock()
-	return GameState{}, errors.New("invalid session id")
-}
-
-func GetPlayerState(sessionID, playerID string) (PlayerState, error) {
-	mu.RLock()
-	defer mu.RUnlock()
-	return PlayerState{}, errors.New("invalid session id")
-}
-
-func PlayerInSession(sessionID string, player *Player) bool {
-	mu.Lock()
-	defer mu.Unlock()
-	session, exists := gameSessions[sessionID]
-	if exists {
-		if p, ok := session.Players[player.ID]; ok {
-			return p == player
+		gameStateResp := gameStateResponse{
+			Outcome: session.Game.Outcome().String(),
+			Method:  session.Game.Method().String(),
+			Fen:     session.Game.FEN(),
 		}
-		return false
-	}
-	return false
-}
-
-func PlayerJoin(sessionID string, player *Player) error {
-	mu.Lock()
-	defer mu.Unlock()
-	session, exists := gameSessions[sessionID]
-	if exists {
-		if p, ok := session.Players[player.ID]; ok {
-			if p != nil {
-				return errors.New("player still in session")
+		for _, player := range session.Players {
+			if player == nil {
+				continue
 			}
-			session.Players[player.ID] = player
-			return nil
+
+			err := player.Conn.WriteJSON(sessionResponse{
+				Type:      "session",
+				GameState: gameStateResp,
+			})
+			if err != nil {
+				logging.Error("couldn't notify player: ", zap.String("player_id", move.playerId))
+			}
 		}
-		return errors.New("player id not in the session")
+
+		if session.Game.Outcome() != chess.NoOutcome {
+			session.End()
+		}
+
 	}
-	return errors.New("invalid session id")
 }
 
-func PlayerLeave(sessionID, playerID string) error {
-	mu.Lock()
-	defer mu.Unlock()
-	session, exists := gameSessions[sessionID]
-	if exists {
-		session.Players[playerID] = nil
+func (s *Session) Stop() {
+}
+
+func (s *Session) End() {
+}
+
+func (s *Session) PlayerJoin(player *Player) error {
+	if p, ok := s.Players[player.Id]; ok {
+		if p != nil {
+			return errors.New("player still in session")
+		}
+		s.Players[player.Id] = player
 		return nil
 	}
-	return errors.New("invalid session id")
+	return errors.New("player id not in the session")
 }
 
-func ProcessFenMove(sessionID, playerID, fenMove string) {
+func (s *Session) PlayerLeave(playerID string) {
+	s.Players[playerID] = nil
+}
+
+func (s *Session) ProcessMove(playerId, moveUci string) {
+	s.MoveCh <- move{playerId, moveUci}
 }

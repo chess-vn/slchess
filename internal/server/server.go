@@ -3,20 +3,24 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"sync"
 
 	"github.com/bucket-sort/slchess/pkg/logging"
 	"github.com/gorilla/websocket"
+	"github.com/notnil/chess"
 	"go.uber.org/zap"
 )
 
 type Server struct {
 	address  string
 	upgrader websocket.Upgrader
+
+	sessions sync.Map
 }
 
 type Message struct {
-	Action string                 `json:"action"`
-	Data   map[string]interface{} `json:"data"`
+	Type string                 `json:"type"`
+	Data map[string]interface{} `json:"data"`
 }
 
 func NewServer() *Server {
@@ -43,7 +47,7 @@ func (s *Server) Start() error {
 			return
 		}
 		defer conn.Close()
-		var connID string
+		var session *Session
 		for {
 			_, message, err := conn.ReadMessage()
 			if err != nil {
@@ -54,7 +58,7 @@ func (s *Server) Start() error {
 				} else {
 					logging.Info("ws message read error", zap.String("remote_address", conn.RemoteAddr().String()))
 				}
-				handlePlayerDisconnect(connID)
+				s.handlePlayerDisconnect(session)
 				break
 			}
 
@@ -62,79 +66,42 @@ func (s *Server) Start() error {
 			if err := json.Unmarshal(message, &msg); err != nil {
 				conn.Close()
 			}
-			handleWebSocketMessage(conn, &msg, &connID)
+			s.handleWebSocketMessage(conn, session, &msg)
 		}
 	})
 	logging.Info("websocket server started", zap.String("port", Port))
 	return http.ListenAndServe(s.address, nil)
 }
 
-/*
-Handler for when a game instance ended.
-This includes saving the session to the database, close the session
-and remove session from tracking of Matcher
-*/
-func handleEndGame(s *GameSession, sessionID string) {
-	// TODO: Call lambda EndGame
-
-	CloseSession(sessionID)
-}
-
-/*
-Handler for when a user connection closes
-*/
-func handlePlayerDisconnect(connID string) {
-	playerID := "to_retrieve"
-	sessionID := "to_retrieve"
-
-	err := PlayerLeave(sessionID, playerID)
-	if err != nil {
-		logging.Warn("player disconnected error",
-			zap.String("player_id", playerID),
-			zap.String("session_id", sessionID),
-			zap.Error(err),
-		)
-	}
-
-	logging.Info("player disconnected",
-		zap.String("player_id", playerID),
-		zap.String("session_id", sessionID),
-	)
-}
-
-/*
-Handler for when user socket sends a message
-*/
-func handleWebSocketMessage(conn *websocket.Conn, message *Message, connID *string) {
-	type errorResponse struct {
-		Type  string `json:"type"`
-		Error string `json:"error"`
-	}
-	switch message.Action {
-	case "move":
-		playerID, playerOK := message.Data["player_id"].(string)
-		sessionID, sessionOK := message.Data["session_id"].(string)
-		move, moveOK := message.Data["move"].(string)
-		if playerOK && sessionOK && moveOK {
-			logging.Info("attempt making move",
-				zap.String("status", "processing"),
-				zap.String("player_id", playerID),
-				zap.String("session_id", sessionID),
-				zap.String("move", move),
-				zap.String("remote_address", conn.RemoteAddr().String()),
-			)
-			ProcessFenMove(sessionID, playerID, move)
-		} else {
-			logging.Info("attempt making move",
-				zap.String("status", "rejected"),
-				zap.String("error", "insufficient data"),
-				zap.String("remote_address", conn.RemoteAddr().String()),
-			)
-			conn.WriteJSON(errorResponse{
-				Type:  "error",
-				Error: "insufficient data",
-			})
+// LoadSession method    loads session with corresponding sessionId.
+// If no such session exists, create a new session.
+// This is used to start the match only when white side player send in the first valid move.
+func (s *Server) LoadSession(sessionId string) (*Session, error) {
+	// TODO: fetch session info from dynamoDB
+	// to validate sessionId and create new session if needed
+	value, loaded := s.sessions.LoadOrStore(sessionId, &Session{})
+	if loaded {
+		session, ok := value.(*Session)
+		if ok {
+			return session, nil
 		}
-	default:
 	}
+	return nil, ErrLoadSessionFailure
+}
+
+func (s *Server) NewSession(sessionId string, player1, player2 *Player) {
+	session := &Session{
+		Game: chess.NewGame(chess.UseNotation(chess.UCINotation{})),
+		Players: map[string]*Player{
+			player1.Id: player1,
+			player2.Id: player2,
+		},
+		MoveCh: make(chan move),
+	}
+	go session.Start()
+	s.sessions.Store(sessionId, session)
+}
+
+func (s *Server) removeSession(sessionId string) {
+	s.sessions.Delete(sessionId)
 }
