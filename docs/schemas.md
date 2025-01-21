@@ -67,6 +67,7 @@ After game ended, push the game replay data to S3
     "player1": {"timeRemaining": 100000, "lastMoveTimestamp": None, status: "connecting", "LastDisconnectTime": None},
     "player2": {"timeRemaining": 100000, "lastMoveTimestamp": None, status: "connecting", "LastDisconnectTime": None},
   },
+  "pgn": string,
   "increment": 2000,  # 2 seconds increment
   "delay": 0,          # No delay
   "LastUpdated": "2025-01-11T10:15:00Z", 
