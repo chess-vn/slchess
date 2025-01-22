@@ -16,7 +16,7 @@ tags: []
   "Country": "Vietnam",
   "Elo": 1900
 
-  "SubscriptionStatus": "guess", # guess/premium
+  "SubscriptionStatus": "guest", # guest/premium
   "SubscriptionStartDate: "2025-01-01T00:00:00Z",
   
 }
