@@ -166,16 +166,16 @@ Resources:
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
-  # DynamoDB Table for Game States
-  GameStates:
+  # DynamoDB Table for Sessions
+  Sessions:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: GameStates
+      TableName: Sessions
       AttributeDefinitions:
-        - AttributeName: GameID
+        - AttributeName: SessionId
           AttributeType: S
       KeySchema:
-        - AttributeName: GameID
+        - AttributeName: SessionId
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 

@@ -1,79 +1,100 @@
 package server
 
 import (
+	"time"
+
 	"github.com/bucket-sort/slchess/pkg/logging"
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 )
 
-/*
-Handler for when a game instance ended.
-This includes saving the session to the database, close the session
-and remove session from tracking of Matcher
-*/
+// Handler for saving current game state.
+func (s *Server) handleSaveGame(session *Session) {
+	// TODO: Call lambda GameStatePut
+}
+
+// Handler for when a game session ends.
 func (s *Server) handleEndGame(session *Session) {
 	// TODO: Call lambda EndGame
 }
 
-/*
-Handler for when a user connection closes
-*/
-func (s *Server) handlePlayerDisconnect(session *Session) {
+// Handler for when a user connection closes
+func (s *Server) handlePlayerDisconnect(session *Session, playerId string) {
 	if session == nil {
 		return
 	}
-	playerID := "to_retrieve"
-	sessionID := "to_retrieve"
 
-	session.PlayerLeave(playerID)
+	player, exist := session.GetPlayerWithId(playerId)
+	if !exist {
+		logging.Fatal("invalid player id", zap.String("player_id", playerId))
+		return
+	}
+	player.Conn = nil
+	player.Status = DISCONNECTED
+	session.SetPlayer(player)
+
+	// If both player disconnected, end session
+	if session.Players[0].Status == session.Players[1].Status {
+		session.End()
+	} else {
+		// Else only set the timer for the disconnected player
+		session.Timer.Reset(60 * time.Second)
+	}
 
 	logging.Info("player disconnected",
-		zap.String("player_id", playerID),
-		zap.String("session_id", sessionID),
+		zap.String("player_id", playerId),
+		zap.String("session_id", session.Id),
 	)
 }
 
-/*
-Handler for when user socket sends a message
-*/
-func (s *Server) handleWebSocketMessage(conn *websocket.Conn, session *Session, message *Message) {
-	switch message.Type {
-	case "move":
-		playerId, playerOk := message.Data["player_id"].(string)
-		sessionId, sessionOk := message.Data["session_id"].(string)
-		move, moveOk := message.Data["move"].(string)
-		if !playerOk || !sessionOk || !moveOk {
-			logging.Info("attempt making move",
-				zap.String("status", "rejected"),
-				zap.String("error", "insufficient data"),
-				zap.String("remote_address", conn.RemoteAddr().String()),
-			)
-			conn.WriteJSON(errorResponse{
-				Type:  "error",
-				Error: "insufficient data",
-			})
-			return
-		}
+func (s *Server) handlePlayerJoin(conn *websocket.Conn, session *Session, playerId string) {
+	if session == nil {
+		return
+	}
 
-		if session == nil {
-			v, err := s.LoadSession(sessionId)
-			if err != nil {
-				conn.WriteJSON(errorResponse{
-					Type:  "error",
-					Error: "session not loaded",
-				})
-			}
-			session = v
-		}
+	player, exist := session.GetPlayerWithId(playerId)
+	if !exist {
+		logging.Fatal("invalid player id", zap.String("player_id", playerId))
+		return
+	}
+	if player.Status == INIT && player.Side == WHITE_SIDE {
+		session.StartAt = time.Now()
+		session.setTimer(session.Config.MatchDuration)
+	}
+	player.Conn = conn
+	player.Status = CONNECTED
+	session.SetPlayer(player)
 
-		logging.Info("attempt making move",
-			zap.String("status", "processing"),
-			zap.String("player_id", playerId),
-			zap.String("session_id", sessionId),
-			zap.String("move", move),
-			zap.String("remote_address", conn.RemoteAddr().String()),
-		)
-		session.ProcessMove(playerId, move)
+	logging.Info("player connected",
+		zap.String("player_id", playerId),
+		zap.String("session_id", session.Id),
+	)
+}
+
+// Handler for when user sends a message
+func (s *Server) handleWebSocketMessage(playerId string, session *Session, payload *Payload) {
+	if session == nil {
+		logging.Error("session not loaded")
+		return
+	}
+	switch payload.Type {
+	case "chat":
+		_ = payload.Data["message"]
+	case "game_data":
+		action := payload.Data["action"]
+		switch action {
+		case "resign":
+			session.ProcessGameControl(playerId, RESIGNAION, payload.CreatedAt)
+		case "offer_draw":
+			session.ProcessGameControl(playerId, DRAW_OFFER, payload.CreatedAt)
+		case "agreement":
+			session.ProcessGameControl(playerId, AGREEMENT, payload.CreatedAt)
+		case "move":
+			session.ProcessMove(playerId, payload.Data["move"], payload.CreatedAt)
+		default:
+			logging.Info("invalid game action:", zap.String("action", payload.Type))
+		}
 	default:
+		logging.Info("invalid payload type:", zap.String("type", payload.Type))
 	}
 }

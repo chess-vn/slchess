@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/bucket-sort/slchess/pkg/logging"
 	"github.com/gorilla/websocket"
@@ -15,17 +16,20 @@ type Server struct {
 	address  string
 	upgrader websocket.Upgrader
 
+	config   Config
 	sessions sync.Map
 }
 
-type Message struct {
-	Type string                 `json:"type"`
-	Data map[string]interface{} `json:"data"`
+type Payload struct {
+	Type      string
+	Data      map[string]string
+	CreatedAt time.Time
 }
 
 func NewServer() *Server {
+	config := NewConfig()
 	return &Server{
-		address: "0.0.0.0:" + Port,
+		address: "0.0.0.0:" + config.Port,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -33,21 +37,30 @@ func NewServer() *Server {
 				return true // Allow all origins
 			},
 		},
+		config: config,
 	}
 }
 
-/*
-Start the websocket server
-*/
+// Start method    starts the game server
 func (s *Server) Start() error {
-	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/sessions/{sessionId}", func(w http.ResponseWriter, r *http.Request) {
+		playerId := s.MustAuth(r)
+
 		conn, err := s.upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			logging.Error("failed to upgrade connection", zap.String("error", err.Error()))
 			return
 		}
 		defer conn.Close()
-		var session *Session
+
+		sessionId := r.PathValue("sessionId")
+		session, err := s.LoadSession(sessionId)
+		if err != nil {
+			logging.Error("failed to load session", zap.String("error", err.Error()))
+			return
+		}
+		s.handlePlayerJoin(conn, session, playerId)
+
 		for {
 			_, message, err := conn.ReadMessage()
 			if err != nil {
@@ -58,19 +71,25 @@ func (s *Server) Start() error {
 				} else {
 					logging.Info("ws message read error", zap.String("remote_address", conn.RemoteAddr().String()))
 				}
-				s.handlePlayerDisconnect(session)
+				s.handlePlayerDisconnect(session, playerId)
 				break
 			}
 
-			msg := Message{}
-			if err := json.Unmarshal(message, &msg); err != nil {
+			payload := Payload{}
+			if err := json.Unmarshal(message, &payload); err != nil {
 				conn.Close()
 			}
-			s.handleWebSocketMessage(conn, session, &msg)
+			s.handleWebSocketMessage(playerId, session, &payload)
 		}
 	})
-	logging.Info("websocket server started", zap.String("port", Port))
+	logging.Info("websocket server started", zap.String("port", s.config.Port))
 	return http.ListenAndServe(s.address, nil)
+}
+
+// MustAuth method    authenticates and extract playerId
+func (s *Server) MustAuth(r *http.Request) string {
+	_ = r.Header.Get("Authorization")
+	return "player-id"
 }
 
 // LoadSession method    loads session with corresponding sessionId.
@@ -79,7 +98,16 @@ func (s *Server) Start() error {
 func (s *Server) LoadSession(sessionId string) (*Session, error) {
 	// TODO: fetch session info from dynamoDB
 	// to validate sessionId and create new session if needed
-	value, loaded := s.sessions.LoadOrStore(sessionId, &Session{})
+	config := SessionConfig{
+		MatchDuration: 10 * time.Minute,
+	}
+	player1 := NewPlayer(nil, "PLAYER_1", WHITE_SIDE, config.MatchDuration)
+	player2 := NewPlayer(nil, "PLAYER_2", BLACK_SIDE, config.MatchDuration)
+
+	value, loaded := s.sessions.LoadOrStore(
+		sessionId,
+		s.NewSession(sessionId, player1, player2, config),
+	)
 	if loaded {
 		session, ok := value.(*Session)
 		if ok {
@@ -89,17 +117,18 @@ func (s *Server) LoadSession(sessionId string) (*Session, error) {
 	return nil, ErrLoadSessionFailure
 }
 
-func (s *Server) NewSession(sessionId string, player1, player2 *Player) {
+func (s *Server) NewSession(sessionId string, player1, player2 Player, config SessionConfig) *Session {
 	session := &Session{
-		Game: chess.NewGame(chess.UseNotation(chess.UCINotation{})),
-		Players: map[string]*Player{
-			player1.Id: player1,
-			player2.Id: player2,
-		},
-		MoveCh: make(chan move),
+		Id:              sessionId,
+		Game:            chess.NewGame(chess.UseNotation(chess.UCINotation{})),
+		Players:         []Player{player1, player2},
+		moveCh:          make(chan Move),
+		Config:          config,
+		EndGameHandler:  s.handleEndGame,
+		SaveGameHandler: s.handleSaveGame,
 	}
 	go session.Start()
-	s.sessions.Store(sessionId, session)
+	return session
 }
 
 func (s *Server) removeSession(sessionId string) {
