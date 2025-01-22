@@ -9,4 +9,9 @@ require (
 	github.com/notnil/chess v1.10.0
 )
 
-require github.com/jmespath/go-jmespath v0.4.0 // indirect
+require (
+	github.com/freeeve/uci v1.0.0 // indirect
+	github.com/jmespath/go-jmespath v0.4.0 // indirect
+	github.com/joho/godotenv v1.5.1 // indirect
+	gopkg.in/freeeve/pgn.v1 v1.0.1 // indirect
+)
