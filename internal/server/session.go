@@ -1,6 +1,7 @@
 package server
 
 import (
+	"sync"
 	"time"
 
 	"github.com/bucket-sort/slchess/pkg/logging"
@@ -20,11 +21,15 @@ type Session struct {
 
 	EndGameHandler  func(*Session)
 	SaveGameHandler func(*Session)
+
+	ended bool
+	mu    sync.Mutex
 }
 
 type SessionConfig struct {
 	MatchDuration time.Duration
 	CancelTimeout time.Duration
+	MaxLatency    time.Duration
 }
 
 type sessionResponse struct {
@@ -81,8 +86,15 @@ func (session *Session) Start() {
 			// If making move, update clock
 			player.Clock -= move.createdAt.Sub(player.TurnStartedAt)
 			if player.Clock <= 0 {
+				logging.Info("out of time", zap.String("player_id", player.Id))
+				session.notifyPlayers(gameStateResponse{
+					Outcome: player.Outcome().String(),
+					Method:  "OUT_OF_TIME",
+					Fen:     session.Game.FEN(),
+					Clocks:  []time.Duration{session.Players[0].Clock, session.Players[1].Clock},
+				})
 				session.End()
-				continue
+				return
 			}
 			currentTurnPlayer := session.GetCurrentTurnPlayer()
 			currentTurnPlayer.TurnStartedAt = time.Now()
@@ -90,29 +102,33 @@ func (session *Session) Start() {
 			session.setTimer(currentTurnPlayer.Clock)
 		}
 
-		gameStateResp := gameStateResponse{
+		session.notifyPlayers(gameStateResponse{
 			Outcome: session.Game.Outcome().String(),
 			Method:  session.Game.Method().String(),
 			Fen:     session.Game.FEN(),
 			Clocks:  []time.Duration{session.Players[0].Clock, session.Players[1].Clock},
-		}
-		for _, player := range session.Players {
-			if player.Conn == nil {
-				continue
-			}
-			err := player.Conn.WriteJSON(sessionResponse{
-				Type:      "session",
-				GameState: gameStateResp,
-			})
-			if err != nil {
-				logging.Error("couldn't notify player: ", zap.String("player_id", move.playerId))
-			}
-		}
+		})
 
 		if session.Game.Outcome() == chess.NoOutcome {
 			session.Save()
 		} else {
+			logging.Info("Game end by outcome", zap.String("outcome", session.Game.Outcome().String()))
 			session.End()
+		}
+	}
+}
+
+func (s *Session) notifyPlayers(resp gameStateResponse) {
+	for _, player := range s.Players {
+		if player.Conn == nil {
+			continue
+		}
+		err := player.Conn.WriteJSON(sessionResponse{
+			Type:      "session",
+			GameState: resp,
+		})
+		if err != nil {
+			logging.Error("couldn't notify player: ", zap.String("player_id", player.Id))
 		}
 	}
 }
@@ -156,18 +172,36 @@ func (s *Session) Save() {
 }
 
 func (s *Session) End() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ended {
+		return
+	}
+	s.ended = true
 	if !utils.IsClosed(s.moveCh) {
 		close(s.moveCh)
 	}
-	s.Timer.Stop()
+	// Fire off the timer to remove end game handling job
+	s.skipTimer()
+	for _, player := range s.Players {
+		if player.Conn != nil {
+			player.Conn.Close()
+		}
+	}
 	s.EndGameHandler(s)
+}
+
+func (s *Session) Ended() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.ended
 }
 
 // setTimer method    set the timer to the specified duration before trigger end game handler
 func (s *Session) setTimer(d time.Duration) {
-	logging.Info("clock set", zap.String("session_id", s.Id), zap.String("duration", d.String()))
 	if s.Timer != nil {
 		s.Timer.Reset(d)
+		logging.Info("clock reset", zap.String("session_id", s.Id), zap.String("duration", d.String()))
 		return
 	}
 	s.Timer = time.NewTimer(d)
@@ -175,4 +209,14 @@ func (s *Session) setTimer(d time.Duration) {
 		<-s.Timer.C
 		s.End()
 	}()
+	logging.Info("clock set", zap.String("session_id", s.Id), zap.String("duration", d.String()))
+}
+
+// skipTimer method    skips timer by set timer to 0 duration timeout
+func (s *Session) skipTimer() {
+	if s.Timer == nil {
+		return
+	}
+	s.Timer.Reset(0)
+	logging.Info("clock skipped", zap.String("session_id", s.Id))
 }

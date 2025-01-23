@@ -21,9 +21,9 @@ type Server struct {
 }
 
 type Payload struct {
-	Type      string
-	Data      map[string]string
-	CreatedAt time.Time
+	Type      string            `json:"type"`
+	Data      map[string]string `json:"data"`
+	CreatedAt time.Time         `json:"created_at"`
 }
 
 func NewServer() *Server {
@@ -69,7 +69,7 @@ func (s *Server) Start() error {
 				} else if websocket.IsCloseError(err, websocket.CloseMessage, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 					logging.Info("connection closed", zap.String("remote_address", conn.RemoteAddr().String()))
 				} else {
-					logging.Info("ws message read error", zap.String("remote_address", conn.RemoteAddr().String()))
+					logging.Info("ws message read error", zap.String("remote_address", conn.RemoteAddr().String()), zap.Error(err))
 				}
 				s.handlePlayerDisconnect(session, playerId)
 				break
@@ -79,7 +79,8 @@ func (s *Server) Start() error {
 			if err := json.Unmarshal(message, &payload); err != nil {
 				conn.Close()
 			}
-			s.handleWebSocketMessage(playerId, session, &payload)
+			logging.Info(payload.CreatedAt.String())
+			s.handleWebSocketMessage(playerId, session, payload)
 		}
 	})
 	logging.Info("websocket server started", zap.String("port", s.config.Port))
@@ -102,21 +103,22 @@ func (s *Server) LoadSession(sessionId string) (*Session, error) {
 	config := SessionConfig{
 		MatchDuration: 10 * time.Minute,
 		CancelTimeout: 30 * time.Second,
+		MaxLatency:    2 * time.Second,
 	}
 	player1 := NewPlayer(nil, "PLAYER_1", WHITE_SIDE, config.MatchDuration)
 	player2 := NewPlayer(nil, "PLAYER_2", BLACK_SIDE, config.MatchDuration)
 
-	value, loaded := s.sessions.LoadOrStore(
-		sessionId,
-		s.NewSession(sessionId, player1, player2, config),
-	)
+	value, loaded := s.sessions.Load(sessionId)
 	if loaded {
-		logging.Info("session loaded")
+		session, ok := value.(*Session)
+		if ok {
+			logging.Info("session loaded")
+			return session, nil
+		}
 	} else {
+		session := s.NewSession(sessionId, player1, player2, config)
+		s.sessions.Store(sessionId, session)
 		logging.Info("session initialized")
-	}
-	session, ok := value.(*Session)
-	if ok {
 		return session, nil
 	}
 
@@ -139,6 +141,6 @@ func (s *Server) NewSession(sessionId string, player1, player2 Player, config Se
 	return session
 }
 
-func (s *Server) removeSession(sessionId string) {
+func (s *Server) RemoveSession(sessionId string) {
 	s.sessions.Delete(sessionId)
 }
