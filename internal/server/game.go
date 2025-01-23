@@ -60,3 +60,10 @@ func (p *Player) Color() chess.Color {
 	}
 	return chess.Black
 }
+
+func (p *Player) Outcome() chess.Outcome {
+	if p.Side == WHITE_SIDE {
+		return chess.WhiteWon
+	}
+	return chess.BlackWon
+}
