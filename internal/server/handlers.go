@@ -16,6 +16,7 @@ func (s *Server) handleSaveGame(session *Session) {
 // Handler for when a game session ends.
 func (s *Server) handleEndGame(session *Session) {
 	// TODO: Call lambda EndGame
+	logging.Info("game ended", zap.String("session_id", session.Id))
 }
 
 // Handler for when a user connection closes
@@ -38,7 +39,7 @@ func (s *Server) handlePlayerDisconnect(session *Session, playerId string) {
 		session.End()
 	} else {
 		// Else only set the timer for the disconnected player
-		session.Timer.Reset(60 * time.Second)
+		session.setTimer(60 * time.Second)
 	}
 
 	logging.Info("player disconnected",
@@ -59,6 +60,7 @@ func (s *Server) handlePlayerJoin(conn *websocket.Conn, session *Session, player
 	}
 	if player.Status == INIT && player.Side == WHITE_SIDE {
 		session.StartAt = time.Now()
+		player.TurnStartedAt = session.StartAt
 		session.setTimer(session.Config.MatchDuration)
 	}
 	player.Conn = conn

@@ -13,15 +13,16 @@ type Config struct {
 func NewConfig() Config {
 	var config Config
 
-	viper.SetConfigName("config") // name of config flie (no extension)
-	viper.SetConfigType("json")
-	viper.AddConfigPath(".infra/")
+	viper.SetConfigName("config")
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath("./configs/server")
+	viper.AddConfigPath(".")
 	err := viper.ReadInConfig()
 	if err != nil {
 		panic(fmt.Errorf("fatal error config file: %s", err))
 	}
 
-	config.Port = viper.GetString("SERVER_PORT")
+	config.Port = viper.GetString("host.port")
 
 	return config
 }

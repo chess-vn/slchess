@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/bucket-sort/slchess/pkg/logging"
+	"github.com/bucket-sort/slchess/pkg/utils"
 	"github.com/notnil/chess"
 	"go.uber.org/zap"
 )
@@ -23,6 +24,7 @@ type Session struct {
 
 type SessionConfig struct {
 	MatchDuration time.Duration
+	CancelTimeout time.Duration
 }
 
 type sessionResponse struct {
@@ -154,13 +156,16 @@ func (s *Session) Save() {
 }
 
 func (s *Session) End() {
-	close(s.moveCh)
+	if !utils.IsClosed(s.moveCh) {
+		close(s.moveCh)
+	}
 	s.Timer.Stop()
 	s.EndGameHandler(s)
 }
 
 // setTimer method    set the timer to the specified duration before trigger end game handler
 func (s *Session) setTimer(d time.Duration) {
+	logging.Info("clock set", zap.String("session_id", s.Id), zap.String("duration", d.String()))
 	if s.Timer != nil {
 		s.Timer.Reset(d)
 		return

@@ -88,8 +88,9 @@ func (s *Server) Start() error {
 
 // MustAuth method    authenticates and extract playerId
 func (s *Server) MustAuth(r *http.Request) string {
-	_ = r.Header.Get("Authorization")
-	return "player-id"
+	// TODO: replace this with actual authorization implementation
+	playerId := r.Header.Get("Authorization")
+	return playerId
 }
 
 // LoadSession method    loads session with corresponding sessionId.
@@ -100,6 +101,7 @@ func (s *Server) LoadSession(sessionId string) (*Session, error) {
 	// to validate sessionId and create new session if needed
 	config := SessionConfig{
 		MatchDuration: 10 * time.Minute,
+		CancelTimeout: 30 * time.Second,
 	}
 	player1 := NewPlayer(nil, "PLAYER_1", WHITE_SIDE, config.MatchDuration)
 	player2 := NewPlayer(nil, "PLAYER_2", BLACK_SIDE, config.MatchDuration)
@@ -109,11 +111,15 @@ func (s *Server) LoadSession(sessionId string) (*Session, error) {
 		s.NewSession(sessionId, player1, player2, config),
 	)
 	if loaded {
-		session, ok := value.(*Session)
-		if ok {
-			return session, nil
-		}
+		logging.Info("session loaded")
+	} else {
+		logging.Info("session initialized")
 	}
+	session, ok := value.(*Session)
+	if ok {
+		return session, nil
+	}
+
 	return nil, ErrLoadSessionFailure
 }
 
@@ -127,6 +133,8 @@ func (s *Server) NewSession(sessionId string, player1, player2 Player, config Se
 		EndGameHandler:  s.handleEndGame,
 		SaveGameHandler: s.handleSaveGame,
 	}
+	// Timeout to cancel match if first move is not made
+	session.setTimer(config.CancelTimeout)
 	go session.Start()
 	return session
 }

@@ -45,15 +45,11 @@ type Player struct {
 
 func NewPlayer(conn *websocket.Conn, playerId string, side Side, clock time.Duration) Player {
 	player := Player{
-		Id:            playerId,
-		Conn:          conn,
-		Side:          side,
-		Status:        INIT,
-		Clock:         clock,
-		TurnStartedAt: time.Now(),
-	}
-	if conn == nil {
-		player.Status = DISCONNECTED
+		Id:     playerId,
+		Conn:   conn,
+		Side:   side,
+		Status: INIT,
+		Clock:  clock,
 	}
 	return player
 }
