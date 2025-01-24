@@ -25,13 +25,53 @@ const (
 	DRAW_OFFER
 	AGREEMENT
 	NONE
+
+	BLACK_OUT_OF_TIME = "BLACK_OUT_OF_TIME"
+	WHITE_OUT_OF_TIME = "WHITE_OUT_OF_TIME"
 )
 
+type Game struct {
+	chess.Game
+	customOutcome chess.Outcome
+}
+
+func NewGame() *Game {
+	g := chess.NewGame(chess.UseNotation(chess.UCINotation{}))
+	return &Game{Game: *g}
+}
+
+func (g *Game) OutOfTime(side Side) {
+	if side == WHITE_SIDE {
+		g.customOutcome = WHITE_OUT_OF_TIME
+	} else {
+		g.customOutcome = BLACK_OUT_OF_TIME
+	}
+}
+
+func (g *Game) CustomOutcome() chess.Outcome {
+	switch g.customOutcome {
+	case BLACK_OUT_OF_TIME:
+		return chess.WhiteWon
+	case WHITE_OUT_OF_TIME:
+		return chess.BlackWon
+	default:
+		return g.Outcome()
+	}
+}
+
+func (g *Game) CustomMethodString() string {
+	switch g.customOutcome {
+	case WHITE_OUT_OF_TIME, BLACK_OUT_OF_TIME:
+		return "OUT_OF_TIME"
+	default:
+		return g.Method().String()
+	}
+}
+
 type Move struct {
-	playerId  string
-	uci       string
-	control   GameControl
-	createdAt time.Time
+	playerId string
+	uci      string
+	control  GameControl
 }
 
 type Player struct {
@@ -59,11 +99,4 @@ func (p *Player) Color() chess.Color {
 		return chess.White
 	}
 	return chess.Black
-}
-
-func (p *Player) Outcome() chess.Outcome {
-	if p.Side == WHITE_SIDE {
-		return chess.WhiteWon
-	}
-	return chess.BlackWon
 }
