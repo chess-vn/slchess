@@ -33,7 +33,6 @@ func (s *Server) handlePlayerDisconnect(session *Session, playerId string) {
 	}
 	player.Conn = nil
 	player.Status = DISCONNECTED
-	session.SetPlayer(player)
 
 	// If both player disconnected, end session
 	if session.Players[0].Status == session.Players[1].Status {
@@ -65,7 +64,6 @@ func (s *Server) handlePlayerJoin(conn *websocket.Conn, session *Session, player
 	}
 	player.Conn = conn
 	player.Status = CONNECTED
-	session.SetPlayer(player)
 
 	logging.Info("player connected",
 		zap.String("player_id", playerId),
@@ -79,12 +77,11 @@ func (s *Server) handleWebSocketMessage(playerId string, session *Session, paylo
 		logging.Error("session not loaded")
 		return
 	}
-	// Only accept messages that is received within max latency duration allowed
-	latency := time.Since(payload.CreatedAt)
-	if latency < 0 || latency > session.Config.MaxLatency {
+	// Validate timestamp
+	if time.Since(payload.CreatedAt) < 0 {
 		logging.Info("invalid timestamp",
 			zap.String("created_at", payload.CreatedAt.String()),
-			zap.String("latency", latency.String()),
+			zap.String("validate_time", time.Now().String()),
 		)
 		return
 	}
@@ -95,13 +92,13 @@ func (s *Server) handleWebSocketMessage(playerId string, session *Session, paylo
 		action := payload.Data["action"]
 		switch action {
 		case "resign":
-			session.ProcessGameControl(playerId, RESIGNAION, payload.CreatedAt)
+			session.ProcessGameControl(playerId, RESIGNAION)
 		case "offer_draw":
-			session.ProcessGameControl(playerId, DRAW_OFFER, payload.CreatedAt)
+			session.ProcessGameControl(playerId, DRAW_OFFER)
 		case "agreement":
-			session.ProcessGameControl(playerId, AGREEMENT, payload.CreatedAt)
+			session.ProcessGameControl(playerId, AGREEMENT)
 		case "move":
-			session.ProcessMove(playerId, payload.Data["move"], payload.CreatedAt)
+			session.ProcessMove(playerId, payload.Data["move"])
 		default:
 			logging.Info("invalid game action:", zap.String("action", payload.Type))
 			return

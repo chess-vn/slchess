@@ -12,8 +12,8 @@ import (
 
 type Session struct {
 	Id      string
-	Players []Player
-	Game    *chess.Game
+	Players []*Player
+	Game    *Game
 	moveCh  chan Move
 	Timer   *time.Timer
 	StartAt time.Time
@@ -29,7 +29,6 @@ type Session struct {
 type SessionConfig struct {
 	MatchDuration time.Duration
 	CancelTimeout time.Duration
-	MaxLatency    time.Duration
 }
 
 type sessionResponse struct {
@@ -51,26 +50,25 @@ type errorResponse struct {
 
 func (session *Session) Start() {
 	for move := range session.moveCh {
+		player, exist := session.GetPlayerWithId(move.playerId)
+		if !exist {
+			player.Conn.WriteJSON(errorResponse{
+				Type:  "error",
+				Error: ErrStatusInvalidPlayerId,
+			})
+			continue
+		}
 		switch move.control {
 		case RESIGNAION:
-			player, exist := session.GetPlayerWithId(move.playerId)
-			if !exist {
-				player.Conn.WriteJSON(errorResponse{
-					Type:  "error",
-					Error: ErrStatusInvalidPlayerId,
-				})
-				continue
-			}
 			session.Game.Resign(player.Color())
 		case DRAW_OFFER:
 		case AGREEMENT:
 			session.Game.Draw(chess.DrawOffer)
 		default:
-			player := session.GetCurrentTurnPlayer()
-			if move.playerId != player.Id {
+			if player.Id != session.GetCurrentTurnPlayer().Id {
 				player.Conn.WriteJSON(errorResponse{
 					Type:  "error",
-					Error: ErrStatusInvalidPlayerId,
+					Error: ErrStatusWrongTurn,
 				})
 				continue
 			}
@@ -84,27 +82,24 @@ func (session *Session) Start() {
 			}
 
 			// If making move, update clock
-			player.Clock -= move.createdAt.Sub(player.TurnStartedAt)
+			player.Clock -= time.Since(player.TurnStartedAt)
+			// If clock runs out, end the game
 			if player.Clock <= 0 {
+				session.Game.OutOfTime(player.Side)
 				logging.Info("out of time", zap.String("player_id", player.Id))
-				session.notifyPlayers(gameStateResponse{
-					Outcome: player.Outcome().String(),
-					Method:  "OUT_OF_TIME",
-					Fen:     session.Game.FEN(),
-					Clocks:  []time.Duration{session.Players[0].Clock, session.Players[1].Clock},
-				})
-				session.End()
-				return
+			} else {
+				// else next turn
+				currentTurnPlayer := session.GetCurrentTurnPlayer()
+				currentTurnPlayer.TurnStartedAt = time.Now()
+				logging.Info("updated player", zap.String("clock", session.GetCurrentTurnPlayer().Clock.String()))
+				session.setTimer(currentTurnPlayer.Clock)
+				logging.Info("new turn", zap.String("player_id", currentTurnPlayer.Id))
 			}
-			currentTurnPlayer := session.GetCurrentTurnPlayer()
-			currentTurnPlayer.TurnStartedAt = time.Now()
-			session.SetPlayer(currentTurnPlayer)
-			session.setTimer(currentTurnPlayer.Clock)
 		}
 
 		session.notifyPlayers(gameStateResponse{
-			Outcome: session.Game.Outcome().String(),
-			Method:  session.Game.Method().String(),
+			Outcome: session.Game.CustomOutcome().String(),
+			Method:  session.Game.CustomMethodString(),
 			Fen:     session.Game.FEN(),
 			Clocks:  []time.Duration{session.Players[0].Clock, session.Players[1].Clock},
 		})
@@ -112,7 +107,10 @@ func (session *Session) Start() {
 		if session.Game.Outcome() == chess.NoOutcome {
 			session.Save()
 		} else {
-			logging.Info("Game end by outcome", zap.String("outcome", session.Game.Outcome().String()))
+			logging.Info("Game end by outcome",
+				zap.String("outcome", session.Game.Outcome().String()),
+				zap.String("method", session.Game.CustomMethodString()),
+			)
 			session.End()
 		}
 	}
@@ -133,38 +131,35 @@ func (s *Session) notifyPlayers(resp gameStateResponse) {
 	}
 }
 
-func (s *Session) SetPlayer(player Player) bool {
-	for i, p := range s.Players {
-		if player.Id == p.Id {
-			s.Players[i] = player
-			return true
-		}
-	}
-	return false
-}
-
-func (s *Session) GetPlayerWithId(playerId string) (Player, bool) {
+func (s *Session) GetPlayerWithId(playerId string) (*Player, bool) {
 	for _, player := range s.Players {
 		if player.Id == playerId {
 			return player, true
 		}
 	}
-	return Player{}, false
+	return nil, false
 }
 
-func (s *Session) GetCurrentTurnPlayer() Player {
+func (s *Session) GetCurrentTurnPlayer() *Player {
 	if s.Game.Position().Turn() == chess.White {
 		return s.Players[0]
 	}
 	return s.Players[1]
 }
 
-func (s *Session) ProcessMove(playerId, moveUci string, createdAt time.Time) {
-	s.moveCh <- Move{playerId, moveUci, NONE, createdAt}
+func (s *Session) ProcessMove(playerId, moveUci string) {
+	s.moveCh <- Move{
+		playerId: playerId,
+		uci:      moveUci,
+		control:  NONE,
+	}
 }
 
-func (s *Session) ProcessGameControl(playerId string, control GameControl, createdAt time.Time) {
-	s.moveCh <- Move{playerId, "", control, createdAt}
+func (s *Session) ProcessGameControl(playerId string, control GameControl) {
+	s.moveCh <- Move{
+		playerId: playerId,
+		control:  control,
+	}
 }
 
 func (s *Session) Save() {

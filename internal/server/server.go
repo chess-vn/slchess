@@ -8,7 +8,6 @@ import (
 
 	"github.com/bucket-sort/slchess/pkg/logging"
 	"github.com/gorilla/websocket"
-	"github.com/notnil/chess"
 	"go.uber.org/zap"
 )
 
@@ -103,7 +102,6 @@ func (s *Server) LoadSession(sessionId string) (*Session, error) {
 	config := SessionConfig{
 		MatchDuration: 10 * time.Minute,
 		CancelTimeout: 30 * time.Second,
-		MaxLatency:    2 * time.Second,
 	}
 	player1 := NewPlayer(nil, "PLAYER_1", WHITE_SIDE, config.MatchDuration)
 	player2 := NewPlayer(nil, "PLAYER_2", BLACK_SIDE, config.MatchDuration)
@@ -128,8 +126,8 @@ func (s *Server) LoadSession(sessionId string) (*Session, error) {
 func (s *Server) NewSession(sessionId string, player1, player2 Player, config SessionConfig) *Session {
 	session := &Session{
 		Id:              sessionId,
-		Game:            chess.NewGame(chess.UseNotation(chess.UCINotation{})),
-		Players:         []Player{player1, player2},
+		Game:            NewGame(),
+		Players:         []*Player{&player1, &player2},
 		moveCh:          make(chan Move),
 		Config:          config,
 		EndGameHandler:  s.handleEndGame,
