@@ -22,7 +22,7 @@ func NewConfig() Config {
 		panic(fmt.Errorf("fatal error config file: %s", err))
 	}
 
-	config.Port = viper.GetString("host.port")
+	config.Port = viper.GetString("server.port")
 
 	return config
 }
