@@ -91,9 +91,12 @@ func (session *Session) Start() {
 				// else next turn
 				currentTurnPlayer := session.GetCurrentTurnPlayer()
 				currentTurnPlayer.TurnStartedAt = time.Now()
-				logging.Info("updated player", zap.String("clock", session.GetCurrentTurnPlayer().Clock.String()))
 				session.setTimer(currentTurnPlayer.Clock)
-				logging.Info("new turn", zap.String("player_id", currentTurnPlayer.Id))
+				logging.Info("new turn",
+					zap.String("player_id", currentTurnPlayer.Id),
+					zap.String("clock_w", session.Players[0].Clock.String()),
+					zap.String("clock_b", session.Players[1].Clock.String()),
+				)
 			}
 		}
 
