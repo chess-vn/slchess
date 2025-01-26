@@ -17,5 +17,7 @@ RUN --mount=type=cache,target=/gomod-cache --mount=type=cache,target=/go-cache \
 # Stage 2: Runtime
 FROM scratch
 COPY --from=builder /app/server /bin/server
+COPY --from=builder /app/configs/server/config.yaml /configs/server/
+
 EXPOSE 7202
 ENTRYPOINT ["/bin/server"]

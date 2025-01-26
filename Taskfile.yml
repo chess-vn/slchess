@@ -23,7 +23,18 @@ tasks:
       - for: { var: HANDLERS }
         cmd: chmod +x $BUILD_DIR/{{.ITEM}}/bootstrap
 
-  server:
+  server-up:
+    preconditions:
+      - test -f compose.yml
+    cmds:
+      - docker compose up --build
+  server-down:
+    preconditions:
+      - test -f compose.yml
+    cmds:
+      - docker compose down
+
+  server-local:
     cmds:
       - go mod download
       - go run ./cmd/server/
