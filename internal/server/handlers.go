@@ -41,8 +41,8 @@ func (s *Server) handlePlayerDisconnect(session *Session, playerId string) {
 	} else {
 		// Else only set the timer for the disconnected player
 		logging.Info("player disconnected", zap.String("session_id", session.Id), zap.String("player_id", player.Id))
-		if !session.Ended() {
-			session.setTimer(60 * time.Second)
+		if !session.IsEnded() {
+			session.SetTimer(60 * time.Second)
 		}
 	}
 }
@@ -60,7 +60,7 @@ func (s *Server) handlePlayerJoin(conn *websocket.Conn, session *Session, player
 	if player.Status == INIT && player.Side == WHITE_SIDE {
 		session.StartAt = time.Now()
 		player.TurnStartedAt = session.StartAt
-		session.setTimer(session.Config.MatchDuration)
+		session.SetTimer(session.Config.MatchDuration)
 	}
 	player.Conn = conn
 	player.Status = CONNECTED

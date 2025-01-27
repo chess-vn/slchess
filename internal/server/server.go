@@ -78,7 +78,6 @@ func (s *Server) Start() error {
 			if err := json.Unmarshal(message, &payload); err != nil {
 				conn.Close()
 			}
-			logging.Info(payload.CreatedAt.String())
 			s.handleWebSocketMessage(playerId, session, payload)
 		}
 	})
@@ -126,15 +125,15 @@ func (s *Server) LoadSession(sessionId string) (*Session, error) {
 func (s *Server) NewSession(sessionId string, player1, player2 Player, config SessionConfig) *Session {
 	session := &Session{
 		Id:              sessionId,
-		Game:            NewGame(),
+		game:            NewGame(),
 		Players:         []*Player{&player1, &player2},
 		moveCh:          make(chan Move),
 		Config:          config,
-		EndGameHandler:  s.handleEndGame,
-		SaveGameHandler: s.handleSaveGame,
+		endGameHandler:  s.handleEndGame,
+		saveGameHandler: s.handleSaveGame,
 	}
 	// Timeout to cancel match if first move is not made
-	session.setTimer(config.CancelTimeout)
+	session.SetTimer(config.CancelTimeout)
 	go session.Start()
 	return session
 }

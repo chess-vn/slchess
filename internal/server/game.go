@@ -69,9 +69,9 @@ func (g *Game) CustomMethodString() string {
 }
 
 type Move struct {
-	playerId string
-	uci      string
-	control  GameControl
+	PlayerId string
+	Uci      string
+	Control  GameControl
 }
 
 type Player struct {
