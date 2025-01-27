@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 )
 
-type Server struct {
+type server struct {
 	address  string
 	upgrader websocket.Upgrader
 
@@ -19,15 +19,15 @@ type Server struct {
 	sessions sync.Map
 }
 
-type Payload struct {
+type payload struct {
 	Type      string            `json:"type"`
 	Data      map[string]string `json:"data"`
 	CreatedAt time.Time         `json:"created_at"`
 }
 
-func NewServer() *Server {
+func NewServer() *server {
 	config := NewConfig()
-	return &Server{
+	return &server{
 		address: "0.0.0.0:" + config.Port,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
@@ -41,9 +41,9 @@ func NewServer() *Server {
 }
 
 // Start method    starts the game server
-func (s *Server) Start() error {
+func (s *server) Start() error {
 	http.HandleFunc("/sessions/{sessionId}", func(w http.ResponseWriter, r *http.Request) {
-		playerId := s.MustAuth(r)
+		playerId := s.mustAuth(r)
 
 		conn, err := s.upgrader.Upgrade(w, r, nil)
 		if err != nil {
@@ -53,7 +53,7 @@ func (s *Server) Start() error {
 		defer conn.Close()
 
 		sessionId := r.PathValue("sessionId")
-		session, err := s.LoadSession(sessionId)
+		session, err := s.loadSession(sessionId)
 		if err != nil {
 			logging.Error("failed to load session", zap.String("error", err.Error()))
 			return
@@ -74,11 +74,10 @@ func (s *Server) Start() error {
 				break
 			}
 
-			payload := Payload{}
+			payload := payload{}
 			if err := json.Unmarshal(message, &payload); err != nil {
 				conn.Close()
 			}
-			logging.Info(payload.CreatedAt.String())
 			s.handleWebSocketMessage(playerId, session, payload)
 		}
 	})
@@ -86,25 +85,25 @@ func (s *Server) Start() error {
 	return http.ListenAndServe(s.address, nil)
 }
 
-// MustAuth method    authenticates and extract playerId
-func (s *Server) MustAuth(r *http.Request) string {
+// mustAuth method    authenticates and extract playerId
+func (s *server) mustAuth(r *http.Request) string {
 	// TODO: replace this with actual authorization implementation
 	playerId := r.Header.Get("Authorization")
 	return playerId
 }
 
-// LoadSession method    loads session with corresponding sessionId.
+// loadSession method    loads session with corresponding sessionId.
 // If no such session exists, create a new session.
 // This is used to start the match only when white side player send in the first valid move.
-func (s *Server) LoadSession(sessionId string) (*Session, error) {
+func (s *server) loadSession(sessionId string) (*Session, error) {
 	// TODO: fetch session info from dynamoDB
 	// to validate sessionId and create new session if needed
 	config := SessionConfig{
 		MatchDuration: 10 * time.Minute,
 		CancelTimeout: 30 * time.Second,
 	}
-	player1 := NewPlayer(nil, "PLAYER_1", WHITE_SIDE, config.MatchDuration)
-	player2 := NewPlayer(nil, "PLAYER_2", BLACK_SIDE, config.MatchDuration)
+	player1 := newPlayer(nil, "PLAYER_1", WHITE_SIDE, config.MatchDuration)
+	player2 := newPlayer(nil, "PLAYER_2", BLACK_SIDE, config.MatchDuration)
 
 	value, loaded := s.sessions.Load(sessionId)
 	if loaded {
@@ -114,7 +113,7 @@ func (s *Server) LoadSession(sessionId string) (*Session, error) {
 			return session, nil
 		}
 	} else {
-		session := s.NewSession(sessionId, player1, player2, config)
+		session := s.newSession(sessionId, player1, player2, config)
 		s.sessions.Store(sessionId, session)
 		logging.Info("session initialized")
 		return session, nil
@@ -123,22 +122,22 @@ func (s *Server) LoadSession(sessionId string) (*Session, error) {
 	return nil, ErrLoadSessionFailure
 }
 
-func (s *Server) NewSession(sessionId string, player1, player2 Player, config SessionConfig) *Session {
+func (s *server) newSession(sessionId string, player1, player2 player, config SessionConfig) *Session {
 	session := &Session{
-		Id:              sessionId,
-		Game:            NewGame(),
-		Players:         []*Player{&player1, &player2},
-		moveCh:          make(chan Move),
-		Config:          config,
-		EndGameHandler:  s.handleEndGame,
-		SaveGameHandler: s.handleSaveGame,
+		id:              sessionId,
+		game:            newGame(),
+		players:         []*player{&player1, &player2},
+		moveCh:          make(chan move),
+		config:          config,
+		endGameHandler:  s.handleEndGame,
+		saveGameHandler: s.handleSaveGame,
 	}
 	// Timeout to cancel match if first move is not made
 	session.setTimer(config.CancelTimeout)
-	go session.Start()
+	go session.start()
 	return session
 }
 
-func (s *Server) RemoveSession(sessionId string) {
+func (s *server) removeSession(sessionId string) {
 	s.sessions.Delete(sessionId)
 }

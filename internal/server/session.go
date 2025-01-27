@@ -11,16 +11,16 @@ import (
 )
 
 type Session struct {
-	Id      string
-	Players []*Player
-	Game    *Game
-	moveCh  chan Move
-	Timer   *time.Timer
-	StartAt time.Time
-	Config  SessionConfig
+	id      string
+	players []*player
+	game    *game
+	moveCh  chan move
+	timer   *time.Timer
+	startAt time.Time
+	config  SessionConfig
 
-	EndGameHandler  func(*Session)
-	SaveGameHandler func(*Session)
+	endGameHandler  func(*Session)
+	saveGameHandler func(*Session)
 
 	ended bool
 	mu    sync.Mutex
@@ -48,9 +48,9 @@ type errorResponse struct {
 	Error string `json:"error"`
 }
 
-func (session *Session) Start() {
+func (session *Session) start() {
 	for move := range session.moveCh {
-		player, exist := session.GetPlayerWithId(move.playerId)
+		player, exist := session.getPlayerWithId(move.playerId)
 		if !exist {
 			player.Conn.WriteJSON(errorResponse{
 				Type:  "error",
@@ -60,19 +60,19 @@ func (session *Session) Start() {
 		}
 		switch move.control {
 		case RESIGNAION:
-			session.Game.Resign(player.Color())
+			session.game.Resign(player.color())
 		case DRAW_OFFER:
 		case AGREEMENT:
-			session.Game.Draw(chess.DrawOffer)
+			session.game.Draw(chess.DrawOffer)
 		default:
-			if player.Id != session.GetCurrentTurnPlayer().Id {
+			if player.Id != session.getCurrentTurnPlayer().Id {
 				player.Conn.WriteJSON(errorResponse{
 					Type:  "error",
 					Error: ErrStatusWrongTurn,
 				})
 				continue
 			}
-			err := session.Game.MoveStr(move.uci)
+			err := session.game.MoveStr(move.uci)
 			if err != nil {
 				player.Conn.WriteJSON(errorResponse{
 					Type:  "error",
@@ -85,42 +85,42 @@ func (session *Session) Start() {
 			player.Clock -= time.Since(player.TurnStartedAt)
 			// If clock runs out, end the game
 			if player.Clock <= 0 {
-				session.Game.OutOfTime(player.Side)
+				session.game.outOfTime(player.Side)
 				logging.Info("out of time", zap.String("player_id", player.Id))
 			} else {
 				// else next turn
-				currentTurnPlayer := session.GetCurrentTurnPlayer()
+				currentTurnPlayer := session.getCurrentTurnPlayer()
 				currentTurnPlayer.TurnStartedAt = time.Now()
 				session.setTimer(currentTurnPlayer.Clock)
 				logging.Info("new turn",
 					zap.String("player_id", currentTurnPlayer.Id),
-					zap.String("clock_w", session.Players[0].Clock.String()),
-					zap.String("clock_b", session.Players[1].Clock.String()),
+					zap.String("clock_w", session.players[0].Clock.String()),
+					zap.String("clock_b", session.players[1].Clock.String()),
 				)
 			}
 		}
 
 		session.notifyPlayers(gameStateResponse{
-			Outcome: session.Game.CustomOutcome().String(),
-			Method:  session.Game.CustomMethodString(),
-			Fen:     session.Game.FEN(),
-			Clocks:  []time.Duration{session.Players[0].Clock, session.Players[1].Clock},
+			Outcome: session.game.outcome().String(),
+			Method:  session.game.method(),
+			Fen:     session.game.FEN(),
+			Clocks:  []time.Duration{session.players[0].Clock, session.players[1].Clock},
 		})
 
-		if session.Game.Outcome() == chess.NoOutcome {
-			session.Save()
+		if session.game.Outcome() == chess.NoOutcome {
+			session.save()
 		} else {
 			logging.Info("Game end by outcome",
-				zap.String("outcome", session.Game.Outcome().String()),
-				zap.String("method", session.Game.CustomMethodString()),
+				zap.String("outcome", session.game.Outcome().String()),
+				zap.String("method", session.game.method()),
 			)
-			session.End()
+			session.end()
 		}
 	}
 }
 
 func (s *Session) notifyPlayers(resp gameStateResponse) {
-	for _, player := range s.Players {
+	for _, player := range s.players {
 		if player.Conn == nil {
 			continue
 		}
@@ -134,8 +134,8 @@ func (s *Session) notifyPlayers(resp gameStateResponse) {
 	}
 }
 
-func (s *Session) GetPlayerWithId(playerId string) (*Player, bool) {
-	for _, player := range s.Players {
+func (s *Session) getPlayerWithId(playerId string) (*player, bool) {
+	for _, player := range s.players {
 		if player.Id == playerId {
 			return player, true
 		}
@@ -143,33 +143,33 @@ func (s *Session) GetPlayerWithId(playerId string) (*Player, bool) {
 	return nil, false
 }
 
-func (s *Session) GetCurrentTurnPlayer() *Player {
-	if s.Game.Position().Turn() == chess.White {
-		return s.Players[0]
+func (s *Session) getCurrentTurnPlayer() *player {
+	if s.game.Position().Turn() == chess.White {
+		return s.players[0]
 	}
-	return s.Players[1]
+	return s.players[1]
 }
 
-func (s *Session) ProcessMove(playerId, moveUci string) {
-	s.moveCh <- Move{
+func (s *Session) processMove(playerId, moveUci string) {
+	s.moveCh <- move{
 		playerId: playerId,
 		uci:      moveUci,
 		control:  NONE,
 	}
 }
 
-func (s *Session) ProcessGameControl(playerId string, control GameControl) {
-	s.moveCh <- Move{
+func (s *Session) processGameControl(playerId string, control GameControl) {
+	s.moveCh <- move{
 		playerId: playerId,
 		control:  control,
 	}
 }
 
-func (s *Session) Save() {
-	s.SaveGameHandler(s)
+func (s *Session) save() {
+	s.saveGameHandler(s)
 }
 
-func (s *Session) End() {
+func (s *Session) end() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.ended {
@@ -181,15 +181,15 @@ func (s *Session) End() {
 	}
 	// Fire off the timer to remove end game handling job
 	s.skipTimer()
-	for _, player := range s.Players {
+	for _, player := range s.players {
 		if player.Conn != nil {
 			player.Conn.Close()
 		}
 	}
-	s.EndGameHandler(s)
+	s.endGameHandler(s)
 }
 
-func (s *Session) Ended() bool {
+func (s *Session) isEnded() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.ended
@@ -197,24 +197,24 @@ func (s *Session) Ended() bool {
 
 // setTimer method    set the timer to the specified duration before trigger end game handler
 func (s *Session) setTimer(d time.Duration) {
-	if s.Timer != nil {
-		s.Timer.Reset(d)
-		logging.Info("clock reset", zap.String("session_id", s.Id), zap.String("duration", d.String()))
+	if s.timer != nil {
+		s.timer.Reset(d)
+		logging.Info("clock reset", zap.String("session_id", s.id), zap.String("duration", d.String()))
 		return
 	}
-	s.Timer = time.NewTimer(d)
+	s.timer = time.NewTimer(d)
 	go func() {
-		<-s.Timer.C
-		s.End()
+		<-s.timer.C
+		s.end()
 	}()
-	logging.Info("clock set", zap.String("session_id", s.Id), zap.String("duration", d.String()))
+	logging.Info("clock set", zap.String("session_id", s.id), zap.String("duration", d.String()))
 }
 
 // skipTimer method    skips timer by set timer to 0 duration timeout
 func (s *Session) skipTimer() {
-	if s.Timer == nil {
+	if s.timer == nil {
 		return
 	}
-	s.Timer.Reset(0)
-	logging.Info("clock skipped", zap.String("session_id", s.Id))
+	s.timer.Reset(0)
+	logging.Info("clock skipped", zap.String("session_id", s.id))
 }
