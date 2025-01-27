@@ -18,21 +18,19 @@ tags: []
 
   "SubscriptionStatus": "guest", # guest/premium
   "SubscriptionStartDate: "2025-01-01T00:00:00Z",
-  
+
 }
 ```
 
-### Active Game
+### Active Session
 
 ```json
 {
-  "GameId": "game_123",
-  "Players": {
-    "Player1": "player_1_uid",
-    "Player2": "player_2_uid"
-  },
+  "SessionId": "game_123",
+  "Player1": "player_1_uid",
+  "Player2": "player_2_uid"
   "Server": "192.168.0.2",
-  "StartTime": "2025-01-11T10:00:00Z",
+  "StartTime": "2025-01-11T10:00:00Z"
 }
 ```
 
@@ -42,7 +40,7 @@ tags: []
 
 ```json
 {
-  "GameSessionId": "game_123",
+  "SessionId": "session_123",
   "Players": {
     "Player1": "player_1_uid",
     "Player2": "player_2_uid"
@@ -58,19 +56,19 @@ tags: []
 
 After game ended, push the game replay data to S3
 
-### Game state: -> Use AppSync to sync game state to Spectator
+### Session state: -> Use AppSync to sync session state to Spectator
 
 ```json
 {
-  "gameId": "game_123",
+  "sessionId": "session_123",
   "players": {
     "player1": {"timeRemaining": 100000, "lastMoveTimestamp": None, status: "connecting", "LastDisconnectTime": None},
     "player2": {"timeRemaining": 100000, "lastMoveTimestamp": None, status: "connecting", "LastDisconnectTime": None},
   },
-  "pgn": string,
+  gameState: "PGN"
   "increment": 2000,  # 2 seconds increment
   "delay": 0,          # No delay
-  "LastUpdated": "2025-01-11T10:15:00Z", 
+  "LastUpdated": "2025-01-11T10:15:00Z",
 }
 ```
 
@@ -79,7 +77,7 @@ After game ended, push the game replay data to S3
 ```json
 {
   "MessageId" "mss_123"
-  "GameId": "game_123",
+  "SessionId": "game_123",
   "Sender": "player_1_uid",
   "Content": "Hello World",
   "CreatedAt": "2025-01-11T10:00:00Z"

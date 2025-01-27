@@ -1,39 +1,46 @@
 package server
 
 import (
-	"errors"
+	"sync"
+	"time"
 
 	"github.com/bucket-sort/slchess/pkg/logging"
-	"github.com/gorilla/websocket"
+	"github.com/bucket-sort/slchess/pkg/utils"
 	"github.com/notnil/chess"
 	"go.uber.org/zap"
 )
 
 type Session struct {
-	Players map[string]*Player
-	Game    *chess.Game
-	MoveCh  chan move
+	id      string
+	players []*player
+	game    *game
+	moveCh  chan move
+	timer   *time.Timer
+	startAt time.Time
+	config  SessionConfig
+
+	endGameHandler  func(*Session)
+	saveGameHandler func(*Session)
+
+	ended bool
+	mu    sync.Mutex
 }
 
-type Player struct {
-	Conn *websocket.Conn
-	Id   string `json:"id"`
-}
-
-type move struct {
-	playerId string
-	uci      string
-}
-
-type gameStateResponse struct {
-	Outcome string `json:"outcome"`
-	Method  string `json:"method"`
-	Fen     string `json:"fen"`
+type SessionConfig struct {
+	MatchDuration time.Duration
+	CancelTimeout time.Duration
 }
 
 type sessionResponse struct {
 	Type      string            `json:"type"`
-	GameState gameStateResponse `json:"game_state"`
+	GameState gameStateResponse `json:"game"`
+}
+
+type gameStateResponse struct {
+	Outcome string          `json:"outcome"`
+	Method  string          `json:"method"`
+	Fen     string          `json:"fen"`
+	Clocks  []time.Duration `json:"clocks"`
 }
 
 type errorResponse struct {
@@ -41,64 +48,173 @@ type errorResponse struct {
 	Error string `json:"error"`
 }
 
-func (session *Session) Start() {
-	for move := range session.MoveCh {
-		err := session.Game.MoveStr(move.uci)
-		if err != nil {
-			session.Players[move.playerId].Conn.WriteJSON(errorResponse{
+func (session *Session) start() {
+	for move := range session.moveCh {
+		player, exist := session.getPlayerWithId(move.playerId)
+		if !exist {
+			player.Conn.WriteJSON(errorResponse{
 				Type:  "error",
-				Error: ErrStatusInvalidMove,
+				Error: ErrStatusInvalidPlayerId,
 			})
-			return
+			continue
 		}
-
-		gameStateResp := gameStateResponse{
-			Outcome: session.Game.Outcome().String(),
-			Method:  session.Game.Method().String(),
-			Fen:     session.Game.FEN(),
-		}
-		for _, player := range session.Players {
-			if player == nil {
+		switch move.control {
+		case RESIGNAION:
+			session.game.Resign(player.color())
+		case DRAW_OFFER:
+		case AGREEMENT:
+			session.game.Draw(chess.DrawOffer)
+		default:
+			if player.Id != session.getCurrentTurnPlayer().Id {
+				player.Conn.WriteJSON(errorResponse{
+					Type:  "error",
+					Error: ErrStatusWrongTurn,
+				})
+				continue
+			}
+			err := session.game.MoveStr(move.uci)
+			if err != nil {
+				player.Conn.WriteJSON(errorResponse{
+					Type:  "error",
+					Error: ErrStatusInvalidMove,
+				})
 				continue
 			}
 
-			err := player.Conn.WriteJSON(sessionResponse{
-				Type:      "session",
-				GameState: gameStateResp,
-			})
-			if err != nil {
-				logging.Error("couldn't notify player: ", zap.String("player_id", move.playerId))
+			// If making move, update clock
+			player.Clock -= time.Since(player.TurnStartedAt)
+			// If clock runs out, end the game
+			if player.Clock <= 0 {
+				session.game.outOfTime(player.Side)
+				logging.Info("out of time", zap.String("player_id", player.Id))
+			} else {
+				// else next turn
+				currentTurnPlayer := session.getCurrentTurnPlayer()
+				currentTurnPlayer.TurnStartedAt = time.Now()
+				session.setTimer(currentTurnPlayer.Clock)
+				logging.Info("new turn",
+					zap.String("player_id", currentTurnPlayer.Id),
+					zap.String("clock_w", session.players[0].Clock.String()),
+					zap.String("clock_b", session.players[1].Clock.String()),
+				)
 			}
 		}
 
-		if session.Game.Outcome() != chess.NoOutcome {
-			session.End()
-		}
+		session.notifyPlayers(gameStateResponse{
+			Outcome: session.game.outcome().String(),
+			Method:  session.game.method(),
+			Fen:     session.game.FEN(),
+			Clocks:  []time.Duration{session.players[0].Clock, session.players[1].Clock},
+		})
 
+		if session.game.Outcome() == chess.NoOutcome {
+			session.save()
+		} else {
+			logging.Info("Game end by outcome",
+				zap.String("outcome", session.game.Outcome().String()),
+				zap.String("method", session.game.method()),
+			)
+			session.end()
+		}
 	}
 }
 
-func (s *Session) Stop() {
-}
-
-func (s *Session) End() {
-}
-
-func (s *Session) PlayerJoin(player *Player) error {
-	if p, ok := s.Players[player.Id]; ok {
-		if p != nil {
-			return errors.New("player still in session")
+func (s *Session) notifyPlayers(resp gameStateResponse) {
+	for _, player := range s.players {
+		if player.Conn == nil {
+			continue
 		}
-		s.Players[player.Id] = player
-		return nil
+		err := player.Conn.WriteJSON(sessionResponse{
+			Type:      "session",
+			GameState: resp,
+		})
+		if err != nil {
+			logging.Error("couldn't notify player: ", zap.String("player_id", player.Id))
+		}
 	}
-	return errors.New("player id not in the session")
 }
 
-func (s *Session) PlayerLeave(playerID string) {
-	s.Players[playerID] = nil
+func (s *Session) getPlayerWithId(playerId string) (*player, bool) {
+	for _, player := range s.players {
+		if player.Id == playerId {
+			return player, true
+		}
+	}
+	return nil, false
 }
 
-func (s *Session) ProcessMove(playerId, moveUci string) {
-	s.MoveCh <- move{playerId, moveUci}
+func (s *Session) getCurrentTurnPlayer() *player {
+	if s.game.Position().Turn() == chess.White {
+		return s.players[0]
+	}
+	return s.players[1]
+}
+
+func (s *Session) processMove(playerId, moveUci string) {
+	s.moveCh <- move{
+		playerId: playerId,
+		uci:      moveUci,
+		control:  NONE,
+	}
+}
+
+func (s *Session) processGameControl(playerId string, control GameControl) {
+	s.moveCh <- move{
+		playerId: playerId,
+		control:  control,
+	}
+}
+
+func (s *Session) save() {
+	s.saveGameHandler(s)
+}
+
+func (s *Session) end() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ended {
+		return
+	}
+	s.ended = true
+	if !utils.IsClosed(s.moveCh) {
+		close(s.moveCh)
+	}
+	// Fire off the timer to remove end game handling job
+	s.skipTimer()
+	for _, player := range s.players {
+		if player.Conn != nil {
+			player.Conn.Close()
+		}
+	}
+	s.endGameHandler(s)
+}
+
+func (s *Session) isEnded() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.ended
+}
+
+// setTimer method    set the timer to the specified duration before trigger end game handler
+func (s *Session) setTimer(d time.Duration) {
+	if s.timer != nil {
+		s.timer.Reset(d)
+		logging.Info("clock reset", zap.String("session_id", s.id), zap.String("duration", d.String()))
+		return
+	}
+	s.timer = time.NewTimer(d)
+	go func() {
+		<-s.timer.C
+		s.end()
+	}()
+	logging.Info("clock set", zap.String("session_id", s.id), zap.String("duration", d.String()))
+}
+
+// skipTimer method    skips timer by set timer to 0 duration timeout
+func (s *Session) skipTimer() {
+	if s.timer == nil {
+		return
+	}
+	s.timer.Reset(0)
+	logging.Info("clock skipped", zap.String("session_id", s.id))
 }

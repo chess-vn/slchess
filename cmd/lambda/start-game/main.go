@@ -1,9 +1,8 @@
 package main
 
 import (
-	"github.com/bucket-sort/slchess/internal/handlers"
-
 	"github.com/aws/aws-lambda-go/lambda"
+	handlers "github.com/bucket-sort/slchess/internal/lambda"
 )
 
 func main() {

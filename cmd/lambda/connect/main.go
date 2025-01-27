@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/bucket-sort/slchess/internal/handlers"
+	handlers "github.com/bucket-sort/slchess/internal/lambda"
 )
 
 func main() {

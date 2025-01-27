@@ -1,15 +1,24 @@
 package utils
 
 import (
-	"strconv"
-	"strings"
-	"os"
 	"io/ioutil"
 	"log"
+	"os"
+	"strconv"
+	"strings"
 
-	"gopkg.in/freeeve/pgn.v1"
 	"github.com/google/uuid"
+	"gopkg.in/freeeve/pgn.v1"
 )
+
+func IsClosed[T any](ch <-chan T) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
+}
 
 func GenerateUUID() string {
 	return uuid.NewString()
@@ -109,7 +118,6 @@ func PgnParseFromFile(filepath string) []string {
 		log.Fatal(err)
 	}
 	defer f.Close()
-
 
 	ps := pgn.NewPGNScanner(f)
 

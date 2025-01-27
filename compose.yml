@@ -1,0 +1,8 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: server
+    ports:
+      - "7202:7202"

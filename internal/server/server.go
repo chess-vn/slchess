@@ -4,28 +4,31 @@ import (
 	"encoding/json"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/bucket-sort/slchess/pkg/logging"
 	"github.com/gorilla/websocket"
-	"github.com/notnil/chess"
 	"go.uber.org/zap"
 )
 
-type Server struct {
+type server struct {
 	address  string
 	upgrader websocket.Upgrader
 
+	config   Config
 	sessions sync.Map
 }
 
-type Message struct {
-	Type string                 `json:"type"`
-	Data map[string]interface{} `json:"data"`
+type payload struct {
+	Type      string            `json:"type"`
+	Data      map[string]string `json:"data"`
+	CreatedAt time.Time         `json:"created_at"`
 }
 
-func NewServer() *Server {
-	return &Server{
-		address: "0.0.0.0:" + Port,
+func NewServer() *server {
+	config := NewConfig()
+	return &server{
+		address: "0.0.0.0:" + config.Port,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -33,21 +36,30 @@ func NewServer() *Server {
 				return true // Allow all origins
 			},
 		},
+		config: config,
 	}
 }
 
-/*
-Start the websocket server
-*/
-func (s *Server) Start() error {
-	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+// Start method    starts the game server
+func (s *server) Start() error {
+	http.HandleFunc("/sessions/{sessionId}", func(w http.ResponseWriter, r *http.Request) {
+		playerId := s.mustAuth(r)
+
 		conn, err := s.upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			logging.Error("failed to upgrade connection", zap.String("error", err.Error()))
 			return
 		}
 		defer conn.Close()
-		var session *Session
+
+		sessionId := r.PathValue("sessionId")
+		session, err := s.loadSession(sessionId)
+		if err != nil {
+			logging.Error("failed to load session", zap.String("error", err.Error()))
+			return
+		}
+		s.handlePlayerJoin(conn, session, playerId)
+
 		for {
 			_, message, err := conn.ReadMessage()
 			if err != nil {
@@ -56,52 +68,76 @@ func (s *Server) Start() error {
 				} else if websocket.IsCloseError(err, websocket.CloseMessage, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 					logging.Info("connection closed", zap.String("remote_address", conn.RemoteAddr().String()))
 				} else {
-					logging.Info("ws message read error", zap.String("remote_address", conn.RemoteAddr().String()))
+					logging.Info("ws message read error", zap.String("remote_address", conn.RemoteAddr().String()), zap.Error(err))
 				}
-				s.handlePlayerDisconnect(session)
+				s.handlePlayerDisconnect(session, playerId)
 				break
 			}
 
-			msg := Message{}
-			if err := json.Unmarshal(message, &msg); err != nil {
+			payload := payload{}
+			if err := json.Unmarshal(message, &payload); err != nil {
 				conn.Close()
 			}
-			s.handleWebSocketMessage(conn, session, &msg)
+			s.handleWebSocketMessage(playerId, session, payload)
 		}
 	})
-	logging.Info("websocket server started", zap.String("port", Port))
+	logging.Info("websocket server started", zap.String("port", s.config.Port))
 	return http.ListenAndServe(s.address, nil)
 }
 
-// LoadSession method    loads session with corresponding sessionId.
+// mustAuth method    authenticates and extract playerId
+func (s *server) mustAuth(r *http.Request) string {
+	// TODO: replace this with actual authorization implementation
+	playerId := r.Header.Get("Authorization")
+	return playerId
+}
+
+// loadSession method    loads session with corresponding sessionId.
 // If no such session exists, create a new session.
 // This is used to start the match only when white side player send in the first valid move.
-func (s *Server) LoadSession(sessionId string) (*Session, error) {
+func (s *server) loadSession(sessionId string) (*Session, error) {
 	// TODO: fetch session info from dynamoDB
 	// to validate sessionId and create new session if needed
-	value, loaded := s.sessions.LoadOrStore(sessionId, &Session{})
+	config := SessionConfig{
+		MatchDuration: 10 * time.Minute,
+		CancelTimeout: 30 * time.Second,
+	}
+	player1 := newPlayer(nil, "PLAYER_1", WHITE_SIDE, config.MatchDuration)
+	player2 := newPlayer(nil, "PLAYER_2", BLACK_SIDE, config.MatchDuration)
+
+	value, loaded := s.sessions.Load(sessionId)
 	if loaded {
 		session, ok := value.(*Session)
 		if ok {
+			logging.Info("session loaded")
 			return session, nil
 		}
+	} else {
+		session := s.newSession(sessionId, player1, player2, config)
+		s.sessions.Store(sessionId, session)
+		logging.Info("session initialized")
+		return session, nil
 	}
+
 	return nil, ErrLoadSessionFailure
 }
 
-func (s *Server) NewSession(sessionId string, player1, player2 *Player) {
+func (s *server) newSession(sessionId string, player1, player2 player, config SessionConfig) *Session {
 	session := &Session{
-		Game: chess.NewGame(chess.UseNotation(chess.UCINotation{})),
-		Players: map[string]*Player{
-			player1.Id: player1,
-			player2.Id: player2,
-		},
-		MoveCh: make(chan move),
+		id:              sessionId,
+		game:            newGame(),
+		players:         []*player{&player1, &player2},
+		moveCh:          make(chan move),
+		config:          config,
+		endGameHandler:  s.handleEndGame,
+		saveGameHandler: s.handleSaveGame,
 	}
-	go session.Start()
-	s.sessions.Store(sessionId, session)
+	// Timeout to cancel match if first move is not made
+	session.setTimer(config.CancelTimeout)
+	go session.start()
+	return session
 }
 
-func (s *Server) removeSession(sessionId string) {
+func (s *server) removeSession(sessionId string) {
 	s.sessions.Delete(sessionId)
 }

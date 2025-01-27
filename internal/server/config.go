@@ -2,26 +2,27 @@ package server
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/spf13/viper"
 )
 
-var (
-	Port            string
-	MatchingTimeout time.Duration
-)
+type Config struct {
+	Port string
+}
 
-func init() {
-	viper.SetConfigName("config") // name of config flie (no extension)
-	viper.SetConfigType("json")
-	viper.AddConfigPath(".infra/")
+func NewConfig() Config {
+	var config Config
+
+	viper.SetConfigName("config")
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath("./configs/server")
+	viper.AddConfigPath(".")
 	err := viper.ReadInConfig()
 	if err != nil {
 		panic(fmt.Errorf("fatal error config file: %s", err))
 	}
 
-	Port = viper.GetString("host.game_server_port")
+	config.Port = viper.GetString("server.port")
 
-	MatchingTimeout = time.Duration(viper.GetInt("game.matching_timeout")) * time.Second
+	return config
 }
