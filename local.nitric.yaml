@@ -1,0 +1,7 @@
+# local.nitric.yaml
+# Local development configuration for Nitric services.
+
+apis:
+  # API Resources
+  main:
+    port: 4001

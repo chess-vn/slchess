@@ -2,7 +2,7 @@ services:
   app:
     build:
       context: .
-      dockerfile: Dockerfile.server
+      dockerfile: server.dockerfile
     container_name: server
     ports:
       - "7202:7202"

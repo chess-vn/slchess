@@ -1,8 +1,0 @@
-{
-  "body": "{\"player1\": \"player1-id\", \"player2\": \"player2-id\"}",
-  "httpMethod": "POST",
-  "path": "/start-game",
-  "requestContext": {
-    "requestId": "example-request-id"
-  }
-}
