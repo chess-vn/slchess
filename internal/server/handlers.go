@@ -9,24 +9,24 @@ import (
 )
 
 // Handler for saving current game state.
-func (s *server) handleSaveGame(session *Session) {
+func (s *Server) handleSaveGame(session *Session) {
 	// TODO: Call lambda GameStatePut
 }
 
 // Handler for when a game session ends.
-func (s *server) handleEndGame(session *Session) {
+func (s *Server) handleEndGame(session *Session) {
 	// TODO: Call lambda EndGame
-	s.removeSession(session.id)
-	logging.Info("game ended", zap.String("session_id", session.id))
+	s.RemoveSession(session.Id)
+	logging.Info("game ended", zap.String("session_id", session.Id))
 }
 
 // Handler for when a user connection closes
-func (s *server) handlePlayerDisconnect(session *Session, playerId string) {
+func (s *Server) handlePlayerDisconnect(session *Session, playerId string) {
 	if session == nil {
 		return
 	}
 
-	player, exist := session.getPlayerWithId(playerId)
+	player, exist := session.GetPlayerWithId(playerId)
 	if !exist {
 		logging.Fatal("invalid player id", zap.String("player_id", playerId))
 		return
@@ -35,44 +35,44 @@ func (s *server) handlePlayerDisconnect(session *Session, playerId string) {
 	player.Status = DISCONNECTED
 
 	// If both player disconnected, end session
-	if session.players[0].Status == session.players[1].Status {
-		logging.Info("both player disconnected", zap.String("session_id", session.id))
-		session.end()
+	if session.Players[0].Status == session.Players[1].Status {
+		logging.Info("both player disconnected", zap.String("session_id", session.Id))
+		session.End()
 	} else {
 		// Else only set the timer for the disconnected player
-		logging.Info("player disconnected", zap.String("session_id", session.id), zap.String("player_id", player.Id))
-		if !session.isEnded() {
-			session.setTimer(60 * time.Second)
+		logging.Info("player disconnected", zap.String("session_id", session.Id), zap.String("player_id", player.Id))
+		if !session.IsEnded() {
+			session.SetTimer(60 * time.Second)
 		}
 	}
 }
 
-func (s *server) handlePlayerJoin(conn *websocket.Conn, session *Session, playerId string) {
+func (s *Server) handlePlayerJoin(conn *websocket.Conn, session *Session, playerId string) {
 	if session == nil {
 		return
 	}
 
-	player, exist := session.getPlayerWithId(playerId)
+	player, exist := session.GetPlayerWithId(playerId)
 	if !exist {
 		logging.Fatal("invalid player id", zap.String("player_id", playerId))
 		return
 	}
 	if player.Status == INIT && player.Side == WHITE_SIDE {
-		session.startAt = time.Now()
-		player.TurnStartedAt = session.startAt
-		session.setTimer(session.config.MatchDuration)
+		session.StartAt = time.Now()
+		player.TurnStartedAt = session.StartAt
+		session.SetTimer(session.Config.MatchDuration)
 	}
 	player.Conn = conn
 	player.Status = CONNECTED
 
 	logging.Info("player connected",
 		zap.String("player_id", playerId),
-		zap.String("session_id", session.id),
+		zap.String("session_id", session.Id),
 	)
 }
 
 // Handler for when user sends a message
-func (s *server) handleWebSocketMessage(playerId string, session *Session, payload payload) {
+func (s *Server) handleWebSocketMessage(playerId string, session *Session, payload Payload) {
 	if session == nil {
 		logging.Error("session not loaded")
 		return
@@ -92,19 +92,19 @@ func (s *server) handleWebSocketMessage(playerId string, session *Session, paylo
 		action := payload.Data["action"]
 		switch action {
 		case "resign":
-			session.processGameControl(playerId, RESIGNAION)
+			session.ProcessGameControl(playerId, RESIGNAION)
 		case "offer_draw":
-			session.processGameControl(playerId, DRAW_OFFER)
+			session.ProcessGameControl(playerId, DRAW_OFFER)
 		case "agreement":
-			session.processGameControl(playerId, AGREEMENT)
+			session.ProcessGameControl(playerId, AGREEMENT)
 		case "move":
-			session.processMove(playerId, payload.Data["move"])
+			session.ProcessMove(playerId, payload.Data["move"])
 		default:
 			logging.Info("invalid game action:", zap.String("action", payload.Type))
 			return
 		}
 		logging.Info("game data",
-			zap.String("sessionId", session.id),
+			zap.String("sessionId", session.Id),
 			zap.String("action", action),
 		)
 	default:

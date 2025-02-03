@@ -30,17 +30,17 @@ const (
 	WHITE_OUT_OF_TIME = "WHITE_OUT_OF_TIME"
 )
 
-type game struct {
+type Game struct {
 	chess.Game
 	customOutcome chess.Outcome
 }
 
-func newGame() *game {
+func NewGame() *Game {
 	g := chess.NewGame(chess.UseNotation(chess.UCINotation{}))
-	return &game{Game: *g}
+	return &Game{Game: *g}
 }
 
-func (g *game) outOfTime(side Side) {
+func (g *Game) OutOfTime(side Side) {
 	if side == WHITE_SIDE {
 		g.customOutcome = WHITE_OUT_OF_TIME
 	} else {
@@ -48,7 +48,7 @@ func (g *game) outOfTime(side Side) {
 	}
 }
 
-func (g *game) outcome() chess.Outcome {
+func (g *Game) CustomOutcome() chess.Outcome {
 	switch g.customOutcome {
 	case BLACK_OUT_OF_TIME:
 		return chess.WhiteWon
@@ -59,7 +59,7 @@ func (g *game) outcome() chess.Outcome {
 	}
 }
 
-func (g *game) method() string {
+func (g *Game) CustomMethodString() string {
 	switch g.customOutcome {
 	case WHITE_OUT_OF_TIME, BLACK_OUT_OF_TIME:
 		return "OUT_OF_TIME"
@@ -68,13 +68,13 @@ func (g *game) method() string {
 	}
 }
 
-type move struct {
-	playerId string
-	uci      string
-	control  GameControl
+type Move struct {
+	PlayerId string
+	Uci      string
+	Control  GameControl
 }
 
-type player struct {
+type Player struct {
 	Id            string
 	Conn          *websocket.Conn
 	Side          Side
@@ -83,8 +83,8 @@ type player struct {
 	TurnStartedAt time.Time
 }
 
-func newPlayer(conn *websocket.Conn, playerId string, side Side, clock time.Duration) player {
-	player := player{
+func NewPlayer(conn *websocket.Conn, playerId string, side Side, clock time.Duration) Player {
+	player := Player{
 		Id:     playerId,
 		Conn:   conn,
 		Side:   side,
@@ -94,7 +94,7 @@ func newPlayer(conn *websocket.Conn, playerId string, side Side, clock time.Dura
 	return player
 }
 
-func (p *player) color() chess.Color {
+func (p *Player) Color() chess.Color {
 	if p.Side == WHITE_SIDE {
 		return chess.White
 	}
