@@ -7,6 +7,6 @@ services:
 batch-services: []
 runtimes:
   go:
-    dockerfile: ./golang.dockerfile
+    dockerfile: ./handler.dockerfile
     context: ""
     args: {}
