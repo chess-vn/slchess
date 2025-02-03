@@ -65,22 +65,6 @@ Resources:
       IntegrationType: AWS_PROXY
       IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DisconnectFunction.Arn}/invocations"
 
-  # MakeMove Route
-  MakeMoveRoute:
-    Type: AWS::ApiGatewayV2::Route
-    Properties:
-      ApiId: !Ref WebSocketApi
-      RouteKey: makeMove
-      AuthorizationType: NONE
-      Target: !Sub "integrations/${MakeMoveIntegration}"
-
-  MakeMoveIntegration:
-    Type: AWS::ApiGatewayV2::Integration
-    Properties:
-      ApiId: !Ref WebSocketApi
-      IntegrationType: AWS_PROXY
-      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${MakeMoveFunction.Arn}/invocations"
-
   # Connect Lambda Function
   ConnectFunction:
     Type: AWS::Serverless::Function
@@ -113,56 +97,16 @@ Resources:
         Variables:
           TABLE_NAME: WebSocketConnections
 
-  # MakeMove Lambda Function
-  MakeMoveFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: go1.x
-    Properties:
-      CodeUri: ./cmd/make-move/
-      Handler: bootstrap
-      Runtime: provided.al2023
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: GameStates
-      Environment:
-        Variables:
-          TABLE_NAME: GameStates
-          CONNECTION_TABLE: WebSocketConnections
-          WEBSOCKET_API_ENDPOINT: !Sub "https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/dev"
-
-  # Start Game Function (HTTP-based)
-  StartGameFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: go1.x
-    Properties:
-      CodeUri: ./cmd/start-game/
-      Handler: bootstrap
-      Runtime: provided.al2023
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: GameStates
-      Events:
-        StartGameAPI:
-          Type: Api
-          Properties:
-            Path: /start-game
-            Method: post
-      Environment:
-        Variables:
-          TABLE_NAME: GameStates
-
   # DynamoDB Table for WebSocket Connections
-  WebSocketConnections:
+  Connections:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: WebSocketConnections
+      TableName: Connections
       AttributeDefinitions:
-        - AttributeName: ConnectionID
+        - AttributeName: ConnectionId
           AttributeType: S
       KeySchema:
-        - AttributeName: ConnectionID
+        - AttributeName: ConnectionId
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
@@ -179,11 +123,55 @@ Resources:
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
+  Users:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Users
+      AttributeDefinitions:
+        - AttributeName: UserId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: SessionId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  ActiveGames:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ActiveGames
+      AttributeDefinitions:
+        - AttributeName: GameId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: GameId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  GameRecords:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: GameRecords
+      AttributeDefinitions:
+        - AttributeName: GameId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: GameId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  GameStates:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: GameRecords
+      AttributeDefinitions:
+        - AttributeName: GameId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: GameId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
 Outputs:
   WebSocketApiUrl:
     Value: !Sub "wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/dev"
     Description: WebSocket API endpoint
-
-  StartGameApiUrl:
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/start-game"
-    Description: HTTP endpoint for starting a game
