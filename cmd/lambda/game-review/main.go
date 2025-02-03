@@ -1,7 +1,7 @@
 package main
 
 import (
-	handlers "github.com/bucket-sort/slchess/internal/lambda"
+	"github.com/bucket-sort/slchess/internal/handlers"
 )
 
 func main() {
