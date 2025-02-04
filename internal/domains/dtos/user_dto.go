@@ -1,7 +1,5 @@
 package dtos
 
-import "github.com/bucket-sort/slchess/internal/domains/models/entities"
-
 type UserCreateRequest struct {
 	Email     string `json:"email"`
 	Handler   string `json:"handler"`
@@ -24,13 +22,4 @@ type UserResponse struct {
 	Handler   string `json:"handler"`
 	FirstName string `json:"first_name"`
 	LastName  string `json:"last_name"`
-}
-
-func UserResponseFromEntity(user entities.User) UserResponse {
-	return UserResponse{
-		ID:        user.Id,
-		Email:     user.Email,
-		FirstName: user.FirstName,
-		LastName:  user.LastName,
-	}
 }

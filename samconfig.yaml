@@ -5,7 +5,7 @@ version: 0.1
 default:
   global:
     parameters:
-      stack_name: sam-app
+      stack_name: slchess
   build:
     parameters:
       cached: true
@@ -15,8 +15,8 @@ default:
       capabilities: CAPABILITY_IAM
       confirm_changeset: true
       resolve_s3: true
-      stack_name: graduation-thesis
-      s3_prefix: graduation-thesis
+      stack_name: slchess
+      s3_prefix: slchess
       region: ap-southeast-2
       image_repositories: []
   sync:

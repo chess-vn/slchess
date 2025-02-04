@@ -8,48 +8,58 @@ Globals:
     MemorySize: 128
 
 Resources:
-  # WebSocket API
-  WebSocketApi:
+  ### Cognito User Pool ###
+  SlchessUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: SlchessUserPool
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: true
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+
+  SlchessUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: SlchessUserPoolClient
+      UserPoolId: !Ref SlchessUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+
+  ### Websocket API ###
+  SlchessWebsocket:
     Type: AWS::ApiGatewayV2::Api
     Properties:
-      Name: ChessWebSocketApi
+      Name: SlchessWebsocket
       ProtocolType: WEBSOCKET
       RouteSelectionExpression: $request.body.action
 
-  # WebSocket API Deployment
-  WebSocketApiDeployment:
-    Type: AWS::ApiGatewayV2::Deployment
-    Properties:
-      ApiId: !Ref WebSocketApi
-    DependsOn:
-      - ConnectRoute
-      - DisconnectRoute
-      - MakeMoveRoute
-
-  WebSocketApiStage:
-    Type: AWS::ApiGatewayV2::Stage
-    Properties:
-      ApiId: !Ref WebSocketApi
-      DeploymentId: !Ref WebSocketApiDeployment
-      StageName: dev
-
-  # Connect Route
   ConnectRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref WebSocketApi
+      ApiId: !Ref SlchessWebsocket
       RouteKey: $connect
       AuthorizationType: NONE
       Target: !Sub "integrations/${ConnectIntegration}"
-
   ConnectIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref WebSocketApi
+      ApiId: !Ref SlchessWebsocket
       IntegrationType: AWS_PROXY
       IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ConnectFunction.Arn}/invocations"
 
-  # Disconnect Route
   DisconnectRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
@@ -57,7 +67,6 @@ Resources:
       RouteKey: $disconnect
       AuthorizationType: NONE
       Target: !Sub "integrations/${DisconnectIntegration}"
-
   DisconnectIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
@@ -65,7 +74,50 @@ Resources:
       IntegrationType: AWS_PROXY
       IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DisconnectFunction.Arn}/invocations"
 
-  # Connect Lambda Function
+  MatchmakingRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SlchessWebsocket
+      RouteKey: $matchmaking
+      AuthorizationType: COGNITO_USER_POOL
+      Target: !Sub "integrations/${MatchmakingIntegration}"
+  MatchmakingIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref SlchessWebsocket
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${MatchmakingFunction.Arn}/invocations"
+
+  # WebSocket API Deployment
+  SlchessDeployment:
+    Type: AWS::ApiGatewayV2::Deployment
+    Properties:
+      ApiId: !Ref WebSocketApi
+    DependsOn:
+      - ConnectRoute
+      - DisconnectRoute
+      - MakeMoveRoute
+  SlchessStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref SlchessWebsocket
+      DeploymentId: !Ref SlchessDeployment
+      StageName: dev
+
+  ### HTTP API ###
+  SlchessApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: SlchessApi
+      StageName: prod
+      Cors: "'*'"
+      Auth:
+        Authorizers:
+          SlchessAuth:
+            UserPoolArn: !GetAtt SlchessUserPool.Arn
+        DefaultAuthorizer: SlchessAuth
+
+  ### Lambda Functions ###
   ConnectFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -81,7 +133,6 @@ Resources:
         Variables:
           TABLE_NAME: WebSocketConnections
 
-  # Disconnect Lambda Function
   DisconnectFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -92,34 +143,48 @@ Resources:
       Runtime: provided.al2023
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: WebSocketConnections
+            TableName: Connections
       Environment:
         Variables:
-          TABLE_NAME: WebSocketConnections
+          TABLE_NAME: Connections
 
-  # DynamoDB Table for WebSocket Connections
+  MatchmakingFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      CodeUri: ./cmd/matchmaking/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: Connections
+      Environment:
+        Variables:
+          TABLE_NAME: Connections
+
+  ### DynamoDB Tables ###
   Connections:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: Connections
       AttributeDefinitions:
-        - AttributeName: ConnectionId
+        - AttributeName: connectionId
           AttributeType: S
       KeySchema:
-        - AttributeName: ConnectionId
+        - AttributeName: connectionId
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
-  # DynamoDB Table for Sessions
   Sessions:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: Sessions
       AttributeDefinitions:
-        - AttributeName: SessionId
+        - AttributeName: sessionId
           AttributeType: S
       KeySchema:
-        - AttributeName: SessionId
+        - AttributeName: sessionId
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
@@ -128,10 +193,10 @@ Resources:
     Properties:
       TableName: Users
       AttributeDefinitions:
-        - AttributeName: UserId
+        - AttributeName: userId
           AttributeType: S
       KeySchema:
-        - AttributeName: SessionId
+        - AttributeName: userId
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
@@ -140,10 +205,10 @@ Resources:
     Properties:
       TableName: ActiveGames
       AttributeDefinitions:
-        - AttributeName: GameId
+        - AttributeName: gameId
           AttributeType: S
       KeySchema:
-        - AttributeName: GameId
+        - AttributeName: gameId
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
@@ -152,10 +217,10 @@ Resources:
     Properties:
       TableName: GameRecords
       AttributeDefinitions:
-        - AttributeName: GameId
+        - AttributeName: gameId
           AttributeType: S
       KeySchema:
-        - AttributeName: GameId
+        - AttributeName: gameId
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
@@ -164,10 +229,10 @@ Resources:
     Properties:
       TableName: GameRecords
       AttributeDefinitions:
-        - AttributeName: GameId
+        - AttributeName: gameId
           AttributeType: S
       KeySchema:
-        - AttributeName: GameId
+        - AttributeName: gameId
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
