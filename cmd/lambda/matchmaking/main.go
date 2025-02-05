@@ -17,15 +17,17 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/apigatewaymanagementapi"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/aws/aws-sdk-go-v2/service/elasticache"
 	"github.com/bucket-sort/slchess/internal/domains/entities"
 	"github.com/bucket-sort/slchess/pkg/utils"
 	"github.com/redis/go-redis/v9"
 )
 
 var (
-	apiGatewayClient *apigatewaymanagementapi.Client
-	dynamoClient     *dynamodb.Client
-	ctx              context.Context
+	apiGatewayClient  *apigatewaymanagementapi.Client
+	elasticacheClient *elasticache.Client
+	dynamoClient      *dynamodb.Client
+	ctx               context.Context
 
 	ErrNoMatchFound = errors.New("failed to matchmaking")
 )
@@ -40,36 +42,41 @@ func init() {
 		Region:       os.Getenv("AWS_REGION"),
 		Credentials:  cfg.Credentials,
 	})
+	elasticacheClient = elasticache.NewFromConfig(cfg)
 }
 
 // Handle matchmaking requests
 func handler(event events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
 	connectionId := event.RequestContext.ConnectionID
+	// TODO: retrieve lower and upper bound range
+	ratingLowerBound := -150
+	ratingUpperBound := 150
 
 	// Get user ID from DynamoDB
-	response, err := dynamoClient.GetItem(context.TODO(), &dynamodb.GetItemInput{
+	response, err := dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String("Connections"),
 		Key: map[string]types.AttributeValue{
-			"connectionId": &types.AttributeValueMemberS{Value: connectionId},
+			"Id": &types.AttributeValueMemberS{Value: connectionId},
 		},
 	})
 	if err != nil || response.Item == nil {
 		return events.APIGatewayProxyResponse{StatusCode: 401, Body: "Unauthorized"}, nil
 	}
 
-	userId := response.Item["userId"].(*types.AttributeValueMemberS).Value
+	userId := response.Item["UserId"].(*types.AttributeValueMemberS).Value
 
 	var body map[string]interface{}
 	json.Unmarshal([]byte(event.Body), &body)
 	userRating := body["rating"].(int)
 
-	redisAddr := "your-redis-endpoint.cache.amazonaws.com:6379"
+	redisAddr, err := getRedisEndpoint(ctx)
+	if err != nil {
+		return events.APIGatewayProxyResponse{StatusCode: 500, Body: "Failed to queue player"}, nil
+	}
 
 	// Create a Redis client
 	rdb := redis.NewClient(&redis.Options{
-		Addr:     redisAddr,
-		Password: "", // Set password if using authentication
-		DB:       0,  // Default DB
+		Addr: redisAddr,
 	})
 
 	// Test connection
@@ -79,18 +86,19 @@ func handler(event events.APIGatewayWebsocketProxyRequest) (events.APIGatewayPro
 	}
 	fmt.Println("Connected to Redis:", pong)
 
-	// TODO: perform matchmaking logic, query AWS Elasticache
-	minRating := userRating - 150
-	maxRating := userRating + 150
+	// Attempt matchmaking
+	minRating := userRating - ratingLowerBound
+	maxRating := userRating + ratingUpperBound
 	opponentId, err := findMatch(rdb, "matchmaking_set", minRating, maxRating, userId, userRating)
 	if err != nil {
 		return events.APIGatewayProxyResponse{StatusCode: 500, Body: "Matchmaking error"}, nil
 	}
 
+	// If no match found, queue the player by caching the matchmaking ticket
 	if opponentId == "" {
 		_, err = apiGatewayClient.PostToConnection(context.TODO(), &apigatewaymanagementapi.PostToConnectionInput{
 			ConnectionId: &connectionId,
-			Data:         []byte("{result: 'failed'}"),
+			Data:         []byte("{result: 'queued'}"),
 		})
 		if err != nil {
 			return events.APIGatewayProxyResponse{StatusCode: 500, Body: "Failed to send message"}, nil
@@ -148,25 +156,48 @@ func findMatch(client *redis.Client, key string, minRating, maxRating int, playe
 }
 
 func createSession(player1Id, player2Id string) (entities.Session, error) {
+	// TODO: retrieve game server ip
+	serverIp := "192.168.0.1"
+
+	createdAt := time.Now()
 	sessionId := utils.GenerateUUID()
 	_, err := dynamoClient.PutItem(context.TODO(), &dynamodb.PutItemInput{
-		TableName: aws.String("ActiveSessions"),
+		TableName: aws.String("ActiveMatches"),
 		Item: map[string]types.AttributeValue{
-			"id": &types.AttributeValueMemberS{Value: sessionId},
+			"MatchId":   &types.AttributeValueMemberS{Value: sessionId},
+			"Player1Id": &types.AttributeValueMemberS{Value: player1Id},
+			"Player2Id": &types.AttributeValueMemberS{Value: player2Id},
+			"Server":    &types.AttributeValueMemberS{Value: serverIp},
+			"CreatedAt": &types.AttributeValueMemberS{Value: createdAt.String()},
 		},
 	})
 	if err != nil {
+		return entities.Session{}, err
 	}
 	return entities.Session{
 		Id:        sessionId,
 		Player1Id: player1Id,
 		Player2Id: player2Id,
-		Server:    "",
-		CreatedAt: time.Now(),
+		Server:    serverIp,
+		CreatedAt: createdAt,
 	}, nil
 }
 
-func respond(ctx context.Context, connectionId string, data []byte) {
+// Get Redis endpoint dynamically
+func getRedisEndpoint(ctx context.Context) (string, error) {
+	output, err := elasticacheClient.DescribeServerlessCaches(ctx, &elasticache.DescribeServerlessCachesInput{
+		ServerlessCacheName: aws.String("SlchessCache"),
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to describe cluster: %v", err)
+	}
+
+	if len(output.ServerlessCaches) > 0 {
+		endpoint := output.ServerlessCaches[0].Endpoint
+		return fmt.Sprintf("%s:%d", *endpoint.Address, endpoint.Port), nil
+	}
+
+	return "", fmt.Errorf("no cache nodes found")
 }
 
 func main() {

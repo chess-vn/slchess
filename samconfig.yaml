@@ -15,10 +15,10 @@ default:
       capabilities: CAPABILITY_IAM
       confirm_changeset: true
       resolve_s3: true
-      stack_name: slchess
       s3_prefix: slchess
       region: ap-southeast-2
       image_repositories: []
+      disable_rollback: true
   sync:
     parameters:
       watch: true

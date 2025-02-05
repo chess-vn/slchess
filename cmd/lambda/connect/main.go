@@ -91,7 +91,7 @@ func validateJWT(tokenString string) (*jwt.Token, error) {
 			return key, nil
 		}
 		return nil, errors.New("invalid token: unknown kid")
-	}, jwt.WithAudience("your-client-id"), jwt.WithIssuer(fmt.Sprintf("https://cognito-idp.%s.amazonaws.com/%s", os.Getenv("AWS_REGION"), os.Getenv("COGNITO_USER_POOL_ID"))))
+	}, jwt.WithAudience("slchess"), jwt.WithIssuer(fmt.Sprintf("https://cognito-idp.%s.amazonaws.com/%s", os.Getenv("AWS_REGION"), os.Getenv("COGNITO_USER_POOL_ID"))))
 	if err != nil {
 		return nil, err
 	}
@@ -116,10 +116,10 @@ func handler(event events.APIGatewayWebsocketProxyRequest) (events.APIGatewayPro
 
 	// Store connection in DynamoDB
 	_, err = dynamoClient.PutItem(context.TODO(), &dynamodb.PutItemInput{
-		TableName: aws.String(os.Getenv("CONNECTIONS_TABLE")),
+		TableName: aws.String(os.Getenv("TABLE_NAME")),
 		Item: map[string]types.AttributeValue{
-			"connectionId": &types.AttributeValueMemberS{Value: connectionID},
-			"userId":       &types.AttributeValueMemberS{Value: userID},
+			"Id":     &types.AttributeValueMemberS{Value: connectionID},
+			"UserId": &types.AttributeValueMemberS{Value: userID},
 		},
 	})
 	if err != nil {

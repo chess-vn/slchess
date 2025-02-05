@@ -11,13 +11,7 @@ tasks:
 
   build:
     vars:
-      HANDLERS:
-        [
-          ConnectFunction,
-          DisconnectFunction,
-          MakeMoveFunction,
-          StartGameFunction,
-        ]
+      HANDLERS: [ConnectFunction, DisconnectFunction, MatchmakingFunction]
     cmds:
       - sam build --region $AWS_REGION --config-file samconfig.yaml
       - for: { var: HANDLERS }

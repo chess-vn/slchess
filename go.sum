@@ -21,6 +21,8 @@ github.com/aws/aws-sdk-go-v2/service/apigatewaymanagementapi v1.23.14 h1:YcSte97
 github.com/aws/aws-sdk-go-v2/service/apigatewaymanagementapi v1.23.14/go.mod h1:ZjC0RTdZDutp2W2uPeNLFXeMhFyTwGDwIKRTEJ3gQW0=
 github.com/aws/aws-sdk-go-v2/service/dynamodb v1.39.8 h1:D4Dhqf6FEw//4mEFsxtBYMNSmdSg0LAy+A+DVvH0dts=
 github.com/aws/aws-sdk-go-v2/service/dynamodb v1.39.8/go.mod h1:+pfCvXbSNLZ7lG+tydnY5IN4WUoz+WsGDrl2rg2DEew=
+github.com/aws/aws-sdk-go-v2/service/elasticache v1.44.11 h1:zzX3+jeBuGj8os8Egg0CPMm9gHg6Ozyoyjjxvow1xTU=
+github.com/aws/aws-sdk-go-v2/service/elasticache v1.44.11/go.mod h1:GYDofwkQnAsTjTYNsgPSjaXR+fjDGnO1eMC4u4q3B9c=
 github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.12.2 h1:D4oz8/CzT9bAEYtVhSBmFj2dNOtaHOtMKc2vHBwYizA=
 github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.12.2/go.mod h1:Za3IHqTQ+yNcRHxu1OFucBh0ACZT4j4VQFF0BqpZcLY=
 github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.10.12 h1:V1h3Cxmn0tN5EhL31uvqSLKsMlPlqiYxRwAEdwNeIJ8=
