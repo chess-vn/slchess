@@ -44,6 +44,8 @@ Resources:
     Properties:
       Engine: Redis
       ServerlessCacheName: SlchessCache
+      SecurityGroupIds:
+        - sg-003fd8c2326289ec4
 
   ### Websocket API ###
   SlchessWebsocket:
@@ -164,12 +166,29 @@ Resources:
       CodeUri: ./cmd/lambda/matchmaking/
       Handler: bootstrap
       Runtime: provided.al2023
+      Timeout: 30
       Policies:
         - DynamoDBCrudPolicy:
             TableName: Connections
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action: elasticache:DescribeServerlessCaches
+              Resource: "*"
+            - Effect: Allow
+              Action: elasticache:Connect
+              Resource: "*"
+      VpcConfig:
+        SecurityGroupIds:
+          - sg-003fd8c2326289ec4
+        SubnetIds:
+          - subnet-08afaaea0b1e4f825
+          - subnet-0f7183aa53381f50c
+          - subnet-0642049eeace8e1b3
       Environment:
         Variables:
           TABLE_NAME: Connections
+          CACHE_NAME: SlchessCache
 
   ### DynamoDB Tables ###
   Connections:
@@ -211,7 +230,7 @@ Resources:
   MatchStates:
     Type: AWS::Serverless::SimpleTable
     Properties:
-      TableName: SessionStates
+      TableName: MatchStates
       PrimaryKey:
         Name: MatchId
         Type: String
@@ -219,7 +238,7 @@ Resources:
   MatchRecords:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: GameRecords
+      TableName: MatchRecords
       AttributeDefinitions:
         - AttributeName: MatchId
           AttributeType: S

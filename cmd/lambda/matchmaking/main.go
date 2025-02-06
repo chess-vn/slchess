@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 	"time"
@@ -48,9 +48,6 @@ func init() {
 // Handle matchmaking requests
 func handler(event events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
 	connectionId := event.RequestContext.ConnectionID
-	// TODO: retrieve lower and upper bound range
-	ratingLowerBound := -150
-	ratingUpperBound := 150
 
 	// Get user ID from DynamoDB
 	response, err := dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
@@ -67,28 +64,31 @@ func handler(event events.APIGatewayWebsocketProxyRequest) (events.APIGatewayPro
 
 	var body map[string]interface{}
 	json.Unmarshal([]byte(event.Body), &body)
-	userRating := body["rating"].(int)
+	userRating := body["rating"].(float64)
+	ratingLowerBound := body["lower_bound"].(float64)
+	ratingUpperBound := body["upper_bound"].(float64)
 
 	redisAddr, err := getRedisEndpoint(ctx)
 	if err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: 500, Body: "Failed to queue player"}, nil
+		return events.APIGatewayProxyResponse{StatusCode: 500, Body: fmt.Sprintf("Failed to queue player, %v", err)}, nil
 	}
 
 	// Create a Redis client
 	rdb := redis.NewClient(&redis.Options{
 		Addr: redisAddr,
+		TLSConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		},
 	})
 
 	// Test connection
-	pong, err := rdb.Ping(ctx).Result()
-	if err != nil {
-		log.Fatalf("Failed to connect to Redis: %v", err)
+	if _, err = rdb.Ping(ctx).Result(); err != nil {
+		return events.APIGatewayProxyResponse{StatusCode: 500, Body: fmt.Sprintf("Failed to queue player, %v", err)}, nil
 	}
-	fmt.Println("Connected to Redis:", pong)
 
 	// Attempt matchmaking
-	minRating := userRating - ratingLowerBound
-	maxRating := userRating + ratingUpperBound
+	minRating := int(userRating - ratingLowerBound)
+	maxRating := int(userRating + ratingUpperBound)
 	opponentId, err := findMatch(rdb, "matchmaking_set", minRating, maxRating, userId, userRating)
 	if err != nil {
 		return events.APIGatewayProxyResponse{StatusCode: 500, Body: "Matchmaking error"}, nil
@@ -122,7 +122,7 @@ func handler(event events.APIGatewayWebsocketProxyRequest) (events.APIGatewayPro
 }
 
 // Matchmaking function using go-redis commands
-func findMatch(client *redis.Client, key string, minRating, maxRating int, playerId string, playerRating int) (string, error) {
+func findMatch(client *redis.Client, key string, minRating, maxRating int, playerId string, playerRating float64) (string, error) {
 	// Find an opponent within the rating range
 	matches, err := client.ZRangeByScore(ctx, key, &redis.ZRangeBy{
 		Min:    strconv.Itoa(minRating),
@@ -145,7 +145,7 @@ func findMatch(client *redis.Client, key string, minRating, maxRating int, playe
 	}
 	// No match found, add the current player to the queue
 	_, err = client.ZAdd(ctx, "matchmaking_set", redis.Z{
-		Score:  float64(playerRating),
+		Score:  playerRating,
 		Member: playerId,
 	}).Result()
 	if err != nil {
@@ -186,15 +186,15 @@ func createSession(player1Id, player2Id string) (entities.Session, error) {
 // Get Redis endpoint dynamically
 func getRedisEndpoint(ctx context.Context) (string, error) {
 	output, err := elasticacheClient.DescribeServerlessCaches(ctx, &elasticache.DescribeServerlessCachesInput{
-		ServerlessCacheName: aws.String("SlchessCache"),
+		ServerlessCacheName: aws.String(os.Getenv("CACHE_NAME")),
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to describe cluster: %v", err)
+		return "", fmt.Errorf("failed to describe cache: %v", err)
 	}
 
 	if len(output.ServerlessCaches) > 0 {
 		endpoint := output.ServerlessCaches[0].Endpoint
-		return fmt.Sprintf("%s:%d", *endpoint.Address, endpoint.Port), nil
+		return fmt.Sprintf("%s:%d", *endpoint.Address, *endpoint.Port), nil
 	}
 
 	return "", fmt.Errorf("no cache nodes found")

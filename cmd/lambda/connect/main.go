@@ -45,9 +45,9 @@ type jwks struct {
 
 // Load Cognito public keys
 func loadCognitoPublicKeys() {
-	userPoolID := os.Getenv("COGNITO_USER_POOL_ID")
+	userPoolId := os.Getenv("COGNITO_USER_POOL_ID")
 	region := os.Getenv("AWS_REGION")
-	url := fmt.Sprintf("https://cognito-idp.%s.amazonaws.com/%s/.well-known/jwks.json", region, userPoolID)
+	url := fmt.Sprintf("https://cognito-idp.%s.amazonaws.com/%s/.well-known/jwks.json", region, userPoolId)
 
 	resp, err := http.Get(url)
 	if err != nil {
@@ -72,6 +72,7 @@ func loadCognitoPublicKeys() {
 
 		// Construct RSA Public Key
 		cognitoPublicKeys[key.Kid] = &rsa.PublicKey{N: n, E: e}
+		fmt.Println(key)
 	}
 }
 
@@ -91,7 +92,7 @@ func validateJWT(tokenString string) (*jwt.Token, error) {
 			return key, nil
 		}
 		return nil, errors.New("invalid token: unknown kid")
-	}, jwt.WithAudience("slchess"), jwt.WithIssuer(fmt.Sprintf("https://cognito-idp.%s.amazonaws.com/%s", os.Getenv("AWS_REGION"), os.Getenv("COGNITO_USER_POOL_ID"))))
+	}, jwt.WithIssuer(fmt.Sprintf("https://cognito-idp.%s.amazonaws.com/%s", os.Getenv("AWS_REGION"), os.Getenv("COGNITO_USER_POOL_ID"))))
 	if err != nil {
 		return nil, err
 	}
@@ -100,8 +101,8 @@ func validateJWT(tokenString string) (*jwt.Token, error) {
 
 // Handle WebSocket connection with authentication
 func handler(event events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
-	connectionID := event.RequestContext.ConnectionID
-	token := event.QueryStringParameters["token"]
+	connectionId := event.RequestContext.ConnectionID
+	token := event.Headers["Authorization"]
 
 	if token == "" {
 		return events.APIGatewayProxyResponse{StatusCode: 401, Body: "Unauthorized: No token provided"}, nil
@@ -109,17 +110,17 @@ func handler(event events.APIGatewayWebsocketProxyRequest) (events.APIGatewayPro
 
 	validToken, err := validateJWT(token)
 	if err != nil || !validToken.Valid {
-		return events.APIGatewayProxyResponse{StatusCode: 401, Body: "Unauthorized: Invalid token"}, nil
+		return events.APIGatewayProxyResponse{StatusCode: 401, Body: fmt.Sprintf("Unauthorized: %v", err)}, nil
 	}
 
-	userID := validToken.Claims.(jwt.MapClaims)["sub"].(string)
+	userId := validToken.Claims.(jwt.MapClaims)["sub"].(string)
 
 	// Store connection in DynamoDB
 	_, err = dynamoClient.PutItem(context.TODO(), &dynamodb.PutItemInput{
 		TableName: aws.String(os.Getenv("TABLE_NAME")),
 		Item: map[string]types.AttributeValue{
-			"Id":     &types.AttributeValueMemberS{Value: connectionID},
-			"UserId": &types.AttributeValueMemberS{Value: userID},
+			"Id":     &types.AttributeValueMemberS{Value: connectionId},
+			"UserId": &types.AttributeValueMemberS{Value: userId},
 		},
 	})
 	if err != nil {

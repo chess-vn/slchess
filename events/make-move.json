@@ -1,6 +1,0 @@
-{
-  "body": "{\"action\": \"makeMove\", \"GameID\": \"game-123\", \"Move\": \"e2e4\"}",
-  "requestContext": {
-    "connectionId": "example-connection-id"
-  }
-}
