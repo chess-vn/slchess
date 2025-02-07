@@ -25,7 +25,7 @@ func handler(request events.APIGatewayWebsocketProxyRequest) (events.APIGatewayP
 	_, err := dynamoClient.DeleteItem(context.TODO(), &dynamodb.DeleteItemInput{
 		TableName: aws.String("WebSocketConnections"),
 		Key: map[string]types.AttributeValue{
-			"ConnectionID": &types.AttributeValueMemberS{Value: connectionID},
+			"ConnectionId": &types.AttributeValueMemberS{Value: connectionID},
 		},
 	})
 	if err != nil {

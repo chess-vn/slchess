@@ -38,15 +38,6 @@ Resources:
         - ALLOW_USER_PASSWORD_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
 
-  ### ElastiCache ###
-  SlchessCache:
-    Type: AWS::ElastiCache::ServerlessCache
-    Properties:
-      Engine: Redis
-      ServerlessCacheName: SlchessCache
-      SecurityGroupIds:
-        - sg-003fd8c2326289ec4
-
   ### Websocket API ###
   SlchessWebsocket:
     Type: AWS::ApiGatewayV2::Api
@@ -83,20 +74,6 @@ Resources:
       IntegrationType: AWS_PROXY
       IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DisconnectFunction.Arn}/invocations"
 
-  MatchmakingRoute:
-    Type: AWS::ApiGatewayV2::Route
-    Properties:
-      ApiId: !Ref SlchessWebsocket
-      RouteKey: matchmaking
-      AuthorizationType: NONE
-      Target: !Sub "integrations/${MatchmakingIntegration}"
-  MatchmakingIntegration:
-    Type: AWS::ApiGatewayV2::Integration
-    Properties:
-      ApiId: !Ref SlchessWebsocket
-      IntegrationType: AWS_PROXY
-      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${MatchmakingFunction.Arn}/invocations"
-
   # WebSocket API Deployment
   SlchessDeployment:
     Type: AWS::ApiGatewayV2::Deployment
@@ -105,7 +82,6 @@ Resources:
     DependsOn:
       - ConnectRoute
       - DisconnectRoute
-      - MatchmakingRoute
   SlchessStage:
     Type: AWS::ApiGatewayV2::Stage
     Properties:
@@ -114,17 +90,17 @@ Resources:
       StageName: dev
 
   ### HTTP API ###
-  # SlchessApi:
-  #   Type: AWS::Serverless::Api
-  #   Properties:
-  #     Name: SlchessApi
-  #     StageName: prod
-  #     Cors: "'*'"
-  #     Auth:
-  #       Authorizers:
-  #         SlchessAuth:
-  #           UserPoolArn: !GetAtt SlchessUserPool.Arn
-  #       DefaultAuthorizer: SlchessAuth
+  SlchessApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: SlchessApi
+      StageName: prod
+      Cors: "'*'"
+      Auth:
+        Authorizers:
+          SlchessAuth:
+            UserPoolArn: !GetAtt SlchessUserPool.Arn
+        DefaultAuthorizer: SlchessAuth
 
   ### Lambda Functions ###
   ConnectFunction:
@@ -166,18 +142,11 @@ Resources:
       CodeUri: ./cmd/lambda/matchmaking/
       Handler: bootstrap
       Runtime: provided.al2023
-      Timeout: 30
+      Timeout: 10
       Policies:
+        - AmazonElastiCacheFullAccess
         - DynamoDBCrudPolicy:
             TableName: Connections
-        - Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
-              Action: elasticache:DescribeServerlessCaches
-              Resource: "*"
-            - Effect: Allow
-              Action: elasticache:Connect
-              Resource: "*"
       VpcConfig:
         SecurityGroupIds:
           - sg-003fd8c2326289ec4
@@ -187,8 +156,14 @@ Resources:
           - subnet-0642049eeace8e1b3
       Environment:
         Variables:
-          TABLE_NAME: Connections
           CACHE_NAME: SlchessCache
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /
+            Method: post
+            RestApiId: !Ref SlchessApi
 
   ### DynamoDB Tables ###
   Connections:
@@ -207,6 +182,18 @@ Resources:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: Users
+      AttributeDefinitions:
+        - AttributeName: UserId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: UserId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  MatchmakingTickets:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: MatchmakingTickets
       AttributeDefinitions:
         - AttributeName: UserId
           AttributeType: S
