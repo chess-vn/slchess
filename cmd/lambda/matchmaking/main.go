@@ -18,30 +18,26 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/apigatewaymanagementapi"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/aws/aws-sdk-go-v2/service/elasticache"
+	"github.com/aws/aws-sdk-go-v2/service/sns"
+	snsTypes "github.com/aws/aws-sdk-go-v2/service/sns/types"
 	"github.com/bucket-sort/slchess/internal/domains/entities"
 	"github.com/bucket-sort/slchess/pkg/utils"
 )
 
 var (
-	apiGatewayClient  *apigatewaymanagementapi.Client
-	elasticacheClient *elasticache.Client
-	dynamoClient      *dynamodb.Client
-	ctx               context.Context
+	apiGatewayClient *apigatewaymanagementapi.Client
+	dynamoClient     *dynamodb.Client
+	snsClient        *sns.Client
+	ctx              context.Context
+	timeLayout       string
 
-	ErrNoMatchFound = errors.New("failed to matchmaking")
+	ErrNoMatchFound    = errors.New("failed to matchmaking")
+	ErrInvalidGameMode = errors.New("invalid game mode")
 )
-
-type jwt struct {
-	Claims claims `json:"claims"`
-}
-
-type claims struct {
-	Name string `json:"name"`
-}
 
 func init() {
 	ctx = context.Background()
+	timeLayout = "2006-01-02 15:04:05.999999999 -0700 MST"
 	cfg, _ := config.LoadDefaultConfig(ctx)
 	dynamoClient = dynamodb.NewFromConfig(cfg)
 	apiEndpoint := fmt.Sprintf("https://%s.execute-api.%s.amazonaws.com/Prod", os.Getenv("AWS_API_ID"), os.Getenv("AWS_REGION"))
@@ -50,36 +46,46 @@ func init() {
 		Region:       os.Getenv("AWS_REGION"),
 		Credentials:  cfg.Credentials,
 	})
-	elasticacheClient = elasticache.NewFromConfig(cfg)
+	snsClient = sns.NewFromConfig(cfg)
 }
 
 // Handle matchmaking requests
 func handler(event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	v, exists := event.RequestContext.Authorizer["jwt"]
+	v, exists := event.RequestContext.Authorizer["claims"]
 	if !exists {
 		return events.APIGatewayProxyResponse{
 			StatusCode: 401,
-			Body:       "Unauthorized: No valid JWT token",
+			// Body:       "Unauthorized: No valid JWT token",
+			Body: fmt.Sprintf("%v", event.RequestContext),
 		}, nil
 	}
-	log.Println(v)
-	var jwtData jwt
-	json.Unmarshal(v.([]byte), &jwtData)
-	userId := jwtData.Claims.Name
+	claims := v.(map[string]interface{})
+	userId := claims["cognito:username"].(string)
 
 	var body map[string]interface{}
 	json.Unmarshal([]byte(event.Body), &body)
 	userRating := body["rating"].(float64)
 	ratingLowerBound := body["lower_bound"].(float64)
 	ratingUpperBound := body["upper_bound"].(float64)
+	gameMode := body["mode"].(string)
+
+	// Check if user already in a match
+	match, exist, err := checkForActiveMatch(ctx, userId, gameMode)
+	if err != nil {
+		return events.APIGatewayProxyResponse{StatusCode: 500, Body: fmt.Sprintf("Matchmaking error: %v", err)}, nil
+	}
+	if exist {
+		data, _ := json.Marshal(match)
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusConflict, Body: string(data)}, nil
+	}
 
 	// Attempt matchmaking
 	minRating := int(userRating + ratingLowerBound)
 	maxRating := int(userRating + ratingUpperBound)
 	log.Printf("Attempt matchmaking in rating range: %d - %d\n", minRating, maxRating)
-	opponentIds, err := findOpponents(minRating, maxRating, userId, int(userRating))
+	opponentIds, err := findOpponents(minRating, maxRating, userId, int(userRating), gameMode)
 	if err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: 500, Body: "Matchmaking error"}, nil
+		return events.APIGatewayProxyResponse{StatusCode: 500, Body: fmt.Sprintf("Matchmaking error: %v", err)}, nil
 	}
 
 	// If no match found, queue the player by caching the matchmaking ticket
@@ -88,30 +94,38 @@ func handler(event events.APIGatewayProxyRequest) (events.APIGatewayProxyRespons
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusAccepted, Body: "Queued"}, nil
 	}
 
+	var errs []error
 	// Try to create new match
 	for _, opponentId := range opponentIds {
-		match, err := createMatch(ctx, userId, opponentId)
+		match, err := createMatch(ctx, userId, opponentId, gameMode)
 		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: %v", opponentId, err))
 			continue
 		}
-		log.Printf("Match found: %s: %s - %s", match.Id, match.Player1Id, match.Player2Id)
+		log.Printf("Match found: %s: %s - %s\n", match.Id, match.Player1Id, match.Player2Id)
 		data, _ := json.Marshal(match)
+
+		// Notify the opponent about the match
+		err = notifyUser(userId, data)
+		if err != nil {
+			log.Printf("Failed to notify user %s:%v\n", opponentId, err)
+		}
 
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusCreated, Body: string(data)}, nil
 	}
 
-	return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+	return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: fmt.Sprintf("%v", errs)}, nil
 }
 
 // Matchmaking function using go-redis commands
-func findOpponents(minRating, maxRating int, userId string, userRating int) ([]string, error) {
-	output, err := dynamoClient.Query(ctx, &dynamodb.QueryInput{
-		TableName:        aws.String("MatchmakingRequests"),
-		FilterExpression: aws.String("Rating BETWEEN :minRating AND :maxRating"),
+func findOpponents(minRating, maxRating int, userId string, userRating int, gameMode string) ([]string, error) {
+	output, err := dynamoClient.Scan(ctx, &dynamodb.ScanInput{
+		TableName:        aws.String("MatchmakingTickets"),
+		FilterExpression: aws.String("MinRating >= :minRating AND MaxRating <= :maxRating AND Mode = :mode"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":userId":    &types.AttributeValueMemberS{Value: userId},
 			":minRating": &types.AttributeValueMemberN{Value: strconv.Itoa(minRating)},
 			":maxRating": &types.AttributeValueMemberN{Value: strconv.Itoa(maxRating)},
+			":mode":      &types.AttributeValueMemberS{Value: gameMode},
 		},
 	})
 	if err != nil {
@@ -128,12 +142,13 @@ func findOpponents(minRating, maxRating int, userId string, userRating int) ([]s
 	} else {
 		// No match found, add the user ticket to the queue
 		_, err := dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
-			TableName: aws.String("MatchmakingRequests"),
+			TableName: aws.String("MatchmakingTickets"),
 			Item: map[string]types.AttributeValue{
 				"UserId":    &types.AttributeValueMemberS{Value: userId},
 				"Rating":    &types.AttributeValueMemberN{Value: strconv.Itoa(userRating)},
 				"MinRating": &types.AttributeValueMemberN{Value: strconv.Itoa(minRating)},
 				"MaxRating": &types.AttributeValueMemberN{Value: strconv.Itoa(maxRating)},
+				"Mode":      &types.AttributeValueMemberS{Value: gameMode},
 			},
 		})
 		if err != nil {
@@ -144,20 +159,40 @@ func findOpponents(minRating, maxRating int, userId string, userRating int) ([]s
 	return matches, nil
 }
 
-func createMatch(ctx context.Context, userId, opponentId string) (entities.Match, error) {
+func createMatch(ctx context.Context, userId, opponentId, gameMode string) (entities.Match, error) {
 	// TODO: retrieve game server ip
 	serverIp := "192.168.0.1"
 
-	createdAt := time.Now()
-	matchId := utils.GenerateUUID()
+	match := entities.Match{
+		Id:        utils.GenerateUUID(),
+		Player1Id: userId,
+		Player2Id: opponentId,
+		Mode:      gameMode,
+		Server:    serverIp,
+		CreatedAt: time.Now(),
+	}
+
 	_, err := dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: aws.String("UserMatches"),
+		Item: map[string]types.AttributeValue{
+			"UserId":  &types.AttributeValueMemberS{Value: userId},
+			"MatchId": &types.AttributeValueMemberS{Value: match.Id},
+			"Mode":    &types.AttributeValueMemberS{Value: match.Mode},
+		},
+	})
+	if err != nil {
+		return entities.Match{}, err
+	}
+
+	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String("ActiveMatches"),
 		Item: map[string]types.AttributeValue{
-			"MatchId":   &types.AttributeValueMemberS{Value: matchId},
-			"Player1Id": &types.AttributeValueMemberS{Value: userId},
-			"Player2Id": &types.AttributeValueMemberS{Value: opponentId},
-			"Server":    &types.AttributeValueMemberS{Value: serverIp},
-			"CreatedAt": &types.AttributeValueMemberS{Value: createdAt.String()},
+			"MatchId":   &types.AttributeValueMemberS{Value: match.Id},
+			"Player1Id": &types.AttributeValueMemberS{Value: match.Player1Id},
+			"Player2Id": &types.AttributeValueMemberS{Value: match.Player2Id},
+			"Mode":      &types.AttributeValueMemberS{Value: match.Mode},
+			"Server":    &types.AttributeValueMemberS{Value: match.Server},
+			"CreatedAt": &types.AttributeValueMemberS{Value: match.CreatedAt.Format(timeLayout)},
 		},
 	})
 	if err != nil {
@@ -165,35 +200,85 @@ func createMatch(ctx context.Context, userId, opponentId string) (entities.Match
 	}
 	// Match created, remove opponent ticket from the queue
 	dynamoClient.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-		TableName: aws.String("MatchmakingRequests"),
+		TableName: aws.String("MatchmakingTickets"),
 		Key: map[string]types.AttributeValue{
 			"UserId": &types.AttributeValueMemberS{Value: opponentId},
 		},
 	})
-	return entities.Match{
-		Id:        matchId,
-		Player1Id: userId,
-		Player2Id: opponentId,
-		Server:    serverIp,
-		CreatedAt: createdAt,
-	}, nil
+	return match, nil
 }
 
-// Get Redis endpoint dynamically
-func getRedisEndpoint(ctx context.Context) (string, error) {
-	output, err := elasticacheClient.DescribeServerlessCaches(ctx, &elasticache.DescribeServerlessCachesInput{
-		ServerlessCacheName: aws.String(os.Getenv("CACHE_NAME")),
+func checkForActiveMatch(ctx context.Context, userId string, gameMode string) (entities.Match, bool, error) {
+	output, err := dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String("UserMatches"),
+		Key: map[string]types.AttributeValue{
+			"UserId": &types.AttributeValueMemberS{
+				Value: userId,
+			},
+		},
+		ConsistentRead: aws.Bool(true),
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to describe cache: %v", err)
+		return entities.Match{}, false, err
 	}
 
-	if len(output.ServerlessCaches) > 0 {
-		endpoint := output.ServerlessCaches[0].Endpoint
-		return fmt.Sprintf("%s:%d", *endpoint.Address, *endpoint.Port), nil
+	matchId := output.Item["MatchId"].(*types.AttributeValueMemberS).Value
+
+	output, err = dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String("ActiveMatches"),
+		Key: map[string]types.AttributeValue{
+			"MatchId": &types.AttributeValueMemberS{Value: matchId},
+		},
+		ConsistentRead: aws.Bool(true),
+	})
+	if err != nil {
+		return entities.Match{}, false, err
+	}
+	if output.Item == nil {
+		return entities.Match{}, false, nil
 	}
 
-	return "", fmt.Errorf("no cache nodes found")
+	createdAt, err := time.Parse(timeLayout, output.Item["CreatedAt"].(*types.AttributeValueMemberS).Value)
+	if err != nil {
+		return entities.Match{}, false, err
+	}
+	return entities.Match{
+		Id:        matchId,
+		Player1Id: output.Item["Player1Id"].(*types.AttributeValueMemberS).Value,
+		Player2Id: output.Item["Player2Id"].(*types.AttributeValueMemberS).Value,
+		Mode:      output.Item["Mode"].(*types.AttributeValueMemberS).Value,
+		Server:    output.Item["Server"].(*types.AttributeValueMemberS).Value,
+		CreatedAt: createdAt,
+	}, true, nil
+}
+
+func notifyUser(userId string, data []byte) error {
+	// Get the SNS topic ARN from environment variables
+	topicARN := os.Getenv("SNS_TOPIC_ARN")
+	if topicARN == "" {
+		return fmt.Errorf("SNS_TOPIC_ARN environment variable is not set")
+	}
+
+	// Publish a message to the SNS topic
+	publishInput := &sns.PublishInput{
+		TopicArn: aws.String(topicARN),
+		Message:  aws.String(string(data)), // Use the input message or customize it
+		MessageAttributes: map[string]snsTypes.MessageAttributeValue{
+			"userId": {
+				DataType:    aws.String("String"),
+				StringValue: aws.String(userId),
+			},
+		},
+	}
+
+	result, err := snsClient.Publish(ctx, publishInput)
+	if err != nil {
+		return fmt.Errorf("failed to publish message to SNS: %v", err)
+	}
+
+	log.Printf("Message published to SNS: %s\n", *result.MessageId)
+
+	return nil
 }
 
 func main() {

@@ -38,6 +38,12 @@ Resources:
         - ALLOW_USER_PASSWORD_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
 
+  ### SNS Topic ###
+  SlchessSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: MatchmakingNotification
+
   ### Websocket API ###
   SlchessWebsocket:
     Type: AWS::ApiGatewayV2::Api
@@ -144,9 +150,16 @@ Resources:
       Runtime: provided.al2023
       Timeout: 10
       Policies:
-        - AmazonElastiCacheFullAccess
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt SlchessSNSTopic.TopicName
         - DynamoDBCrudPolicy:
             TableName: Connections
+        - DynamoDBCrudPolicy:
+            TableName: MatchmakingTickets
+        - DynamoDBCrudPolicy:
+            TableName: UserMatches
+        - DynamoDBCrudPolicy:
+            TableName: ActiveMatches
       VpcConfig:
         SecurityGroupIds:
           - sg-003fd8c2326289ec4
@@ -157,11 +170,12 @@ Resources:
       Environment:
         Variables:
           CACHE_NAME: SlchessCache
+          SNS_TOPIC_ARN: !Ref SlchessSNSTopic
       Events:
         ApiEvent:
           Type: Api
           Properties:
-            Path: /
+            Path: /matchmaking
             Method: post
             RestApiId: !Ref SlchessApi
 
@@ -182,6 +196,18 @@ Resources:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: Users
+      AttributeDefinitions:
+        - AttributeName: UserId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: UserId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  UserMatches:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: UserMatches
       AttributeDefinitions:
         - AttributeName: UserId
           AttributeType: S

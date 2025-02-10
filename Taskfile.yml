@@ -47,6 +47,10 @@ tasks:
     cmds:
       - rm -rf $AWS_SAM_DIR ./bin
 
+  test-authenticate-user:
+    cmds:
+      - aws cognito-idp initiate-auth --region $AWS_REGION --client-id 39tjiaejidci1jfhusq8aqisrn --auth-flow USER_PASSWORD_AUTH --auth-parameters USERNAME=tester,PASSWORD=5Sonline
+
   test:
     cmds:
       - go test -v ./...
