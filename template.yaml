@@ -209,10 +209,10 @@ Resources:
     Properties:
       TableName: UserMatches
       AttributeDefinitions:
-        - AttributeName: UserId
+        - AttributeName: UserHandler
           AttributeType: S
       KeySchema:
-        - AttributeName: UserId
+        - AttributeName: UserHandler
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
@@ -221,10 +221,10 @@ Resources:
     Properties:
       TableName: MatchmakingTickets
       AttributeDefinitions:
-        - AttributeName: UserId
+        - AttributeName: UserHandler
           AttributeType: S
       KeySchema:
-        - AttributeName: UserId
+        - AttributeName: UserHandler
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 

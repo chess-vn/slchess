@@ -60,17 +60,17 @@ func handler(event events.APIGatewayProxyRequest) (events.APIGatewayProxyRespons
 		}, nil
 	}
 	claims := v.(map[string]interface{})
-	userId := claims["cognito:username"].(string)
+	userHandler := claims["cognito:username"].(string)
 
-	var body map[string]interface{}
-	json.Unmarshal([]byte(event.Body), &body)
-	userRating := body["rating"].(float64)
-	ratingLowerBound := body["lower_bound"].(float64)
-	ratingUpperBound := body["upper_bound"].(float64)
-	gameMode := body["mode"].(string)
+	var data map[string]interface{}
+	json.Unmarshal([]byte(event.Body), &data)
+	userRating := int(data["rating"].(float64))
+	ratingLowerBound := int(data["lower_bound"].(float64))
+	ratingUpperBound := int(data["upper_bound"].(float64))
+	gameMode := data["game_mode"].(string)
 
 	// Check if user already in a match
-	match, exist, err := checkForActiveMatch(ctx, userId, gameMode)
+	match, exist, err := checkForActiveMatch(ctx, userHandler)
 	if err != nil {
 		return events.APIGatewayProxyResponse{StatusCode: 500, Body: fmt.Sprintf("Matchmaking error: %v", err)}, nil
 	}
@@ -80,38 +80,38 @@ func handler(event events.APIGatewayProxyRequest) (events.APIGatewayProxyRespons
 	}
 
 	// Attempt matchmaking
-	minRating := int(userRating + ratingLowerBound)
-	maxRating := int(userRating + ratingUpperBound)
+	minRating := userRating + ratingLowerBound
+	maxRating := userRating + ratingUpperBound
 	log.Printf("Attempt matchmaking in rating range: %d - %d\n", minRating, maxRating)
-	opponentIds, err := findOpponents(minRating, maxRating, userId, int(userRating), gameMode)
+	opponentHandlers, err := findOpponents(minRating, maxRating, userHandler, userRating, gameMode)
 	if err != nil {
 		return events.APIGatewayProxyResponse{StatusCode: 500, Body: fmt.Sprintf("Matchmaking error: %v", err)}, nil
 	}
 
 	// If no match found, queue the player by caching the matchmaking ticket
-	if len(opponentIds) == 0 {
+	if len(opponentHandlers) == 0 {
 		log.Println("No match found. Start queuing")
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusAccepted, Body: "Queued"}, nil
 	}
 
 	var errs []error
 	// Try to create new match
-	for _, opponentId := range opponentIds {
-		match, err := createMatch(ctx, userId, opponentId, gameMode)
+	for _, opponentHandler := range opponentHandlers {
+		match, err := createMatch(ctx, userHandler, opponentHandler, gameMode)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("%s: %v", opponentId, err))
+			errs = append(errs, fmt.Errorf("%s: %v", opponentHandler, err))
 			continue
 		}
-		log.Printf("Match found: %s: %s - %s\n", match.Id, match.Player1Id, match.Player2Id)
-		data, _ := json.Marshal(match)
+		log.Printf("Match found: %s: %s - %s\n", match.Id, match.Player1, match.Player2)
+		matchJson, _ := json.Marshal(match)
 
 		// Notify the opponent about the match
-		err = notifyUser(userId, data)
+		err = notifyUser(userHandler, matchJson)
 		if err != nil {
-			log.Printf("Failed to notify user %s:%v\n", opponentId, err)
+			log.Printf("Failed to notify user %s:%v\n", opponentHandler, err)
 		}
 
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusCreated, Body: string(data)}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusCreated, Body: string(matchJson)}, nil
 	}
 
 	return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: fmt.Sprintf("%v", errs)}, nil
@@ -121,11 +121,11 @@ func handler(event events.APIGatewayProxyRequest) (events.APIGatewayProxyRespons
 func findOpponents(minRating, maxRating int, userId string, userRating int, gameMode string) ([]string, error) {
 	output, err := dynamoClient.Scan(ctx, &dynamodb.ScanInput{
 		TableName:        aws.String("MatchmakingTickets"),
-		FilterExpression: aws.String("MinRating >= :minRating AND MaxRating <= :maxRating AND Mode = :mode"),
+		FilterExpression: aws.String("MinRating >= :minRating AND MaxRating <= :maxRating AND GameMode = :gameMode"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":minRating": &types.AttributeValueMemberN{Value: strconv.Itoa(minRating)},
 			":maxRating": &types.AttributeValueMemberN{Value: strconv.Itoa(maxRating)},
-			":mode":      &types.AttributeValueMemberS{Value: gameMode},
+			":gameMode":  &types.AttributeValueMemberS{Value: gameMode},
 		},
 	})
 	if err != nil {
@@ -135,7 +135,7 @@ func findOpponents(minRating, maxRating int, userId string, userRating int, game
 	var matches []string
 	if output.Count > 0 {
 		for _, item := range output.Items {
-			if v, ok := item["UserId"].(*types.AttributeValueMemberS); ok && v.Value != userId {
+			if v, ok := item["UserHandler"].(*types.AttributeValueMemberS); ok && v.Value != userId {
 				matches = append(matches, v.Value)
 			}
 		}
@@ -144,11 +144,11 @@ func findOpponents(minRating, maxRating int, userId string, userRating int, game
 		_, err := dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
 			TableName: aws.String("MatchmakingTickets"),
 			Item: map[string]types.AttributeValue{
-				"UserId":    &types.AttributeValueMemberS{Value: userId},
-				"Rating":    &types.AttributeValueMemberN{Value: strconv.Itoa(userRating)},
-				"MinRating": &types.AttributeValueMemberN{Value: strconv.Itoa(minRating)},
-				"MaxRating": &types.AttributeValueMemberN{Value: strconv.Itoa(maxRating)},
-				"Mode":      &types.AttributeValueMemberS{Value: gameMode},
+				"UserHandler": &types.AttributeValueMemberS{Value: userId},
+				"Rating":      &types.AttributeValueMemberN{Value: strconv.Itoa(userRating)},
+				"MinRating":   &types.AttributeValueMemberN{Value: strconv.Itoa(minRating)},
+				"MaxRating":   &types.AttributeValueMemberN{Value: strconv.Itoa(maxRating)},
+				"GameMode":    &types.AttributeValueMemberS{Value: gameMode},
 			},
 		})
 		if err != nil {
@@ -159,28 +159,49 @@ func findOpponents(minRating, maxRating int, userId string, userRating int, game
 	return matches, nil
 }
 
-func createMatch(ctx context.Context, userId, opponentId, gameMode string) (entities.Match, error) {
+func createMatch(ctx context.Context, userHandler, opponentHandler, gameMode string) (entities.Match, error) {
 	// TODO: retrieve game server ip
 	serverIp := "192.168.0.1"
 
 	match := entities.Match{
 		Id:        utils.GenerateUUID(),
-		Player1Id: userId,
-		Player2Id: opponentId,
-		Mode:      gameMode,
+		Player1:   userHandler,
+		Player2:   opponentHandler,
+		GameMode:  gameMode,
 		Server:    serverIp,
 		CreatedAt: time.Now(),
 	}
 
+	// Associate the players with created match to kind of mark them as matched
 	_, err := dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String("UserMatches"),
+		TableName:           aws.String("UserMatches"),
+		ConditionExpression: aws.String("attribute_not_exists(UserHandler)"),
 		Item: map[string]types.AttributeValue{
-			"UserId":  &types.AttributeValueMemberS{Value: userId},
-			"MatchId": &types.AttributeValueMemberS{Value: match.Id},
-			"Mode":    &types.AttributeValueMemberS{Value: match.Mode},
+			"UserHandler": &types.AttributeValueMemberS{Value: opponentHandler},
+			"MatchId":     &types.AttributeValueMemberS{Value: match.Id},
 		},
 	})
 	if err != nil {
+		var condCheckFailed *types.ConditionalCheckFailedException
+		if errors.As(err, &condCheckFailed) {
+			return entities.Match{}, fmt.Errorf("user already in a match: %s", opponentHandler)
+		}
+		return entities.Match{}, err
+	}
+
+	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName:           aws.String("UserMatches"),
+		ConditionExpression: aws.String("attribute_not_exists(UserHandler)"),
+		Item: map[string]types.AttributeValue{
+			"UserHandler": &types.AttributeValueMemberS{Value: userHandler},
+			"MatchId":     &types.AttributeValueMemberS{Value: match.Id},
+		},
+	})
+	if err != nil {
+		var condCheckFailed *types.ConditionalCheckFailedException
+		if errors.As(err, &condCheckFailed) {
+			return entities.Match{}, fmt.Errorf("user already in a match: %s", userHandler)
+		}
 		return entities.Match{}, err
 	}
 
@@ -188,9 +209,9 @@ func createMatch(ctx context.Context, userId, opponentId, gameMode string) (enti
 		TableName: aws.String("ActiveMatches"),
 		Item: map[string]types.AttributeValue{
 			"MatchId":   &types.AttributeValueMemberS{Value: match.Id},
-			"Player1Id": &types.AttributeValueMemberS{Value: match.Player1Id},
-			"Player2Id": &types.AttributeValueMemberS{Value: match.Player2Id},
-			"Mode":      &types.AttributeValueMemberS{Value: match.Mode},
+			"Player1":   &types.AttributeValueMemberS{Value: match.Player1},
+			"Player2":   &types.AttributeValueMemberS{Value: match.Player2},
+			"GameMode":  &types.AttributeValueMemberS{Value: match.GameMode},
 			"Server":    &types.AttributeValueMemberS{Value: match.Server},
 			"CreatedAt": &types.AttributeValueMemberS{Value: match.CreatedAt.Format(timeLayout)},
 		},
@@ -199,27 +220,33 @@ func createMatch(ctx context.Context, userId, opponentId, gameMode string) (enti
 		return entities.Match{}, err
 	}
 	// Match created, remove opponent ticket from the queue
-	dynamoClient.DeleteItem(ctx, &dynamodb.DeleteItemInput{
+	_, err = dynamoClient.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String("MatchmakingTickets"),
 		Key: map[string]types.AttributeValue{
-			"UserId": &types.AttributeValueMemberS{Value: opponentId},
+			"UserHandler": &types.AttributeValueMemberS{Value: opponentHandler},
 		},
 	})
+	if err != nil {
+		return entities.Match{}, err
+	}
 	return match, nil
 }
 
-func checkForActiveMatch(ctx context.Context, userId string, gameMode string) (entities.Match, bool, error) {
+func checkForActiveMatch(ctx context.Context, userHandler string) (entities.Match, bool, error) {
 	output, err := dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String("UserMatches"),
 		Key: map[string]types.AttributeValue{
-			"UserId": &types.AttributeValueMemberS{
-				Value: userId,
+			"UserHandler": &types.AttributeValueMemberS{
+				Value: userHandler,
 			},
 		},
 		ConsistentRead: aws.Bool(true),
 	})
 	if err != nil {
 		return entities.Match{}, false, err
+	}
+	if output.Item == nil {
+		return entities.Match{}, false, nil
 	}
 
 	matchId := output.Item["MatchId"].(*types.AttributeValueMemberS).Value
@@ -244,9 +271,9 @@ func checkForActiveMatch(ctx context.Context, userId string, gameMode string) (e
 	}
 	return entities.Match{
 		Id:        matchId,
-		Player1Id: output.Item["Player1Id"].(*types.AttributeValueMemberS).Value,
-		Player2Id: output.Item["Player2Id"].(*types.AttributeValueMemberS).Value,
-		Mode:      output.Item["Mode"].(*types.AttributeValueMemberS).Value,
+		Player1:   output.Item["Player1"].(*types.AttributeValueMemberS).Value,
+		Player2:   output.Item["Player2"].(*types.AttributeValueMemberS).Value,
+		GameMode:  output.Item["GameMode"].(*types.AttributeValueMemberS).Value,
 		Server:    output.Item["Server"].(*types.AttributeValueMemberS).Value,
 		CreatedAt: createdAt,
 	}, true, nil

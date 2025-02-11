@@ -10,9 +10,9 @@ type Ticket struct {
 
 type Match struct {
 	Id        string
-	Player1Id string
-	Player2Id string
-	Mode      string
+	Player1   string
+	Player2   string
+	GameMode  string
 	Server    string
 	CreatedAt time.Time
 }
