@@ -1,0 +1,8 @@
+version: "3"
+
+tasks:
+  check-env:
+    internal: true
+    preconditions:
+      - sh: "test -f .env"
+        msg: ".env file not generated. Run 'env:generate' task first"

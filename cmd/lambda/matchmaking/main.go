@@ -279,7 +279,7 @@ func checkForActiveMatch(ctx context.Context, userHandler string) (entities.Matc
 	}, true, nil
 }
 
-func notifyUser(userId string, data []byte) error {
+func notifyUser(userHandler string, data []byte) error {
 	// Get the SNS topic ARN from environment variables
 	topicARN := os.Getenv("SNS_TOPIC_ARN")
 	if topicARN == "" {
@@ -291,9 +291,9 @@ func notifyUser(userId string, data []byte) error {
 		TopicArn: aws.String(topicARN),
 		Message:  aws.String(string(data)), // Use the input message or customize it
 		MessageAttributes: map[string]snsTypes.MessageAttributeValue{
-			"userId": {
+			"userHandler": {
 				DataType:    aws.String("String"),
-				StringValue: aws.String(userId),
+				StringValue: aws.String(userHandler),
 			},
 		},
 	}
@@ -302,8 +302,9 @@ func notifyUser(userId string, data []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to publish message to SNS: %v", err)
 	}
-
-	log.Printf("Message published to SNS: %s\n", *result.MessageId)
+	if result != nil {
+		log.Printf("Message published to SNS: %s\n", *result.MessageId)
+	}
 
 	return nil
 }
