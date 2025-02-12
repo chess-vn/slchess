@@ -1,0 +1,47 @@
+version: "3"
+
+env:
+  AWS_SAM_DIR: .aws-sam
+  BUILD_DIR: "{{.AWS_SAM_DIR}}/build"
+  STACK: slchess
+
+includes:
+  utils:
+    taskfile: ./Util.yml
+    internal: true
+    dir: ../
+
+tasks:
+  deploy:
+    desc: Deploy the current local stack on AWS
+    deps: [utils:check-env]
+    preconditions:
+      - sh: "test -f .env"
+        msg: ".env not generated. Run 'generate_env' task"
+    cmds:
+      - sam deploy --guided --region $AWS_REGION --config-file samconfig.yaml
+
+  remove:
+    desc: Remove the stack from AWS
+    deps: [utils:check-env]
+    preconditions:
+      - sh: "test -f .env"
+        msg: ".env not generated. Run 'generate_env' task"
+    cmds:
+      - sam delete --region $AWS_REGION --config-file samconfig.yaml
+      - rm .env
+
+  sync:
+    desc: Sync the stack
+    cmds:
+      - sam sync --stack-name $STACK --watch
+
+  build:
+    desc: Build the stack
+    deps: [utils:check-env]
+    vars:
+      HANDLERS: [MatchmakingFunction]
+    cmds:
+      - sam build --region $AWS_REGION --config-file samconfig.yaml
+      - for: { var: HANDLERS }
+        cmd: chmod +x $BUILD_DIR/{{.ITEM}}/bootstrap

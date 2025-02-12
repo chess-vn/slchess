@@ -1,0 +1,21 @@
+version: "3"
+
+tasks:
+  up:
+    desc: Run the game server on docker container
+    preconditions:
+      - test -f compose.yml
+    cmds:
+      - docker compose up --build
+  down:
+    desc: Shutdown the game server docker container
+    preconditions:
+      - test -f compose.yml
+    cmds:
+      - docker compose down
+
+  local:
+    desc: Run the game server locally
+    cmds:
+      - go mod download
+      - go run ./cmd/server

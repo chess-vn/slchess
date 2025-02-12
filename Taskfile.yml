@@ -3,55 +3,14 @@ version: "3"
 env:
   AWS_SAM_DIR: .aws-sam
   BUILD_DIR: "{{.AWS_SAM_DIR}}/build"
+  STACK: slchess
 
-tasks:
-  deploy:
-    cmds:
-      - sam deploy --guided --region $AWS_REGION --config-file samconfig.yaml
+dotenv: [".env"]
 
-  build:
-    vars:
-      HANDLERS:
-        [
-          ConnectFunction,
-          DisconnectFunction,
-          MakeMoveFunction,
-          StartGameFunction,
-        ]
-    cmds:
-      - sam build --region $AWS_REGION --config-file samconfig.yaml
-      - for: { var: HANDLERS }
-        cmd: chmod +x $BUILD_DIR/{{.ITEM}}/bootstrap
-
-  server-up:
-    preconditions:
-      - test -f compose.yml
-    cmds:
-      - docker compose up --build
-  server-down:
-    preconditions:
-      - test -f compose.yml
-    cmds:
-      - docker compose down
-
-  server-local:
-    cmds:
-      - go mod download
-      - go run ./cmd/server/
-
-  clean:
-    cmds:
-      - rm -rf $AWS_SAM_DIR ./bin
-
-  test:
-    cmds:
-      - go test -v ./...
-
-  fmt:
-    cmds:
-      - go fmt ./...
-
-  lint:
-    cmds:
-      - govulncheck
-      - golangci-lint run
+includes:
+  cognito:
+    taskfile: ./taskfiles/Cognito.yml
+    dir: .
+  stack: ./taskfiles/Stack.yml
+  server: ./taskfiles/Server.yml
+  env: ./taskfiles/Env.yml

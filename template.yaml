@@ -8,182 +8,259 @@ Globals:
     MemorySize: 128
 
 Resources:
-  # WebSocket API
-  WebSocketApi:
+  ### Cognito User Pool ###
+  SlchessUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: SlchessUserPool
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: true
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+
+  SlchessUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: SlchessUserPoolClient
+      UserPoolId: !Ref SlchessUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+
+  ### SNS Topic ###
+  SlchessSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: MatchmakingNotification
+
+  ### Websocket API ###
+  SlchessWebsocket:
     Type: AWS::ApiGatewayV2::Api
     Properties:
-      Name: ChessWebSocketApi
+      Name: SlchessWebsocket
       ProtocolType: WEBSOCKET
       RouteSelectionExpression: $request.body.action
 
-  # WebSocket API Deployment
-  WebSocketApiDeployment:
-    Type: AWS::ApiGatewayV2::Deployment
-    Properties:
-      ApiId: !Ref WebSocketApi
-    DependsOn:
-      - ConnectRoute
-      - DisconnectRoute
-      - MakeMoveRoute
-
-  WebSocketApiStage:
-    Type: AWS::ApiGatewayV2::Stage
-    Properties:
-      ApiId: !Ref WebSocketApi
-      DeploymentId: !Ref WebSocketApiDeployment
-      StageName: dev
-
-  # Connect Route
   ConnectRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref WebSocketApi
+      ApiId: !Ref SlchessWebsocket
       RouteKey: $connect
       AuthorizationType: NONE
       Target: !Sub "integrations/${ConnectIntegration}"
-
   ConnectIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref WebSocketApi
+      ApiId: !Ref SlchessWebsocket
       IntegrationType: AWS_PROXY
       IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ConnectFunction.Arn}/invocations"
 
-  # Disconnect Route
   DisconnectRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref WebSocketApi
+      ApiId: !Ref SlchessWebsocket
       RouteKey: $disconnect
       AuthorizationType: NONE
       Target: !Sub "integrations/${DisconnectIntegration}"
-
   DisconnectIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref WebSocketApi
+      ApiId: !Ref SlchessWebsocket
       IntegrationType: AWS_PROXY
       IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DisconnectFunction.Arn}/invocations"
 
-  # MakeMove Route
-  MakeMoveRoute:
-    Type: AWS::ApiGatewayV2::Route
+  # WebSocket API Deployment
+  SlchessDeployment:
+    Type: AWS::ApiGatewayV2::Deployment
     Properties:
-      ApiId: !Ref WebSocketApi
-      RouteKey: makeMove
-      AuthorizationType: NONE
-      Target: !Sub "integrations/${MakeMoveIntegration}"
-
-  MakeMoveIntegration:
-    Type: AWS::ApiGatewayV2::Integration
+      ApiId: !Ref SlchessWebsocket
+    DependsOn:
+      - ConnectRoute
+      - DisconnectRoute
+  SlchessStage:
+    Type: AWS::ApiGatewayV2::Stage
     Properties:
-      ApiId: !Ref WebSocketApi
-      IntegrationType: AWS_PROXY
-      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${MakeMoveFunction.Arn}/invocations"
+      ApiId: !Ref SlchessWebsocket
+      DeploymentId: !Ref SlchessDeployment
+      StageName: dev
 
-  # Connect Lambda Function
+  ### HTTP API ###
+  SlchessApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: SlchessApi
+      StageName: prod
+      Cors: "'*'"
+      Auth:
+        Authorizers:
+          SlchessAuth:
+            UserPoolArn: !GetAtt SlchessUserPool.Arn
+        DefaultAuthorizer: SlchessAuth
+
+  ### Lambda Functions ###
   ConnectFunction:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: go1.x
     Properties:
-      CodeUri: ./cmd/connect/
+      CodeUri: ./cmd/lambda/connect/
       Handler: bootstrap
       Runtime: provided.al2023
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: WebSocketConnections
+            TableName: Connections
       Environment:
         Variables:
-          TABLE_NAME: WebSocketConnections
+          TABLE_NAME: Connections
+          COGNITO_USER_POOL_ID: !Ref SlchessUserPool
 
-  # Disconnect Lambda Function
   DisconnectFunction:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: go1.x
     Properties:
-      CodeUri: ./cmd/disconnect/
+      CodeUri: ./cmd/lambda/disconnect/
       Handler: bootstrap
       Runtime: provided.al2023
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: WebSocketConnections
+            TableName: Connections
       Environment:
         Variables:
-          TABLE_NAME: WebSocketConnections
+          TABLE_NAME: Connections
 
-  # MakeMove Lambda Function
-  MakeMoveFunction:
+  MatchmakingFunction:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: go1.x
     Properties:
-      CodeUri: ./cmd/make-move/
+      CodeUri: ./cmd/lambda/matchmaking/
       Handler: bootstrap
       Runtime: provided.al2023
+      Timeout: 10
       Policies:
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt SlchessSNSTopic.TopicName
         - DynamoDBCrudPolicy:
-            TableName: GameStates
+            TableName: Connections
+        - DynamoDBCrudPolicy:
+            TableName: MatchmakingTickets
+        - DynamoDBCrudPolicy:
+            TableName: UserMatches
+        - DynamoDBCrudPolicy:
+            TableName: ActiveMatches
+      VpcConfig:
+        SecurityGroupIds:
+          - sg-003fd8c2326289ec4
+        SubnetIds:
+          - subnet-08afaaea0b1e4f825
+          - subnet-0f7183aa53381f50c
+          - subnet-0642049eeace8e1b3
       Environment:
         Variables:
-          TABLE_NAME: GameStates
-          CONNECTION_TABLE: WebSocketConnections
-          WEBSOCKET_API_ENDPOINT: !Sub "https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/dev"
-
-  # Start Game Function (HTTP-based)
-  StartGameFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: go1.x
-    Properties:
-      CodeUri: ./cmd/start-game/
-      Handler: bootstrap
-      Runtime: provided.al2023
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: GameStates
+          CACHE_NAME: SlchessCache
+          SNS_TOPIC_ARN: !Ref SlchessSNSTopic
       Events:
-        StartGameAPI:
+        ApiEvent:
           Type: Api
           Properties:
-            Path: /start-game
+            Path: /matchmaking
             Method: post
-      Environment:
-        Variables:
-          TABLE_NAME: GameStates
+            RestApiId: !Ref SlchessApi
 
-  # DynamoDB Table for WebSocket Connections
-  WebSocketConnections:
+  ### DynamoDB Tables ###
+  Connections:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: WebSocketConnections
+      TableName: Connections
       AttributeDefinitions:
-        - AttributeName: ConnectionID
+        - AttributeName: Id
           AttributeType: S
       KeySchema:
-        - AttributeName: ConnectionID
+        - AttributeName: Id
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
-  # DynamoDB Table for Sessions
-  Sessions:
+  Users:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: Sessions
+      TableName: Users
       AttributeDefinitions:
-        - AttributeName: SessionId
+        - AttributeName: UserId
           AttributeType: S
       KeySchema:
-        - AttributeName: SessionId
+        - AttributeName: UserId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  UserMatches:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: UserMatches
+      AttributeDefinitions:
+        - AttributeName: UserHandler
+          AttributeType: S
+      KeySchema:
+        - AttributeName: UserHandler
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  MatchmakingTickets:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: MatchmakingTickets
+      AttributeDefinitions:
+        - AttributeName: UserHandler
+          AttributeType: S
+      KeySchema:
+        - AttributeName: UserHandler
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  ActiveMatches:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ActiveMatches
+      AttributeDefinitions:
+        - AttributeName: MatchId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: MatchId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  MatchStates:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      TableName: MatchStates
+      PrimaryKey:
+        Name: MatchId
+        Type: String
+
+  MatchRecords:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: MatchRecords
+      AttributeDefinitions:
+        - AttributeName: MatchId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: MatchId
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
 Outputs:
-  WebSocketApiUrl:
-    Value: !Sub "wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/dev"
+  SlchessWebSocketUrl:
+    Value: !Sub "wss://${SlchessWebsocket}.execute-api.${AWS::Region}.amazonaws.com/dev"
     Description: WebSocket API endpoint
-
-  StartGameApiUrl:
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/start-game"
-    Description: HTTP endpoint for starting a game
