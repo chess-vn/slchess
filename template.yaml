@@ -43,14 +43,21 @@ Resources:
         - ALLOW_USER_PASSWORD_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
 
+  SlchessUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: slchess
+      UserPoolId: !Ref SlchessUserPool
+
   ### SNS Topic ###
   SlchessSNSTopic:
     Type: AWS::SNS::Topic
     Properties:
       TopicName: MatchmakingNotification
+      DisplayName: "Matchmaking Notifications"
 
   ### ECS ###
-  SlchessEcsCluster:
+  SlchessServerCluster:
     Type: AWS::ECS::Cluster
     Properties:
       ClusterName: slchess-server-cluster
@@ -62,8 +69,8 @@ Resources:
       NetworkMode: awsvpc
       RequiresCompatibilities:
         - FARGATE
-      Cpu: "256"
-      Memory: "512"
+      Cpu: "512"
+      Memory: "1024"
       ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
       ContainerDefinitions:
         - Image: !Ref ServerImageUri
@@ -72,6 +79,24 @@ Resources:
           PortMappings:
             - ContainerPort: 7202
               Protocol: tcp
+
+  SlchessServerService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref SlchessServerCluster
+      ServiceName: slchess-server-service
+      LaunchType: FARGATE
+      DesiredCount: 0
+      TaskDefinition: !Ref SlchessServerDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - subnet-08afaaea0b1e4f825
+            - subnet-0f7183aa53381f50c
+            - subnet-0642049eeace8e1b3
+          SecurityGroups:
+            - sg-003fd8c2326289ec4
+          AssignPublicIp: ENABLED
 
   ECSTaskExecutionRole:
     Type: AWS::IAM::Role
@@ -97,56 +122,28 @@ Resources:
                   - logs:PutLogEvents
                 Resource: "*"
 
-  ### Websocket API ###
-  SlchessWebsocket:
-    Type: AWS::ApiGatewayV2::Api
+  ECSAutoScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
     Properties:
-      Name: SlchessWebsocket
-      ProtocolType: WEBSOCKET
-      RouteSelectionExpression: $request.body.action
+      MaxCapacity: 10
+      MinCapacity: 0
+      ResourceId: !Sub service/${SlchessServerCluster}/${SlchessServerService.Name}
+      RoleARN: !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
 
-  ConnectRoute:
-    Type: AWS::ApiGatewayV2::Route
+  ECSAutoScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
     Properties:
-      ApiId: !Ref SlchessWebsocket
-      RouteKey: $connect
-      AuthorizationType: NONE
-      Target: !Sub "integrations/${ConnectIntegration}"
-  ConnectIntegration:
-    Type: AWS::ApiGatewayV2::Integration
-    Properties:
-      ApiId: !Ref SlchessWebsocket
-      IntegrationType: AWS_PROXY
-      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ConnectFunction.Arn}/invocations"
-
-  DisconnectRoute:
-    Type: AWS::ApiGatewayV2::Route
-    Properties:
-      ApiId: !Ref SlchessWebsocket
-      RouteKey: $disconnect
-      AuthorizationType: NONE
-      Target: !Sub "integrations/${DisconnectIntegration}"
-  DisconnectIntegration:
-    Type: AWS::ApiGatewayV2::Integration
-    Properties:
-      ApiId: !Ref SlchessWebsocket
-      IntegrationType: AWS_PROXY
-      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DisconnectFunction.Arn}/invocations"
-
-  # WebSocket API Deployment
-  SlchessDeployment:
-    Type: AWS::ApiGatewayV2::Deployment
-    Properties:
-      ApiId: !Ref SlchessWebsocket
-    DependsOn:
-      - ConnectRoute
-      - DisconnectRoute
-  SlchessStage:
-    Type: AWS::ApiGatewayV2::Stage
-    Properties:
-      ApiId: !Ref SlchessWebsocket
-      DeploymentId: !Ref SlchessDeployment
-      StageName: dev
+      PolicyName: ECSAutoScalingPolicy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ECSAutoScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 1.0 # Scale down when CPU usage is below 1%
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        ScaleInCooldown: 3600 # 1 hour cooldown before scaling down
+        ScaleOutCooldown: 60 # 1-minute cooldown before scaling up
 
   ### HTTP API ###
   SlchessApi:
@@ -162,37 +159,6 @@ Resources:
         DefaultAuthorizer: SlchessAuth
 
   ### Lambda Functions ###
-  ConnectFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: go1.x
-    Properties:
-      CodeUri: ./cmd/lambda/connect/
-      Handler: bootstrap
-      Runtime: provided.al2023
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: Connections
-      Environment:
-        Variables:
-          TABLE_NAME: Connections
-          COGNITO_USER_POOL_ID: !Ref SlchessUserPool
-
-  DisconnectFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: go1.x
-    Properties:
-      CodeUri: ./cmd/lambda/disconnect/
-      Handler: bootstrap
-      Runtime: provided.al2023
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: Connections
-      Environment:
-        Variables:
-          TABLE_NAME: Connections
-
   MatchmakingFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -201,7 +167,7 @@ Resources:
       CodeUri: ./cmd/lambda/matchmaking/
       Handler: bootstrap
       Runtime: provided.al2023
-      Timeout: 10
+      Timeout: 60
       Policies:
         - SNSPublishMessagePolicy:
             TopicName: !GetAtt SlchessSNSTopic.TopicName
@@ -213,18 +179,26 @@ Resources:
             TableName: UserMatches
         - DynamoDBCrudPolicy:
             TableName: ActiveMatches
-        - EcsRunTaskPolicy
-      VpcConfig:
-        SecurityGroupIds:
-          - sg-003fd8c2326289ec4
-        SubnetIds:
-          - subnet-08afaaea0b1e4f825
-          - subnet-0f7183aa53381f50c
-          - subnet-0642049eeace8e1b3
+        - EcsRunTaskPolicy:
+            TaskDefinition: !Ref SlchessServerDefinition
+        - Statement:
+            - Effect: Allow
+              Action:
+                - "ecs:ListTasks"
+                - "ecs:DescribeTasks"
+                - "ecs:UpdateService"
+              Resource: "*"
+        - Statement:
+            - Effect: Allow
+              Action:
+                - "ec2:DescribeNetworkInterfaces"
+              Resource: "*"
       Environment:
         Variables:
-          CACHE_NAME: SlchessCache
           SNS_TOPIC_ARN: !Ref SlchessSNSTopic
+          ECS_CLUSTER_NAME: !Ref SlchessServerCluster
+          ECS_SERVICE_NAME: !GetAtt SlchessServerService.Name
+          ECS_TASK_DEFINITION: !Ref SlchessServerDefinition
       Events:
         ApiEvent:
           Type: Api
@@ -234,30 +208,6 @@ Resources:
             RestApiId: !Ref SlchessApi
 
   ### DynamoDB Tables ###
-  Connections:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: Connections
-      AttributeDefinitions:
-        - AttributeName: Id
-          AttributeType: S
-      KeySchema:
-        - AttributeName: Id
-          KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
-
-  Users:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: Users
-      AttributeDefinitions:
-        - AttributeName: UserId
-          AttributeType: S
-      KeySchema:
-        - AttributeName: UserId
-          KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
-
   UserMatches:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -315,6 +265,8 @@ Resources:
       BillingMode: PAY_PER_REQUEST
 
 Outputs:
-  SlchessWebSocketUrl:
-    Value: !Sub "wss://${SlchessWebsocket}.execute-api.${AWS::Region}.amazonaws.com/dev"
-    Description: WebSocket API endpoint
+  MatchmakingEndpointUrl:
+    Description: "Endpoint URL for matchmaking"
+    Value: !Sub "https://${SlchessApi}.execute-api.${AWS::Region}.amazonaws.com/prod/matchmaking"
+    Export:
+      Name: "MatchmakingEndpointUrl"

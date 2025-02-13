@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"time"
 
@@ -15,9 +16,10 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/apigatewaymanagementapi"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	snsTypes "github.com/aws/aws-sdk-go-v2/service/sns/types"
 	"github.com/bucket-sort/slchess/internal/domains/entities"
@@ -25,14 +27,20 @@ import (
 )
 
 var (
-	apiGatewayClient *apigatewaymanagementapi.Client
-	dynamoClient     *dynamodb.Client
-	snsClient        *sns.Client
-	ctx              context.Context
-	timeLayout       string
+	dynamoClient *dynamodb.Client
+	snsClient    *sns.Client
+	ecsClient    *ecs.Client
+	ec2Client    *ec2.Client
+	ctx          context.Context
+	timeLayout   string
 
-	ErrNoMatchFound    = errors.New("failed to matchmaking")
-	ErrInvalidGameMode = errors.New("invalid game mode")
+	clusterName = os.Getenv("ECS_CLUSTER_NAME")
+	serviceName = os.Getenv("ECS_SERVICE_NAME")
+	region      = os.Getenv("AWS_REGION")
+
+	ErrNoMatchFound       = errors.New("failed to matchmaking")
+	ErrInvalidGameMode    = errors.New("invalid game mode")
+	ErrServerNotAvailable = errors.New("server not available")
 )
 
 func init() {
@@ -40,13 +48,9 @@ func init() {
 	timeLayout = "2006-01-02 15:04:05.999999999 -0700 MST"
 	cfg, _ := config.LoadDefaultConfig(ctx)
 	dynamoClient = dynamodb.NewFromConfig(cfg)
-	apiEndpoint := fmt.Sprintf("https://%s.execute-api.%s.amazonaws.com/Prod", os.Getenv("AWS_API_ID"), os.Getenv("AWS_REGION"))
-	apiGatewayClient = apigatewaymanagementapi.New(apigatewaymanagementapi.Options{
-		BaseEndpoint: aws.String(apiEndpoint),
-		Region:       os.Getenv("AWS_REGION"),
-		Credentials:  cfg.Credentials,
-	})
 	snsClient = sns.NewFromConfig(cfg)
+	ecsClient = ecs.NewFromConfig(cfg)
+	ec2Client = ec2.NewFromConfig(cfg)
 }
 
 // Handle matchmaking requests
@@ -55,10 +59,18 @@ func handler(event events.APIGatewayProxyRequest) (events.APIGatewayProxyRespons
 	if !exists {
 		return events.APIGatewayProxyResponse{
 			StatusCode: 401,
-			// Body:       "Unauthorized: No valid JWT token",
-			Body: fmt.Sprintf("%v", event.RequestContext),
+			Body:       fmt.Sprintf("%v", event.RequestContext),
 		}, nil
 	}
+
+	// Start game server beforehand if none available
+	if err := checkAndStartServer(); err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Body:       "Failed to start game server",
+		}, nil
+	}
+
 	claims := v.(map[string]interface{})
 	userHandler := claims["cognito:username"].(string)
 
@@ -160,8 +172,21 @@ func findOpponents(minRating, maxRating int, userId string, userRating int, game
 }
 
 func createMatch(ctx context.Context, userHandler, opponentHandler, gameMode string) (entities.Match, error) {
-	// TODO: retrieve game server ip
-	serverIp := "192.168.0.1"
+	// Try to wait till the server is running
+	var (
+		serverIp string
+		err      error
+	)
+	for range 5 {
+		serverIp, err = getServerIp(ctx, clusterName, serviceName)
+		if err == nil {
+			break
+		}
+		<-time.After(10 * time.Second)
+	}
+	if err != nil {
+		return entities.Match{}, err
+	}
 
 	match := entities.Match{
 		Id:        utils.GenerateUUID(),
@@ -173,7 +198,7 @@ func createMatch(ctx context.Context, userHandler, opponentHandler, gameMode str
 	}
 
 	// Associate the players with created match to kind of mark them as matched
-	_, err := dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
+	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName:           aws.String("UserMatches"),
 		ConditionExpression: aws.String("attribute_not_exists(UserHandler)"),
 		Item: map[string]types.AttributeValue{
@@ -304,6 +329,98 @@ func notifyUser(userHandler string, data []byte) error {
 	}
 	if result != nil {
 		log.Printf("Message published to SNS: %s\n", *result.MessageId)
+	}
+
+	return nil
+}
+
+func getServerIp(ctx context.Context, clusterName, serviceName string) (string, error) {
+	// List tasks in the cluster
+	listTasksOutput, err := ecsClient.ListTasks(ctx, &ecs.ListTasksInput{
+		Cluster:       &clusterName,
+		ServiceName:   &serviceName,
+		DesiredStatus: "RUNNING",
+	})
+	if err != nil || len(listTasksOutput.TaskArns) == 0 {
+		return "", fmt.Errorf("no running tasks found or error occurred: %v", err)
+	}
+
+	describeTasksOutput, err := ecsClient.DescribeTasks(ctx, &ecs.DescribeTasksInput{
+		Cluster: aws.String(clusterName),
+		Tasks:   listTasksOutput.TaskArns,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to describe ECS tasks: %w", err)
+	}
+
+	sort.Slice(describeTasksOutput.Tasks, func(i, j int) bool {
+		return describeTasksOutput.Tasks[i].StartedAt.Before(*describeTasksOutput.Tasks[j].StartedAt)
+	})
+
+	var eniId string
+	for _, detail := range describeTasksOutput.Tasks[0].Attachments[0].Details {
+		if *detail.Name == "networkInterfaceId" {
+			eniId = *detail.Value
+			break
+		}
+	}
+
+	if eniId == "" {
+		return "", fmt.Errorf("ENI ID not found in task details")
+	}
+
+	// Get the public IP from EC2
+	eniResp, err := ec2Client.DescribeNetworkInterfaces(ctx, &ec2.DescribeNetworkInterfacesInput{
+		NetworkInterfaceIds: []string{eniId},
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to describe network interface: %w", err)
+	}
+
+	if len(eniResp.NetworkInterfaces) == 0 || eniResp.NetworkInterfaces[0].Association == nil {
+		return "", fmt.Errorf("no public IP found for ENI")
+	}
+
+	return *eniResp.NetworkInterfaces[0].Association.PublicIp, nil
+}
+
+func checkAndStartServer() error {
+	ctx := context.TODO()
+
+	// Load AWS Config
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
+	if err != nil {
+		return fmt.Errorf("failed to load AWS config: %w", err)
+	}
+
+	ecsClient := ecs.NewFromConfig(cfg)
+
+	// Check running task count
+	listTasksOutput, err := ecsClient.ListTasks(ctx, &ecs.ListTasksInput{
+		Cluster:       aws.String(clusterName),
+		ServiceName:   aws.String(serviceName),
+		DesiredStatus: "RUNNING",
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list ECS tasks: %w", err)
+	}
+
+	// If no tasks are running, scale service to 1
+	if len(listTasksOutput.TaskArns) == 0 {
+		fmt.Println("No running tasks found. Scaling up ECS service...")
+
+		_, err := ecsClient.UpdateService(ctx, &ecs.UpdateServiceInput{
+			Cluster:      aws.String(clusterName),
+			Service:      aws.String(serviceName),
+			DesiredCount: aws.Int32(1),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to update ECS desired count: %w", err)
+		}
+
+		fmt.Println("ECS service scaled to 1 instance.")
+	} else {
+		fmt.Println("ECS service already running, no scaling needed.")
 	}
 
 	return nil
