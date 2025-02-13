@@ -1,8 +1,14 @@
 version: "3"
 
 tasks:
-  check-env:
+  check-base-env:
     internal: true
     preconditions:
-      - sh: "test -f .env"
-        msg: ".env file not generated. Run 'env:generate' task first"
+      - sh: "test -f ./configs/sam/base.env"
+        msg: "base.env file not generated. Try running 'env:generate' task"
+
+  check-cognito-env:
+    internal: true
+    preconditions:
+      - sh: "test -f ./configs/sam/cognito.env"
+        msg: "cognito.env file not generated. Try running 'env:generate' task"
