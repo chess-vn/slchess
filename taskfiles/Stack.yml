@@ -19,7 +19,15 @@ tasks:
       - sh: "test -f .env"
         msg: ".env not generated. Run 'generate_env' task"
     cmds:
-      - sam deploy --guided --region $AWS_REGION --config-file samconfig.yaml
+      - sam deploy \
+        --stack-name $STACK \
+        --region $AWS_REGION \
+        --parameter-overrides ServerImageUri=$SERVER_IMAGE_URI \
+        --confirm-changeset \
+        --capabilities CAPABILITY_IAM \
+        --no-disable-rollback \
+        --config-file samconfig.yaml \
+        --config-env default
 
   remove:
     desc: Remove the stack from AWS
