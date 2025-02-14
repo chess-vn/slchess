@@ -9,6 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.39.8
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.203.0
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.53.13
+	github.com/aws/aws-sdk-go-v2/service/lambda v1.69.12
 	github.com/aws/aws-sdk-go-v2/service/sns v1.33.19
 	github.com/freeeve/uci v1.0.0
 	github.com/golang-jwt/jwt/v5 v5.2.1
@@ -21,6 +22,7 @@ require (
 )
 
 require (
+	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.8 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.59 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.28 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.32 // indirect

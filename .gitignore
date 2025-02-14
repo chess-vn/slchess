@@ -1,2 +1,2 @@
 .aws-sam/
-./configs/sam/*.env
+configs/aws/

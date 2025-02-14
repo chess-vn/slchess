@@ -159,11 +159,46 @@ Resources:
         DefaultAuthorizer: SlchessAuth
 
   ### Lambda Functions ###
+  EndGameFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-EndGame
+      CodeUri: ./cmd/lambda/endGame/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Timeout: 10
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: UserMatches
+        - DynamoDBCrudPolicy:
+            TableName: ActiveMatches
+        - DynamoDBCrudPolicy:
+            TableName: MatchStates
+        - DynamoDBCrudPolicy:
+            TableName: MatchRecords
+
+  GameStatePutFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-GameStatePut
+      CodeUri: ./cmd/lambda/gameStatePut/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Timeout: 10
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: MatchStates
+
   MatchmakingFunction:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: go1.x
     Properties:
+      FunctionName: slchess-Matchmaking
       CodeUri: ./cmd/lambda/matchmaking/
       Handler: bootstrap
       Runtime: provided.al2023
@@ -171,8 +206,6 @@ Resources:
       Policies:
         - SNSPublishMessagePolicy:
             TopicName: !GetAtt SlchessSNSTopic.TopicName
-        - DynamoDBCrudPolicy:
-            TableName: Connections
         - DynamoDBCrudPolicy:
             TableName: MatchmakingTickets
         - DynamoDBCrudPolicy:

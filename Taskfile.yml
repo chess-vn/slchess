@@ -6,8 +6,8 @@ env:
   STACK: slchess
 
 dotenv:
-  - ./configs/sam/base.env
-  - ./configs/sam/cognito.env
+  - ./configs/aws/base.env
+  - ./configs/aws/cognito.env
 
 includes:
   cognito:

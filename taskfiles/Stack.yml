@@ -22,7 +22,7 @@ tasks:
         --parameter-overrides "ServerImageUri=$SERVER_IMAGE_URI"
         --confirm-changeset
         --capabilities CAPABILITY_IAM
-        --disable-rollback
+        --no-disable-rollback
         --config-file samconfig.yaml
         --config-env default
 
@@ -31,7 +31,7 @@ tasks:
     deps: [utils:check-base-env]
     cmds:
       - sam delete --region $AWS_REGION --config-file samconfig.yaml
-      - rm .env
+      - rm ./configs/aws/*.env
 
   sync:
     desc: Sync the stack
@@ -42,7 +42,10 @@ tasks:
     desc: Build the stack
     deps: [utils:check-base-env]
     vars:
-      HANDLERS: [MatchmakingFunction]
+      HANDLERS:
+        - GameStatePutFunction
+        - EndGameFunction
+        - MatchmakingFunction
     cmds:
       - sam build --region $AWS_REGION --config-file samconfig.yaml
       - for: { var: HANDLERS }

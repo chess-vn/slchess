@@ -1,5 +1,11 @@
 version: "3"
 
+includes:
+  utils:
+    taskfile: ./Util.yml
+    internal: true
+    dir: ../
+
 tasks:
   up:
     desc: Run the game server on docker container
@@ -16,6 +22,7 @@ tasks:
 
   local:
     desc: Run the game server locally
+    deps: [utils:check-base-env, utils:check-lambda-env]
     cmds:
       - go mod download
       - go run ./cmd/server

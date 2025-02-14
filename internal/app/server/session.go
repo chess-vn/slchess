@@ -50,7 +50,7 @@ type errorResponse struct {
 
 func (session *Session) start() {
 	for move := range session.moveCh {
-		player, exist := session.getPlayerWithId(move.playerId)
+		player, exist := session.getPlayerWithHandler(move.playerHanlder)
 		if !exist {
 			player.Conn.WriteJSON(errorResponse{
 				Type:  "error",
@@ -65,7 +65,7 @@ func (session *Session) start() {
 		case AGREEMENT:
 			session.game.Draw(chess.DrawOffer)
 		default:
-			if player.Id != session.getCurrentTurnPlayer().Id {
+			if player.Handler != session.getCurrentTurnPlayer().Handler {
 				player.Conn.WriteJSON(errorResponse{
 					Type:  "error",
 					Error: ErrStatusWrongTurn,
@@ -86,14 +86,14 @@ func (session *Session) start() {
 			// If clock runs out, end the game
 			if player.Clock <= 0 {
 				session.game.outOfTime(player.Side)
-				logging.Info("out of time", zap.String("player_id", player.Id))
+				logging.Info("out of time", zap.String("player_id", player.Handler))
 			} else {
 				// else next turn
 				currentTurnPlayer := session.getCurrentTurnPlayer()
 				currentTurnPlayer.TurnStartedAt = time.Now()
 				session.setTimer(currentTurnPlayer.Clock)
 				logging.Info("new turn",
-					zap.String("player_id", currentTurnPlayer.Id),
+					zap.String("player_id", currentTurnPlayer.Handler),
 					zap.String("clock_w", session.players[0].Clock.String()),
 					zap.String("clock_b", session.players[1].Clock.String()),
 				)
@@ -129,14 +129,14 @@ func (s *Session) notifyPlayers(resp gameStateResponse) {
 			GameState: resp,
 		})
 		if err != nil {
-			logging.Error("couldn't notify player: ", zap.String("player_id", player.Id))
+			logging.Error("couldn't notify player: ", zap.String("player_id", player.Handler))
 		}
 	}
 }
 
-func (s *Session) getPlayerWithId(playerId string) (*player, bool) {
+func (s *Session) getPlayerWithHandler(handler string) (*player, bool) {
 	for _, player := range s.players {
-		if player.Id == playerId {
+		if player.Handler == handler {
 			return player, true
 		}
 	}
@@ -150,18 +150,18 @@ func (s *Session) getCurrentTurnPlayer() *player {
 	return s.players[1]
 }
 
-func (s *Session) processMove(playerId, moveUci string) {
+func (s *Session) processMove(playerHandler, moveUci string) {
 	s.moveCh <- move{
-		playerId: playerId,
-		uci:      moveUci,
-		control:  NONE,
+		playerHanlder: playerHandler,
+		uci:           moveUci,
+		control:       NONE,
 	}
 }
 
-func (s *Session) processGameControl(playerId string, control GameControl) {
+func (s *Session) processGameControl(playerHandler string, control GameControl) {
 	s.moveCh <- move{
-		playerId: playerId,
-		control:  control,
+		playerHanlder: playerHandler,
+		control:       control,
 	}
 }
 
@@ -217,4 +217,19 @@ func (s *Session) skipTimer() {
 	}
 	s.timer.Reset(0)
 	logging.Info("clock skipped", zap.String("session_id", s.id))
+}
+
+func configForGameMode(gameMode string) SessionConfig {
+	switch gameMode {
+	case "10min":
+		return SessionConfig{
+			MatchDuration: 10 * time.Minute,
+			CancelTimeout: 30 * time.Second,
+		}
+	default:
+		return SessionConfig{
+			MatchDuration: 10 * time.Minute,
+			CancelTimeout: 30 * time.Second,
+		}
+	}
 }

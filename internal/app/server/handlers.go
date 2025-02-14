@@ -1,8 +1,16 @@
 package server
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/lambda"
+	"github.com/aws/aws-sdk-go-v2/service/lambda/types"
 	"github.com/bucket-sort/slchess/pkg/logging"
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
@@ -10,25 +18,75 @@ import (
 
 // Handler for saving current game state.
 func (s *server) handleSaveGame(session *Session) {
-	// TODO: Call lambda GameStatePut
-}
+	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("ap-southeast-2"))
+	if err != nil {
+		log.Fatalf("unable to load SDK config, %v", err)
+	}
+	lambdaClient := lambda.NewFromConfig(cfg)
 
-// Handler for when a game session ends.
-func (s *server) handleEndGame(session *Session) {
-	// TODO: Call lambda EndGame
+	// Payload (optional)
+	payload := []byte(`{"key": "value"}`)
+
+	// Invoke Lambda function
+	input := &lambda.InvokeInput{
+		FunctionName:   aws.String(s.config.GameStatePutFunctionName),
+		Payload:        payload,
+		InvocationType: types.InvocationTypeEvent,
+	}
+
+	_, err = lambdaClient.Invoke(context.TODO(), input)
+	if err != nil {
+		logging.Error("failed to invoke end game", zap.Error(err))
+	}
+
 	s.removeSession(session.id)
 	logging.Info("game ended", zap.String("session_id", session.id))
 }
 
+// Handler for when a game session ends.
+func (s *server) handleEndGame(session *Session) {
+	cfg, err := config.LoadDefaultConfig(context.Background())
+	if err != nil {
+		log.Fatalf("unable to load SDK config, %v", err)
+	}
+	lambdaClient := lambda.NewFromConfig(cfg)
+
+	payload := map[string]interface{}{
+		"matchId": session.id,
+		"player1": session.players[0].Handler,
+		"player2": session.players[1].Handler,
+	}
+	payloadJson, err := json.Marshal(payload)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	// Invoke Lambda function
+	input := &lambda.InvokeInput{
+		FunctionName:   aws.String(s.config.EndGameFunctionName),
+		Payload:        payloadJson,
+		InvocationType: types.InvocationTypeEvent,
+	}
+
+	_, err = lambdaClient.Invoke(context.TODO(), input)
+	if err != nil {
+		logging.Error("failed to invoke end game", zap.Error(err))
+	}
+
+	s.removeSession(session.id)
+	logging.Info("game ended", zap.String("match_id", session.id))
+}
+
 // Handler for when a user connection closes
-func (s *server) handlePlayerDisconnect(session *Session, playerId string) {
+func (s *server) handlePlayerDisconnect(session *Session, playerHandler string) {
 	if session == nil {
 		return
 	}
 
-	player, exist := session.getPlayerWithId(playerId)
+	player, exist := session.getPlayerWithHandler(playerHandler)
 	if !exist {
-		logging.Fatal("invalid player id", zap.String("player_id", playerId))
+		logging.Fatal("invalid player handler", zap.String("player_handler", playerHandler))
 		return
 	}
 	player.Conn = nil
@@ -40,21 +98,21 @@ func (s *server) handlePlayerDisconnect(session *Session, playerId string) {
 		session.end()
 	} else {
 		// Else only set the timer for the disconnected player
-		logging.Info("player disconnected", zap.String("session_id", session.id), zap.String("player_id", player.Id))
+		logging.Info("player disconnected", zap.String("session_id", session.id), zap.String("player_id", player.Handler))
 		if !session.isEnded() {
 			session.setTimer(60 * time.Second)
 		}
 	}
 }
 
-func (s *server) handlePlayerJoin(conn *websocket.Conn, session *Session, playerId string) {
+func (s *server) handlePlayerJoin(conn *websocket.Conn, session *Session, playerHandler string) {
 	if session == nil {
 		return
 	}
 
-	player, exist := session.getPlayerWithId(playerId)
+	player, exist := session.getPlayerWithHandler(playerHandler)
 	if !exist {
-		logging.Fatal("invalid player id", zap.String("player_id", playerId))
+		logging.Fatal("invalid player handler", zap.String("player_handler", playerHandler))
 		return
 	}
 	if player.Status == INIT && player.Side == WHITE_SIDE {
@@ -66,7 +124,7 @@ func (s *server) handlePlayerJoin(conn *websocket.Conn, session *Session, player
 	player.Status = CONNECTED
 
 	logging.Info("player connected",
-		zap.String("player_id", playerId),
+		zap.String("player_handler", playerHandler),
 		zap.String("session_id", session.id),
 	)
 }
