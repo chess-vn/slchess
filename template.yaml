@@ -139,10 +139,10 @@ Resources:
       PolicyType: TargetTrackingScaling
       ScalingTargetId: !Ref ECSAutoScalingTarget
       TargetTrackingScalingPolicyConfiguration:
-        TargetValue: 1.0 # Scale down when CPU usage is below 1%
+        TargetValue: 0.0005 # Scale down when CPU usage is below 0.0005%
         PredefinedMetricSpecification:
           PredefinedMetricType: ECSServiceAverageCPUUtilization
-        ScaleInCooldown: 3600 # 1 hour cooldown before scaling down
+        ScaleInCooldown: 1800 # 30 minutes cooldown before scaling down
         ScaleOutCooldown: 60 # 1-minute cooldown before scaling up
 
   ### HTTP API ###
