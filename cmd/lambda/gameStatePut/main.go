@@ -10,7 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/bucket-sort/slchess/internal/domains/entities"
+	"github.com/chess-vn/slchess/internal/domains/entities"
 )
 
 var dynamoClient *dynamodb.Client

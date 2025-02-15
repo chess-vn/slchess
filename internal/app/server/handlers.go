@@ -11,8 +11,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/lambda/types"
-	"github.com/bucket-sort/slchess/internal/domains/entities"
-	"github.com/bucket-sort/slchess/pkg/logging"
+	"github.com/chess-vn/slchess/internal/domains/entities"
+	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 )

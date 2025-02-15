@@ -4,8 +4,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bucket-sort/slchess/pkg/logging"
-	"github.com/bucket-sort/slchess/pkg/utils"
+	"github.com/chess-vn/slchess/pkg/logging"
+	"github.com/chess-vn/slchess/pkg/utils"
 	"github.com/notnil/chess"
 	"go.uber.org/zap"
 )

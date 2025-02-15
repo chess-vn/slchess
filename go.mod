@@ -1,4 +1,4 @@
-module github.com/bucket-sort/slchess
+module github.com/chess-vn/slchess
 
 go 1.23.5
 

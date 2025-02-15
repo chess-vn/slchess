@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bucket-sort/slchess/pkg/utils"
+	"github.com/chess-vn/slchess/pkg/utils"
 	"github.com/freeeve/uci"
 )
 

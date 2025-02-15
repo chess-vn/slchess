@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/bucket-sort/slchess/internal/app/server"
-	"github.com/bucket-sort/slchess/pkg/logging"
+	"github.com/chess-vn/slchess/internal/app/server"
+	"github.com/chess-vn/slchess/pkg/logging"
 	"go.uber.org/zap"
 )
 

@@ -22,8 +22,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	snsTypes "github.com/aws/aws-sdk-go-v2/service/sns/types"
-	"github.com/bucket-sort/slchess/internal/domains/entities"
-	"github.com/bucket-sort/slchess/pkg/utils"
+	"github.com/chess-vn/slchess/internal/domains/entities"
+	"github.com/chess-vn/slchess/pkg/utils"
 )
 
 var (

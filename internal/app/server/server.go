@@ -14,7 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/bucket-sort/slchess/pkg/logging"
+	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
