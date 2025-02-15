@@ -1,12 +1,21 @@
 package server
 
 import (
+	"context"
+	"crypto/rsa"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/bucket-sort/slchess/pkg/logging"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 )
@@ -15,8 +24,11 @@ type server struct {
 	address  string
 	upgrader websocket.Upgrader
 
-	config   Config
-	sessions sync.Map
+	config  Config
+	matches sync.Map
+
+	cognitoPublicKeys map[string]*rsa.PublicKey
+	shutdownTimer     *time.Timer
 }
 
 type payload struct {
@@ -27,7 +39,7 @@ type payload struct {
 
 func NewServer() *server {
 	config := NewConfig()
-	return &server{
+	srv := &server{
 		address: "0.0.0.0:" + config.Port,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
@@ -36,14 +48,23 @@ func NewServer() *server {
 				return true // Allow all origins
 			},
 		},
-		config: config,
+		config:            config,
+		cognitoPublicKeys: make(map[string]*rsa.PublicKey),
 	}
+	srv.loadCognitoPublicKeys()
+	srv.resetShutdownTimer()
+	return srv
 }
 
 // Start method    starts the game server
 func (s *server) Start() error {
-	http.HandleFunc("/sessions/{sessionId}", func(w http.ResponseWriter, r *http.Request) {
-		playerId := s.mustAuth(r)
+	http.HandleFunc("/matches/{matchId}", func(w http.ResponseWriter, r *http.Request) {
+		playerHandler, err := s.auth(r)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(err.Error()))
+			return
+		}
 
 		conn, err := s.upgrader.Upgrade(w, r, nil)
 		if err != nil {
@@ -52,13 +73,15 @@ func (s *server) Start() error {
 		}
 		defer conn.Close()
 
-		sessionId := r.PathValue("sessionId")
-		session, err := s.loadSession(sessionId)
+		s.resetShutdownTimer()
+
+		matchId := r.PathValue("matchId")
+		match, err := s.loadMatch(matchId)
 		if err != nil {
-			logging.Error("failed to load session", zap.String("error", err.Error()))
+			logging.Error("failed to load match", zap.String("error", err.Error()))
 			return
 		}
-		s.handlePlayerJoin(conn, session, playerId)
+		s.handlePlayerJoin(conn, match, playerHandler)
 
 		for {
 			_, message, err := conn.ReadMessage()
@@ -70,7 +93,7 @@ func (s *server) Start() error {
 				} else {
 					logging.Info("ws message read error", zap.String("remote_address", conn.RemoteAddr().String()), zap.Error(err))
 				}
-				s.handlePlayerDisconnect(session, playerId)
+				s.handlePlayerDisconnect(match, playerHandler)
 				break
 			}
 
@@ -78,53 +101,131 @@ func (s *server) Start() error {
 			if err := json.Unmarshal(message, &payload); err != nil {
 				conn.Close()
 			}
-			s.handleWebSocketMessage(playerId, session, payload)
+			s.handleWebSocketMessage(playerHandler, match, payload)
 		}
 	})
 	logging.Info("websocket server started", zap.String("port", s.config.Port))
 	return http.ListenAndServe(s.address, nil)
 }
 
-// mustAuth method    authenticates and extract playerId
-func (s *server) mustAuth(r *http.Request) string {
-	// TODO: replace this with actual authorization implementation
-	playerId := r.Header.Get("Authorization")
-	return playerId
+// mustAuth method    authenticates and extract userHandler
+func (s *server) auth(r *http.Request) (string, error) {
+	token := r.Header.Get("Authorization")
+	if token == "" {
+		return "", fmt.Errorf("no authorization")
+	}
+	validToken, err := s.validateJWT(token)
+	if err != nil || !validToken.Valid {
+		return "", fmt.Errorf("invalid token: %w", err)
+	}
+	mapClaims, ok := validToken.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", fmt.Errorf("invalid map claims")
+	}
+	v, ok := mapClaims["cognito:username"]
+	if !ok {
+		return "", fmt.Errorf("user handler not found")
+	}
+	userHandler, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("invalid user handler")
+	}
+	return userHandler, nil
 }
 
-// loadSession method    loads session with corresponding sessionId.
-// If no such session exists, create a new session.
+// loadMatch method    loads match with corresponding matchId.
+// If no such match exists, create a new match.
 // This is used to start the match only when white side player send in the first valid move.
-func (s *server) loadSession(sessionId string) (*Session, error) {
-	// TODO: fetch session info from dynamoDB
-	// to validate sessionId and create new session if needed
-	config := SessionConfig{
-		MatchDuration: 10 * time.Minute,
-		CancelTimeout: 30 * time.Second,
+func (s *server) loadMatch(matchId string) (*Match, error) {
+	ctx := context.Background()
+	cfg, _ := config.LoadDefaultConfig(ctx)
+	dynamoClient := dynamodb.NewFromConfig(cfg)
+	activeMatchOutput, err := dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String("ActiveMatches"),
+		Key: map[string]types.AttributeValue{
+			"MatchId": &types.AttributeValueMemberS{
+				Value: matchId,
+			},
+		},
+		ConsistentRead: aws.Bool(true),
+	})
+	if err != nil {
+		return nil, err
 	}
-	player1 := newPlayer(nil, "PLAYER_1", WHITE_SIDE, config.MatchDuration)
-	player2 := newPlayer(nil, "PLAYER_2", BLACK_SIDE, config.MatchDuration)
+	if activeMatchOutput.Item == nil {
+		return nil, fmt.Errorf("match not found: %s", matchId)
+	}
 
-	value, loaded := s.sessions.Load(sessionId)
+	gameMode := activeMatchOutput.Item["GameMode"].(*types.AttributeValueMemberS).Value
+
+	matchStateOutput, err := dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String("MatchStates"),
+		Key: map[string]types.AttributeValue{
+			"MatchId": &types.AttributeValueMemberS{
+				Value: matchId,
+			},
+		},
+		ConsistentRead: aws.Bool(true),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	config := configForGameMode(gameMode)
+
+	// Initialize match if there is no match state data
+	if matchStateOutput.Item == nil {
+		player1 := newPlayer(
+			nil,
+			activeMatchOutput.Item["Player1"].(*types.AttributeValueMemberS).Value,
+			WHITE_SIDE,
+			config.MatchDuration,
+		)
+		player2 := newPlayer(
+			nil,
+			activeMatchOutput.Item["Player2"].(*types.AttributeValueMemberS).Value,
+			BLACK_SIDE,
+			config.MatchDuration,
+		)
+		match := s.newMatch(matchId, player1, player2, config)
+		s.matches.Store(matchId, match)
+		logging.Info("match initialized")
+		return match, nil
+	}
+
+	value, loaded := s.matches.Load(matchId)
 	if loaded {
-		session, ok := value.(*Session)
+		match, ok := value.(*Match)
 		if ok {
-			logging.Info("session loaded")
-			return session, nil
+			logging.Info("match loaded")
+			return match, nil
 		}
 	} else {
-		session := s.newSession(sessionId, player1, player2, config)
-		s.sessions.Store(sessionId, session)
-		logging.Info("session initialized")
-		return session, nil
+		clock1, _ := time.ParseDuration(matchStateOutput.Item[""].(*types.AttributeValueMemberS).Value)
+		clock2, _ := time.ParseDuration(matchStateOutput.Item[""].(*types.AttributeValueMemberS).Value)
+		player1 := newPlayer(
+			nil,
+			matchStateOutput.Item["Player1"].(*types.AttributeValueMemberS).Value,
+			WHITE_SIDE,
+			clock1,
+		)
+		player2 := newPlayer(
+			nil,
+			matchStateOutput.Item["Player2"].(*types.AttributeValueMemberS).Value,
+			BLACK_SIDE,
+			clock2,
+		)
+		match := s.newMatch(matchId, player1, player2, config)
+		s.matches.Store(matchId, match)
+		logging.Info("match resumed")
 	}
 
-	return nil, ErrLoadSessionFailure
+	return nil, ErrFailedToLoadMatch
 }
 
-func (s *server) newSession(sessionId string, player1, player2 player, config SessionConfig) *Session {
-	session := &Session{
-		id:              sessionId,
+func (s *server) newMatch(matchId string, player1, player2 player, config MatchConfig) *Match {
+	match := &Match{
+		id:              matchId,
 		game:            newGame(),
 		players:         []*player{&player1, &player2},
 		moveCh:          make(chan move),
@@ -133,11 +234,36 @@ func (s *server) newSession(sessionId string, player1, player2 player, config Se
 		saveGameHandler: s.handleSaveGame,
 	}
 	// Timeout to cancel match if first move is not made
-	session.setTimer(config.CancelTimeout)
-	go session.start()
-	return session
+	match.setTimer(config.CancelTimeout)
+	go match.start()
+	return match
 }
 
-func (s *server) removeSession(sessionId string) {
-	s.sessions.Delete(sessionId)
+func (s *server) removeMatch(matchId string) {
+	s.matches.Delete(matchId)
+}
+
+func (s *server) resetShutdownTimer() {
+	if s.shutdownTimer != nil {
+		s.shutdownTimer.Reset(s.config.IdleTimeout)
+		return
+	}
+	s.shutdownTimer = time.NewTimer(s.config.IdleTimeout)
+	go func() {
+		<-s.shutdownTimer.C
+		s.shutdown()
+	}()
+	logging.Info("shutdowm timer set", zap.String("duration", s.config.IdleTimeout.String()))
+}
+
+func (s *server) shutdown() {
+	logging.Info("server terminating")
+	s.matches.Range(func(key, value interface{}) bool {
+		match, ok := value.(*Match)
+		if ok {
+			match.end()
+		}
+		return true
+	})
+	os.Exit(0)
 }

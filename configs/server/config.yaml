@@ -1,3 +1,4 @@
-server:
-  address: 0.0.0.0
-  port: 7202
+Server:
+  Address: 0.0.0.0
+  Port: 7202
+  IdleTimeout: 45m

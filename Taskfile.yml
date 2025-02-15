@@ -5,7 +5,9 @@ env:
   BUILD_DIR: "{{.AWS_SAM_DIR}}/build"
   STACK: slchess
 
-dotenv: [".env"]
+dotenv:
+  - ./configs/aws/base.env
+  - ./configs/aws/cognito.env
 
 includes:
   cognito:

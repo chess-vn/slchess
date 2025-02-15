@@ -15,7 +15,7 @@ tasks:
       - aws cognito-idp initiate-auth --region $AWS_REGION --client-id $COGNITO_USER_POOL_CLIENT_ID --cli-input-json file://./test/cognito/user2.json --output json | jq -r '.AuthenticationResult.IdToken'
 
   create-test-users:
-    deps: [utils:check-env]
+    deps: [utils:check-cognito-env]
     internal: true
     status:
       - aws cognito-idp admin-get-user --user-pool-id $COGNITO_USER_POOL_ID --cli-input-json file://./test/cognito/confirm_user1.json >/dev/null 2>&1

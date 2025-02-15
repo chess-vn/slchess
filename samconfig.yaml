@@ -19,6 +19,7 @@ default:
       region: ap-southeast-2
       image_repositories: []
       disable_rollback: true
+      parameter_overrides: ServerImageUri=""
   sync:
     parameters:
       watch: true

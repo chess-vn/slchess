@@ -14,22 +14,24 @@ includes:
 tasks:
   deploy:
     desc: Deploy the current local stack on AWS
-    deps: [utils:check-env]
-    preconditions:
-      - sh: "test -f .env"
-        msg: ".env not generated. Run 'generate_env' task"
+    deps: [utils:check-base-env]
     cmds:
-      - sam deploy --guided --region $AWS_REGION --config-file samconfig.yaml
+      - sam deploy
+        --stack-name $STACK
+        --region $AWS_REGION
+        --parameter-overrides "ServerImageUri=$SERVER_IMAGE_URI"
+        --confirm-changeset
+        --capabilities CAPABILITY_IAM
+        --no-disable-rollback
+        --config-file samconfig.yaml
+        --config-env default
 
   remove:
     desc: Remove the stack from AWS
-    deps: [utils:check-env]
-    preconditions:
-      - sh: "test -f .env"
-        msg: ".env not generated. Run 'generate_env' task"
+    deps: [utils:check-base-env]
     cmds:
       - sam delete --region $AWS_REGION --config-file samconfig.yaml
-      - rm .env
+      - rm ./configs/aws/*.env
 
   sync:
     desc: Sync the stack
@@ -38,9 +40,12 @@ tasks:
 
   build:
     desc: Build the stack
-    deps: [utils:check-env]
+    deps: [utils:check-base-env]
     vars:
-      HANDLERS: [MatchmakingFunction]
+      HANDLERS:
+        - GameStatePutFunction
+        - EndGameFunction
+        - MatchmakingFunction
     cmds:
       - sam build --region $AWS_REGION --config-file samconfig.yaml
       - for: { var: HANDLERS }
