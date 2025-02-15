@@ -77,7 +77,6 @@ func BoardToFen(board [8][8]string) string {
 	return fenStr[:len(fenStr)-1] // Remove trailing "/"
 }
 
-
 func PgnParseFromString(pgnString string) []string {
 	r := strings.NewReader(pgnString)
 

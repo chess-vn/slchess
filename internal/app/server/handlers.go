@@ -11,21 +11,39 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/lambda/types"
+	"github.com/bucket-sort/slchess/internal/domains/entities"
 	"github.com/bucket-sort/slchess/pkg/logging"
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 )
 
 // Handler for saving current game state.
-func (s *server) handleSaveGame(session *Session) {
-	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("ap-southeast-2"))
+func (s *server) handleSaveGame(match *Match) {
+	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
 		log.Fatalf("unable to load SDK config, %v", err)
 	}
 	lambdaClient := lambda.NewFromConfig(cfg)
 
-	// Payload (optional)
-	payload := []byte(`{"key": "value"}`)
+	matchState := entities.MatchState{
+		MatchId: match.id,
+		Players: []entities.PlayerState{
+			{
+				Clock:  match.players[0].Clock.String(),
+				Status: match.players[0].Status.String(),
+			},
+			{
+				Clock:  match.players[1].Clock.String(),
+				Status: match.players[1].Status.String(),
+			},
+		},
+		GameState: match.game.FEN(),
+		UpdatedAt: time.Now(),
+	}
+	payload, err := json.Marshal(matchState)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// Invoke Lambda function
 	input := &lambda.InvokeInput{
@@ -39,12 +57,12 @@ func (s *server) handleSaveGame(session *Session) {
 		logging.Error("failed to invoke end game", zap.Error(err))
 	}
 
-	s.removeSession(session.id)
-	logging.Info("game ended", zap.String("session_id", session.id))
+	s.removeMatch(match.id)
+	logging.Info("match ended", zap.String("match_id", match.id))
 }
 
-// Handler for when a game session ends.
-func (s *server) handleEndGame(session *Session) {
+// Handler for when a game match ends.
+func (s *server) handleEndGame(match *Match) {
 	cfg, err := config.LoadDefaultConfig(context.Background())
 	if err != nil {
 		log.Fatalf("unable to load SDK config, %v", err)
@@ -52,9 +70,9 @@ func (s *server) handleEndGame(session *Session) {
 	lambdaClient := lambda.NewFromConfig(cfg)
 
 	payload := map[string]interface{}{
-		"matchId": session.id,
-		"player1": session.players[0].Handler,
-		"player2": session.players[1].Handler,
+		"matchId": match.id,
+		"player1": match.players[0].Handler,
+		"player2": match.players[1].Handler,
 	}
 	payloadJson, err := json.Marshal(payload)
 	if err != nil {
@@ -74,17 +92,17 @@ func (s *server) handleEndGame(session *Session) {
 		logging.Error("failed to invoke end game", zap.Error(err))
 	}
 
-	s.removeSession(session.id)
-	logging.Info("game ended", zap.String("match_id", session.id))
+	s.removeMatch(match.id)
+	logging.Info("game ended", zap.String("match_id", match.id))
 }
 
 // Handler for when a user connection closes
-func (s *server) handlePlayerDisconnect(session *Session, playerHandler string) {
-	if session == nil {
+func (s *server) handlePlayerDisconnect(match *Match, playerHandler string) {
+	if match == nil {
 		return
 	}
 
-	player, exist := session.getPlayerWithHandler(playerHandler)
+	player, exist := match.getPlayerWithHandler(playerHandler)
 	if !exist {
 		logging.Fatal("invalid player handler", zap.String("player_handler", playerHandler))
 		return
@@ -92,47 +110,47 @@ func (s *server) handlePlayerDisconnect(session *Session, playerHandler string) 
 	player.Conn = nil
 	player.Status = DISCONNECTED
 
-	// If both player disconnected, end session
-	if session.players[0].Status == session.players[1].Status {
-		logging.Info("both player disconnected", zap.String("session_id", session.id))
-		session.end()
+	// If both player disconnected, end match
+	if match.players[0].Status == match.players[1].Status {
+		logging.Info("both player disconnected", zap.String("match_id", match.id))
+		match.end()
 	} else {
 		// Else only set the timer for the disconnected player
-		logging.Info("player disconnected", zap.String("session_id", session.id), zap.String("player_id", player.Handler))
-		if !session.isEnded() {
-			session.setTimer(60 * time.Second)
+		logging.Info("player disconnected", zap.String("match_id", match.id), zap.String("player_id", player.Handler))
+		if !match.isEnded() {
+			match.setTimer(60 * time.Second)
 		}
 	}
 }
 
-func (s *server) handlePlayerJoin(conn *websocket.Conn, session *Session, playerHandler string) {
-	if session == nil {
+func (s *server) handlePlayerJoin(conn *websocket.Conn, match *Match, playerHandler string) {
+	if match == nil {
 		return
 	}
 
-	player, exist := session.getPlayerWithHandler(playerHandler)
+	player, exist := match.getPlayerWithHandler(playerHandler)
 	if !exist {
 		logging.Fatal("invalid player handler", zap.String("player_handler", playerHandler))
 		return
 	}
 	if player.Status == INIT && player.Side == WHITE_SIDE {
-		session.startAt = time.Now()
-		player.TurnStartedAt = session.startAt
-		session.setTimer(session.config.MatchDuration)
+		match.startAt = time.Now()
+		player.TurnStartedAt = match.startAt
+		match.setTimer(match.config.MatchDuration)
 	}
 	player.Conn = conn
 	player.Status = CONNECTED
 
 	logging.Info("player connected",
 		zap.String("player_handler", playerHandler),
-		zap.String("session_id", session.id),
+		zap.String("match_id", match.id),
 	)
 }
 
 // Handler for when user sends a message
-func (s *server) handleWebSocketMessage(playerId string, session *Session, payload payload) {
-	if session == nil {
-		logging.Error("session not loaded")
+func (s *server) handleWebSocketMessage(playerId string, match *Match, payload payload) {
+	if match == nil {
+		logging.Error("match not loaded")
 		return
 	}
 	// Validate timestamp
@@ -150,19 +168,19 @@ func (s *server) handleWebSocketMessage(playerId string, session *Session, paylo
 		action := payload.Data["action"]
 		switch action {
 		case "resign":
-			session.processGameControl(playerId, RESIGNAION)
+			match.processGameControl(playerId, RESIGNAION)
 		case "offer_draw":
-			session.processGameControl(playerId, DRAW_OFFER)
+			match.processGameControl(playerId, DRAW_OFFER)
 		case "agreement":
-			session.processGameControl(playerId, AGREEMENT)
+			match.processGameControl(playerId, AGREEMENT)
 		case "move":
-			session.processMove(playerId, payload.Data["move"])
+			match.processMove(playerId, payload.Data["move"])
 		default:
 			logging.Info("invalid game action:", zap.String("action", payload.Type))
 			return
 		}
 		logging.Info("game data",
-			zap.String("sessionId", session.id),
+			zap.String("match_id", match.id),
 			zap.String("action", action),
 		)
 	default:

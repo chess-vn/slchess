@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"log"
 
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -25,11 +26,7 @@ func init() {
 	dynamoClient = dynamodb.NewFromConfig(cfg)
 }
 
-func handler(ctx context.Context, event json.RawMessage) (map[string]interface{}, error) {
-	// Convert JSON payload to map
-	var payload map[string]interface{}
-	json.Unmarshal(event, &payload)
-
+func handler(ctx context.Context, event json.RawMessage) {
 	// Or use a struct
 	var endGameEvent EndGameEvent
 	json.Unmarshal(event, &endGameEvent)
@@ -41,10 +38,7 @@ func handler(ctx context.Context, event json.RawMessage) (map[string]interface{}
 		},
 	})
 	if err != nil {
-		return map[string]interface{}{
-			"status": "failed",
-			"error":  err.Error(),
-		}, nil
+		log.Fatalf("Failed to handle end game: %v", err)
 	}
 
 	_, err = dynamoClient.DeleteItem(context.TODO(), &dynamodb.DeleteItemInput{
@@ -54,10 +48,7 @@ func handler(ctx context.Context, event json.RawMessage) (map[string]interface{}
 		},
 	})
 	if err != nil {
-		return map[string]interface{}{
-			"status": "failed",
-			"error":  err.Error(),
-		}, nil
+		log.Fatalf("Failed to handle end game: %v", err)
 	}
 
 	_, err = dynamoClient.DeleteItem(context.TODO(), &dynamodb.DeleteItemInput{
@@ -67,13 +58,8 @@ func handler(ctx context.Context, event json.RawMessage) (map[string]interface{}
 		},
 	})
 	if err != nil {
-		return map[string]interface{}{
-			"status": "failed",
-			"error":  err.Error(),
-		}, nil
+		log.Fatalf("Failed to handle end game: %v", err)
 	}
-
-	return map[string]interface{}{"status": "success"}, nil
 }
 
 func main() {

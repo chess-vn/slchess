@@ -8,4 +8,4 @@ var (
 	ErrStatusWrongTurn       string = "WRONG_TURN"
 )
 
-var ErrLoadSessionFailure = errors.New("failed to load session")
+var ErrFailedToLoadMatch = errors.New("failed to load match")

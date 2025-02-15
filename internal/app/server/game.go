@@ -100,3 +100,16 @@ func (p *player) color() chess.Color {
 	}
 	return chess.Black
 }
+
+func (s Status) String() string {
+	switch s {
+	case INIT:
+		return "INIT"
+	case CONNECTED:
+		return "CONNECTED"
+	case DISCONNECTED:
+		return "DISCONNECTED"
+	default:
+		return "UNKNOWN"
+	}
+}
