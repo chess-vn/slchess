@@ -10,7 +10,9 @@ import (
 	"math/big"
 	"net/http"
 
+	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/golang-jwt/jwt/v5"
+	"go.uber.org/zap"
 )
 
 // Struct for Cognito's JWKS JSON response
@@ -29,7 +31,7 @@ func (s *server) loadCognitoPublicKeys() {
 
 	resp, err := http.Get(url)
 	if err != nil {
-		fmt.Println("Error fetching Cognito public keys:", err)
+		logging.Error("Failed to load cognito public key", zap.Error(err))
 		return
 	}
 	defer resp.Body.Close()
@@ -40,8 +42,8 @@ func (s *server) loadCognitoPublicKeys() {
 
 	for _, key := range jwks.Keys {
 		// Decode Base64URL (without padding) `n` and `e`
-		nBytes, _ := decodeBase64URL(key.N)
-		eBytes, _ := decodeBase64URL(key.E)
+		nBytes, _ := base64.RawURLEncoding.DecodeString(key.N)
+		eBytes, _ := base64.RawURLEncoding.DecodeString(key.E)
 
 		// Convert to big.Int and integer
 		n := new(big.Int).SetBytes(nBytes)
@@ -49,13 +51,8 @@ func (s *server) loadCognitoPublicKeys() {
 
 		// Construct RSA Public Key
 		s.cognitoPublicKeys[key.Kid] = &rsa.PublicKey{N: n, E: e}
-		fmt.Println(key)
 	}
-}
-
-// Decode Base64URL without padding
-func decodeBase64URL(s string) ([]byte, error) {
-	return base64.RawURLEncoding.DecodeString(s)
+	logging.Info("cognito public key loaded")
 }
 
 // Validate JWT
