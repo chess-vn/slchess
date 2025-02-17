@@ -18,14 +18,13 @@ type Match struct {
 }
 
 type PlayerState struct {
-	Clock      string    `dynamodbav:"clock" json:"clock"`
-	LastMoveAt time.Time `dynamodbav:"lastMoveAt" json:"lastMoveAt"`
-	Status     string    `dynamodbav:"status" json:"status"`
+	Clock  string `dynamodbav:"Clock" json:"clock"`
+	Status string `dynamodbav:"Status" json:"status"`
 }
 
 type MatchState struct {
-	MatchId   string        `dynamodbav:"matchId" json:"matchId"`
-	Players   []PlayerState `dynamodbav:"players" json:"players"`
-	GameState string        `dynamodbav:"gameState" json:"gameState"`
-	UpdatedAt time.Time     `dynamodbav:"updatedAt" json:"updatedAt"`
+	MatchId   string        `dynamodbav:"MatchId" json:"matchId"`
+	Players   []PlayerState `dynamodbav:"Players" json:"players"`
+	GameState string        `dynamodbav:"GameState" json:"gameState"`
+	UpdatedAt time.Time     `dynamodbav:"UpdatedAt" json:"updatedAt"`
 }

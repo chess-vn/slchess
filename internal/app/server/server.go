@@ -58,7 +58,7 @@ func NewServer() *server {
 
 // Start method    starts the game server
 func (s *server) Start() error {
-	http.HandleFunc("/matches/{matchId}", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/game/{matchId}", func(w http.ResponseWriter, r *http.Request) {
 		playerHandler, err := s.auth(r)
 		if err != nil {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -158,41 +158,6 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 
 	gameMode := activeMatchOutput.Item["GameMode"].(*types.AttributeValueMemberS).Value
 
-	matchStateOutput, err := dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String("MatchStates"),
-		Key: map[string]types.AttributeValue{
-			"MatchId": &types.AttributeValueMemberS{
-				Value: matchId,
-			},
-		},
-		ConsistentRead: aws.Bool(true),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	config := configForGameMode(gameMode)
-
-	// Initialize match if there is no match state data
-	if matchStateOutput.Item == nil {
-		player1 := newPlayer(
-			nil,
-			activeMatchOutput.Item["Player1"].(*types.AttributeValueMemberS).Value,
-			WHITE_SIDE,
-			config.MatchDuration,
-		)
-		player2 := newPlayer(
-			nil,
-			activeMatchOutput.Item["Player2"].(*types.AttributeValueMemberS).Value,
-			BLACK_SIDE,
-			config.MatchDuration,
-		)
-		match := s.newMatch(matchId, player1, player2, config)
-		s.matches.Store(matchId, match)
-		logging.Info("match initialized")
-		return match, nil
-	}
-
 	value, loaded := s.matches.Load(matchId)
 	if loaded {
 		match, ok := value.(*Match)
@@ -201,6 +166,41 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 			return match, nil
 		}
 	} else {
+		matchStateOutput, err := dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
+			TableName: aws.String("MatchStates"),
+			Key: map[string]types.AttributeValue{
+				"MatchId": &types.AttributeValueMemberS{
+					Value: matchId,
+				},
+			},
+			ConsistentRead: aws.Bool(true),
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		config := configForGameMode(gameMode)
+
+		// Initialize match if there is no match state data
+		if matchStateOutput.Item == nil {
+			player1 := newPlayer(
+				nil,
+				activeMatchOutput.Item["Player1"].(*types.AttributeValueMemberS).Value,
+				WHITE_SIDE,
+				config.MatchDuration,
+			)
+			player2 := newPlayer(
+				nil,
+				activeMatchOutput.Item["Player2"].(*types.AttributeValueMemberS).Value,
+				BLACK_SIDE,
+				config.MatchDuration,
+			)
+			match := s.newMatch(matchId, player1, player2, config)
+			s.matches.Store(matchId, match)
+			logging.Info("match initialized")
+			return match, nil
+		}
+
 		clock1, _ := time.ParseDuration(matchStateOutput.Item[""].(*types.AttributeValueMemberS).Value)
 		clock2, _ := time.ParseDuration(matchStateOutput.Item[""].(*types.AttributeValueMemberS).Value)
 		player1 := newPlayer(

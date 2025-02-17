@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -37,10 +38,10 @@ type matchResponse struct {
 }
 
 type gameStateResponse struct {
-	Outcome string          `json:"outcome"`
-	Method  string          `json:"method"`
-	Fen     string          `json:"fen"`
-	Clocks  []time.Duration `json:"clocks"`
+	Outcome string   `json:"outcome"`
+	Method  string   `json:"method"`
+	Fen     string   `json:"fen"`
+	Clocks  []string `json:"clocks"`
 }
 
 type errorResponse struct {
@@ -54,7 +55,7 @@ func (match *Match) start() {
 		if !exist {
 			player.Conn.WriteJSON(errorResponse{
 				Type:  "error",
-				Error: ErrStatusInvalidPlayerId,
+				Error: ErrStatusInvalidPlayerHandler,
 			})
 			continue
 		}
@@ -65,10 +66,10 @@ func (match *Match) start() {
 		case AGREEMENT:
 			match.game.Draw(chess.DrawOffer)
 		default:
-			if player.Handler != match.getCurrentTurnPlayer().Handler {
+			if expectedHandler := match.getCurrentTurnPlayer().Handler; player.Handler != expectedHandler {
 				player.Conn.WriteJSON(errorResponse{
 					Type:  "error",
-					Error: ErrStatusWrongTurn,
+					Error: fmt.Sprintf("%s: want %s - got %s", ErrStatusWrongTurn, expectedHandler, player.Handler),
 				})
 				continue
 			}
@@ -86,14 +87,14 @@ func (match *Match) start() {
 			// If clock runs out, end the game
 			if player.Clock <= 0 {
 				match.game.outOfTime(player.Side)
-				logging.Info("out of time", zap.String("player_id", player.Handler))
+				logging.Info("out of time", zap.String("player_handler", player.Handler))
 			} else {
 				// else next turn
 				currentTurnPlayer := match.getCurrentTurnPlayer()
 				currentTurnPlayer.TurnStartedAt = time.Now()
 				match.setTimer(currentTurnPlayer.Clock)
 				logging.Info("new turn",
-					zap.String("player_id", currentTurnPlayer.Handler),
+					zap.String("player_handler", currentTurnPlayer.Handler),
 					zap.String("clock_w", match.players[0].Clock.String()),
 					zap.String("clock_b", match.players[1].Clock.String()),
 				)
@@ -104,7 +105,7 @@ func (match *Match) start() {
 			Outcome: match.game.outcome().String(),
 			Method:  match.game.method(),
 			Fen:     match.game.FEN(),
-			Clocks:  []time.Duration{match.players[0].Clock, match.players[1].Clock},
+			Clocks:  []string{match.players[0].Clock.String(), match.players[1].Clock.String()},
 		})
 
 		// Save game state
@@ -123,7 +124,7 @@ func (match *Match) start() {
 
 func (m *Match) notifyPlayers(resp gameStateResponse) {
 	for _, player := range m.players {
-		if player.Conn == nil {
+		if player == nil || player.Conn == nil {
 			continue
 		}
 		err := player.Conn.WriteJSON(matchResponse{
@@ -131,7 +132,7 @@ func (m *Match) notifyPlayers(resp gameStateResponse) {
 			GameState: resp,
 		})
 		if err != nil {
-			logging.Error("couldn't notify player: ", zap.String("player_id", player.Handler))
+			logging.Error("couldn't notify player: ", zap.String("player_handler", player.Handler))
 		}
 	}
 }
