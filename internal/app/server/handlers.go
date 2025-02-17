@@ -54,11 +54,8 @@ func (s *server) handleSaveGame(match *Match) {
 
 	_, err = lambdaClient.Invoke(context.TODO(), input)
 	if err != nil {
-		logging.Error("failed to invoke end game", zap.Error(err))
+		logging.Error("failed to invoke save game", zap.Error(err))
 	}
-
-	s.removeMatch(match.id)
-	logging.Info("match ended", zap.String("match_id", match.id))
 }
 
 // Handler for when a game match ends.
@@ -93,7 +90,7 @@ func (s *server) handleEndGame(match *Match) {
 	}
 
 	s.removeMatch(match.id)
-	logging.Info("game ended", zap.String("match_id", match.id))
+	logging.Info("match ended", zap.String("match_id", match.id))
 }
 
 // Handler for when a user connection closes
@@ -116,7 +113,7 @@ func (s *server) handlePlayerDisconnect(match *Match, playerHandler string) {
 		match.end()
 	} else {
 		// Else only set the timer for the disconnected player
-		logging.Info("player disconnected", zap.String("match_id", match.id), zap.String("player_id", player.Handler))
+		logging.Info("player disconnected", zap.String("match_id", match.id), zap.String("player_handler", player.Handler))
 		if !match.isEnded() {
 			match.setTimer(60 * time.Second)
 		}
