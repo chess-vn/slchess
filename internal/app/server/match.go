@@ -236,3 +236,15 @@ func configForGameMode(gameMode string) MatchConfig {
 		}
 	}
 }
+
+func (m *Match) calculatePlayerRatings() ([]float64, error) {
+	switch m.game.outcome() {
+	case chess.WhiteWon:
+		return []float64{m.players[0].Rating + m.players[0].RatingChanges[0], m.players[1].Rating + m.players[1].RatingChanges[2]}, nil
+	case chess.BlackWon:
+		return []float64{m.players[0].Rating + m.players[0].RatingChanges[2], m.players[1].Rating + m.players[1].RatingChanges[0]}, nil
+	case chess.Draw:
+		return []float64{m.players[0].Rating + m.players[0].RatingChanges[1], m.players[1].Rating + m.players[1].RatingChanges[1]}, nil
+	}
+	return nil, ErrGameNotEnded
+}

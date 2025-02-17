@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"time"
 
@@ -62,31 +61,47 @@ func (s *server) handleSaveGame(match *Match) {
 func (s *server) handleEndGame(match *Match) {
 	cfg, err := config.LoadDefaultConfig(context.Background())
 	if err != nil {
-		log.Fatalf("unable to load SDK config, %v", err)
+		logging.Fatal("unable to load SDK config", zap.Error(err))
 	}
 	lambdaClient := lambda.NewFromConfig(cfg)
 
-	payload := map[string]interface{}{
-		"matchId": match.id,
-		"player1": match.players[0].Handler,
-		"player2": match.players[1].Handler,
-	}
-	payloadJson, err := json.Marshal(payload)
+	newRatings, err := match.calculatePlayerRatings()
 	if err != nil {
-		fmt.Println("Error:", err)
-		return
+		logging.Fatal("failed to invoke end game", zap.Error(err))
+	}
+	matchRecord := entities.MatchRecord{
+		MatchId: match.id,
+		Players: []entities.PlayerRecord{
+			{
+				Handler:   match.players[0].Handler,
+				OldRating: match.players[0].Rating,
+				NewRating: newRatings[0],
+			},
+			{
+				Handler:   match.players[1].Handler,
+				OldRating: match.players[1].Rating,
+				NewRating: newRatings[1],
+			},
+		},
+		Pgn:       match.game.String(),
+		StartedAt: match.startAt,
+		EndedAt:   time.Now(),
+	}
+	payload, err := json.Marshal(matchRecord)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	// Invoke Lambda function
 	input := &lambda.InvokeInput{
 		FunctionName:   aws.String(s.config.EndGameFunctionName),
-		Payload:        payloadJson,
+		Payload:        payload,
 		InvocationType: types.InvocationTypeEvent,
 	}
 
 	_, err = lambdaClient.Invoke(context.TODO(), input)
 	if err != nil {
-		logging.Error("failed to invoke end game", zap.Error(err))
+		logging.Fatal("failed to invoke end game", zap.Error(err))
 	}
 
 	s.removeMatch(match.id)

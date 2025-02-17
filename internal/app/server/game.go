@@ -76,6 +76,8 @@ type move struct {
 
 type player struct {
 	Handler       string
+	Rating        float64
+	RatingChanges []float64
 	Conn          *websocket.Conn
 	Side          Side
 	Status        Status
@@ -83,13 +85,15 @@ type player struct {
 	TurnStartedAt time.Time
 }
 
-func newPlayer(conn *websocket.Conn, handler string, side Side, clock time.Duration) player {
+func newPlayer(conn *websocket.Conn, handler string, side Side, clock time.Duration, rating float64, ratingChanges []float64) player {
 	player := player{
-		Handler: handler,
-		Conn:    conn,
-		Side:    side,
-		Status:  INIT,
-		Clock:   clock,
+		Handler:       handler,
+		Rating:        rating,
+		RatingChanges: ratingChanges,
+		Conn:          conn,
+		Side:          side,
+		Status:        INIT,
+		Clock:         clock,
 	}
 	return player
 }

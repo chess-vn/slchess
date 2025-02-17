@@ -8,18 +8,13 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/chess-vn/slchess/internal/domains/entities"
 )
 
 var dynamoClient *dynamodb.Client
-
-// Define event structure (if known)
-type EndGameEvent struct {
-	MatchId string `json:"matchId"`
-	Player1 string `json:"player1"`
-	Player2 string `json:"player2"`
-}
 
 func init() {
 	cfg, _ := config.LoadDefaultConfig(context.TODO())
@@ -27,39 +22,50 @@ func init() {
 }
 
 func handler(ctx context.Context, event json.RawMessage) {
-	// Or use a struct
-	var endGameEvent EndGameEvent
-	json.Unmarshal(event, &endGameEvent)
+	var matchRecord entities.MatchRecord
+	json.Unmarshal(event, &matchRecord)
 
-	_, err := dynamoClient.DeleteItem(context.TODO(), &dynamodb.DeleteItemInput{
+	_, err := dynamoClient.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String("ActiveMatches"),
 		Key: map[string]types.AttributeValue{
-			"MatchId": &types.AttributeValueMemberS{Value: endGameEvent.MatchId},
+			"MatchId": &types.AttributeValueMemberS{Value: matchRecord.MatchId},
 		},
 	})
 	if err != nil {
 		log.Fatalf("Failed to handle end game: %v", err)
 	}
 
-	_, err = dynamoClient.DeleteItem(context.TODO(), &dynamodb.DeleteItemInput{
+	_, err = dynamoClient.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String("UserMatches"),
 		Key: map[string]types.AttributeValue{
-			"UserHandler": &types.AttributeValueMemberS{Value: endGameEvent.Player1},
+			"UserHandler": &types.AttributeValueMemberS{Value: matchRecord.Players[0].Handler},
 		},
 	})
 	if err != nil {
 		log.Fatalf("Failed to handle end game: %v", err)
 	}
 
-	_, err = dynamoClient.DeleteItem(context.TODO(), &dynamodb.DeleteItemInput{
+	_, err = dynamoClient.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String("UserMatches"),
 		Key: map[string]types.AttributeValue{
-			"UserHandler": &types.AttributeValueMemberS{Value: endGameEvent.Player2},
+			"UserHandler": &types.AttributeValueMemberS{Value: matchRecord.Players[1].Handler},
 		},
 	})
 	if err != nil {
 		log.Fatalf("Failed to handle end game: %v", err)
 	}
+
+	av, err := attributevalue.MarshalMap(matchRecord)
+	if err != nil {
+		log.Fatalf("Failed to handle end game: %v", err)
+	}
+
+	dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: aws.String("MatchRecords"),
+		Item:      av,
+	})
+
+	// TODO: calculate new rating for both players
 }
 
 func main() {

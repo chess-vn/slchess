@@ -12,8 +12,10 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/chess-vn/slchess/internal/domains/entities"
 	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
@@ -155,8 +157,8 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 	if activeMatchOutput.Item == nil {
 		return nil, fmt.Errorf("match not found: %s", matchId)
 	}
-
-	gameMode := activeMatchOutput.Item["GameMode"].(*types.AttributeValueMemberS).Value
+	var activeMatch entities.ActiveMatch
+	attributevalue.UnmarshalMap(activeMatchOutput.Item, &activeMatch)
 
 	value, loaded := s.matches.Load(matchId)
 	if loaded {
@@ -165,6 +167,7 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 			logging.Info("match loaded")
 			return match, nil
 		}
+		return nil, ErrFailedToLoadMatch
 	} else {
 		matchStateOutput, err := dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
 			TableName: aws.String("MatchStates"),
@@ -179,48 +182,43 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 			return nil, err
 		}
 
-		config := configForGameMode(gameMode)
+		var matchState entities.MatchState
+		attributevalue.UnmarshalMap(matchStateOutput.Item, &matchState)
+
+		config := configForGameMode(activeMatch.GameMode)
+		var clock1 time.Duration
+		var clock2 time.Duration
 
 		// Initialize match if there is no match state data
 		if matchStateOutput.Item == nil {
-			player1 := newPlayer(
-				nil,
-				activeMatchOutput.Item["Player1"].(*types.AttributeValueMemberS).Value,
-				WHITE_SIDE,
-				config.MatchDuration,
-			)
-			player2 := newPlayer(
-				nil,
-				activeMatchOutput.Item["Player2"].(*types.AttributeValueMemberS).Value,
-				BLACK_SIDE,
-				config.MatchDuration,
-			)
-			match := s.newMatch(matchId, player1, player2, config)
-			s.matches.Store(matchId, match)
+			clock1 = config.MatchDuration
+			clock2 = config.MatchDuration
 			logging.Info("match initialized")
-			return match, nil
+		} else {
+			clock1, _ = time.ParseDuration(matchState.Players[0].Clock)
+			clock2, _ = time.ParseDuration(matchState.Players[1].Clock)
+			logging.Info("match resumed")
 		}
-
-		clock1, _ := time.ParseDuration(matchStateOutput.Item[""].(*types.AttributeValueMemberS).Value)
-		clock2, _ := time.ParseDuration(matchStateOutput.Item[""].(*types.AttributeValueMemberS).Value)
 		player1 := newPlayer(
 			nil,
-			matchStateOutput.Item["Player1"].(*types.AttributeValueMemberS).Value,
+			activeMatch.Player1.Handler,
 			WHITE_SIDE,
 			clock1,
+			activeMatch.Player1.Rating,
+			activeMatch.Player1.RatingChanges,
 		)
 		player2 := newPlayer(
 			nil,
-			matchStateOutput.Item["Player2"].(*types.AttributeValueMemberS).Value,
+			activeMatch.Player2.Handler,
 			BLACK_SIDE,
 			clock2,
+			activeMatch.Player2.Rating,
+			activeMatch.Player2.RatingChanges,
 		)
 		match := s.newMatch(matchId, player1, player2, config)
 		s.matches.Store(matchId, match)
-		logging.Info("match resumed")
+		return match, nil
 	}
-
-	return nil, ErrFailedToLoadMatch
 }
 
 func (s *server) newMatch(matchId string, player1, player2 player, config MatchConfig) *Match {
