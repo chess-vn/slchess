@@ -1,0 +1,107 @@
+openapi: 3.1.0
+info:
+  title: Slchess API
+  version: 1.0.0
+  description: API for interacting with Slchess Backend.
+servers:
+  - url: http://slchess.vn
+    description: Slchess Server
+paths:
+  /matchmaking:
+    post:
+      summary: Request matchmaking
+      description: Submit a matchmaking request with player rating and game mode.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rating:
+                  type: integer
+                  example: 1050
+                minRating:
+                  type: integer
+                  example: 900
+                maxRating:
+                  type: integer
+                  example: 1250
+                gameMode:
+                  type: string
+                  example: "10min"
+              required:
+                - rating
+                - minRating
+                - maxRating
+                - gameMode
+      responses:
+        "200":
+          description: Match found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  MatchId:
+                    type: string
+                    format: uuid
+                    example: "6ef44066-8c3e-4d3e-b1a1-bb36c16098f2"
+                  Player1:
+                    type: object
+                    properties:
+                      Handler:
+                        type: string
+                        example: "testuser1"
+                      Rating:
+                        type: integer
+                        example: 1050
+                      RD:
+                        type: integer
+                        example: 0
+                      RatingChanges:
+                        type: array
+                        items:
+                          type: integer
+                        example: [10, 0, -10]
+                  Player2:
+                    type: object
+                    properties:
+                      Handler:
+                        type: string
+                        example: "testuser2"
+                      Rating:
+                        type: integer
+                        example: 1050
+                      RD:
+                        type: integer
+                        example: 0
+                      RatingChanges:
+                        type: array
+                        items:
+                          type: integer
+                        example: [10, 0, -10]
+                  GameMode:
+                    type: string
+                    example: "10min"
+                  Server:
+                    type: string
+                    example: "54.79.195.246"
+                  CreatedAt:
+                    type: string
+                    format: date-time
+                    example: "2025-02-18T06:36:13.519760767Z"
+        "202":
+          description: Queued for matchmaking
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Queued"
+        "400":
+          description: Bad request
+        "500":
+          description: Internal server error
