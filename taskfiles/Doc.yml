@@ -1,0 +1,34 @@
+version: "3"
+
+tasks:
+  api:
+    desc: View HTTP api documentation in Swagger UI
+    ignore_error: true
+    vars:
+      detach:
+        sh: echo $DETACH
+    cmds:
+      - |
+        set +e
+        docker inspect slchess-api > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+          docker start {{if not .detach}}-a{{end}} slchess-api
+        else
+          docker run {{if .detach}}-d{{end}} -p 7101:8080 -e SWAGGER_JSON=/openapi.yaml -v ./docs/api/http/openapi.yaml:/openapi.yaml --name slchess-api swaggerapi/swagger-ui
+        fi
+
+  wapi:
+    desc: View Websocket api documentation in Swagger UI
+    ignore_error: true
+    vars:
+      detach:
+        sh: echo $DETACH
+    cmds:
+      - |
+        set +e
+        docker inspect slchess-wapi > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+          docker start {{if not .detach}}-a{{end}} slchess-wapi
+        else
+          docker run {{if .detach}}-d{{end}} -p 7102:80 -v $(pwd)/docs/api/websocket:/usr/share/nginx/html --name slchess-wapi nginx:alpine
+        fi
