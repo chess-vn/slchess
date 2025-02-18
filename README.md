@@ -2,13 +2,13 @@
 
 ## Overview
 
-This project is a backend server for a gaming platform, designed using AWS SAM, Golang, go-task, Docker, and Swagger OpenAPI. The server is designed to handle multiple concurrent chess matches, integrate matchmaking based on ELO ratings, and provide real-time updates to players via WebSockets. The architecture leverages AWS Fargate for serverless container management, providing scalability and flexibility.
+This project is a backend server for a gaming platform, designed using AWS SAM, Golang, task, Docker, and Swagger OpenAPI. The server is designed to handle multiple concurrent chess matches, integrate matchmaking based on ELO ratings, and provide real-time updates to players via WebSockets. The architecture leverages AWS Fargate for serverless container management, providing scalability and flexibility.
 
 ## Technologies
 
 - **Golang**: The backend is written in Go, providing a highly performant and concurrent platform for handling game logic and matchmaking.
 - **AWS SAM (Serverless Application Model)**: Used for defining and deploying serverless applications.
-- **go-task**: Task runner for automating common development tasks such as building, testing, and running Docker containers.
+- **task**: Task runner for automating common development tasks such as building, testing, and running Docker containers.
 - **Docker**: Containers are used to package and deploy the application in a consistent environment.
 - **Swagger OpenAPI**: API documentation and design system for defining and visualizing the application's WebSocket and RESTful APIs.
 
@@ -28,9 +28,9 @@ This project is a backend server for a gaming platform, designed using AWS SAM, 
 ├── events/               # Events to test local lambda function
 ├── internal/
 ├── pkg/
-├── taskfiles/            # Taskfiles for go-task
+├── taskfiles/            # Taskfiles for task
 ├── test/                 # Files for testing
-├── Taskfile.yml          # go-task command definitions
+├── Taskfile.yml          # task command definitions
 ├── compose.yml           # Docker compose file for game server
 ├── samconfig.yaml        # AWS SAM config file (auto-generated)
 ├── template.yaml         # AWS SAM template file to define AWS CloudFormation stack
@@ -47,22 +47,22 @@ Before you begin, ensure you have the following installed:
 - [AWS CLI](https://aws.amazon.com/cli/)
 - [AWS SAM CLI](https://aws.amazon.com/serverless/sam/)
 - [Docker](https://www.docker.com/products/docker-desktop)
-- [go-task](https://taskfile.dev/)
+- [task](https://taskfile.dev/)
 
 ### Run game server locally
 
 ```bash
-go-task server:local
+task server:local
 ```
 
 ### Run game server in docker container
 
 ```bash
 # Start
-go-task server:up
+task server:up
 
 # Stop
-go-task server:down
+task server:down
 ```
 
 ### Deploy with AWS SAM
@@ -70,13 +70,13 @@ go-task server:down
 1. Build the application:
 
    ```bash
-   go-task stack:build
+   task stack:build
    ```
 
 2. Deploy the application:
 
    ```bash
-   go-task stack:deploy
+   task stack:deploy
    ```
 
 ### Test functionalities
@@ -86,7 +86,7 @@ go-task server:down
 1. Get test user credentials:
 
    ```bash
-   go-task cognito:test-authenticate-users
+   task cognito:test-authenticate-users
    ```
 
 2. Copy the tokens to HTTP Authorization header and send
@@ -103,10 +103,10 @@ To run the Swagger UI locally, use the following command:
 
 ```bash
 # Run HTTP API container
-go-task doc:api
+task doc:api
 
 # Run WebSocket API container
-go-task doc:awpi
+task doc:awpi
 ```
 
 ## Contributing
