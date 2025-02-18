@@ -16,3 +16,4 @@ includes:
   stack: ./taskfiles/Stack.yml
   server: ./taskfiles/Server.yml
   env: ./taskfiles/Env.yml
+  doc: ./taskfiles/Doc.yml
