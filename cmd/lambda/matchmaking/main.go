@@ -24,7 +24,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	snsTypes "github.com/aws/aws-sdk-go-v2/service/sns/types"
 	"github.com/chess-vn/slchess/internal/domains/entities"
+	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/chess-vn/slchess/pkg/utils"
+	"go.uber.org/zap"
 )
 
 var (
@@ -56,91 +58,104 @@ func init() {
 
 // Handle matchmaking requests
 func handler(event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	v, exists := event.RequestContext.Authorizer["claims"]
-	if !exists {
-		return events.APIGatewayProxyResponse{
-			StatusCode: 401,
-			Body:       fmt.Sprintf("%v", event.RequestContext),
-		}, nil
-	}
+	userHandler := mustAuth(event.RequestContext.Authorizer)
 
 	// Start game server beforehand if none available
-	if err := checkAndStartServer(); err != nil {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-			Body:       "Failed to start game server",
-		}, nil
+	if err := checkAndStartServer(ctx); err != nil {
+		logging.Error("Failed to start game server", zap.Error(err))
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
 	}
 
-	claims := v.(map[string]interface{})
-	userHandler := claims["cognito:username"].(string)
-
-	var data map[string]interface{}
-	json.Unmarshal([]byte(event.Body), &data)
-	userRating := data["rating"].(float64)
-	ratingLowerBound := data["lower_bound"].(float64)
-	ratingUpperBound := data["upper_bound"].(float64)
-	userRd := data["rd"].(float64)
-	gameMode := data["game_mode"].(string)
+	// Extract and validate matchmaking ticket
+	var ticket entities.MatchmakingTicket
+	if err := json.Unmarshal([]byte(event.Body), &ticket); err != nil {
+		logging.Error("Failed to extract ticket", zap.Error(err))
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest}, nil
+	}
+	if err := ticket.Validate(); err != nil {
+		logging.Error("Invalid ticket", zap.Error(err))
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest}, nil
+	}
+	ticket.UserHandler = userHandler
 
 	// Check if user already in a match
 	match, exist, err := checkForActiveMatch(ctx, userHandler)
 	if err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: 500, Body: fmt.Sprintf("Matchmaking error: %v", err)}, nil
+		logging.Error("Failed to check for active match", zap.Error(err))
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
 	}
 	if exist {
 		data, _ := json.Marshal(match)
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusConflict, Body: string(data)}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(data)}, nil
 	}
 
 	// Attempt matchmaking
-	minRating := userRating + ratingLowerBound
-	maxRating := userRating + ratingUpperBound
-	log.Printf("Attempt matchmaking in rating range: %f - %f\n", minRating, maxRating)
-	opponents, err := findOpponents(entities.MatchmakingTicket{
-		UserHandler: userHandler,
-		Rating:      userRating,
-		MinRating:   minRating,
-		MaxRating:   maxRating,
-		RD:          userRd,
-		GameMode:    gameMode,
-	})
+	logging.Info("Attempt matchmaking", zap.Float64("minRating", ticket.MinRating), zap.Float64("maxRating", ticket.MaxRating))
+	opponents, err := findOpponents(ticket)
 	if err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: 500, Body: fmt.Sprintf("Matchmaking error: %v", err)}, nil
+		logging.Error("Failed to find opponents", zap.Error(err))
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
 	}
 
 	// If no match found, queue the player by caching the matchmaking ticket
 	if len(opponents) == 0 {
-		log.Println("No match found. Start queuing")
+		logging.Info("No match found. Start queuing")
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusAccepted, Body: "Queued"}, nil
 	}
 
 	user := entities.Player{
-		Handler: userHandler,
-		Rating:  userRating,
-		RD:      userRd,
+		Handler: ticket.UserHandler,
+		Rating:  ticket.Rating,
+		RD:      ticket.RD,
 	}
-	var errs []error
+
 	// Try to create new match
 	for _, opponent := range opponents {
-		match, err := createMatch(ctx, user, opponent, gameMode)
+		match, err := createMatch(ctx, user, opponent, ticket.GameMode)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("%s: %v", opponent.Handler, err))
+			logging.Error("Failed to create match",
+				zap.String("user", user.Handler),
+				zap.String("opponent", opponent.Handler),
+				zap.Error(err),
+			)
 			continue
 		}
-		log.Printf("Match found: %s: %s - %s\n", match.MatchId, match.Player1.Handler, match.Player2.Handler)
+		logging.Info("Match found",
+			zap.String("matchId", match.MatchId),
+			zap.String("player1", match.Player1.Handler),
+			zap.String("player2", match.Player2.Handler),
+		)
 		matchJson, _ := json.Marshal(match)
 
 		// Notify the opponent about the match
 		err = notifyUser(userHandler, matchJson)
 		if err != nil {
-			log.Printf("Failed to notify user %s:%v\n", opponent.Handler, err)
+			logging.Error("Failed to notify user",
+				zap.String("userHandler", opponent.Handler),
+				zap.Error(err),
+			)
 		}
 
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusCreated, Body: string(matchJson)}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(matchJson)}, nil
 	}
 
-	return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: fmt.Sprintf("%v", errs)}, nil
+	return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+}
+
+func mustAuth(authorizer map[string]interface{}) string {
+	v, exists := authorizer["claims"]
+	if !exists {
+		panic("no authorizer claims")
+	}
+	claims, ok := v.(map[string]interface{})
+	if !ok {
+		panic("claims must be of type map")
+	}
+	userHandler, ok := claims["cognito:username"].(string)
+	if !ok {
+		panic("invalid user handler")
+	}
+	return userHandler
 }
 
 // Matchmaking function using go-redis commands
@@ -202,7 +217,7 @@ func createMatch(ctx context.Context, user, opponent entities.Player, gameMode s
 		if err == nil {
 			break
 		}
-		<-time.After(10 * time.Second)
+		<-time.After(5 * time.Second)
 	}
 	if err != nil {
 		return entities.ActiveMatch{}, err
@@ -278,7 +293,7 @@ func createMatch(ctx context.Context, user, opponent entities.Player, gameMode s
 }
 
 func checkForActiveMatch(ctx context.Context, userHandler string) (entities.ActiveMatch, bool, error) {
-	output, err := dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
+	userMatchOutput, err := dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String("UserMatches"),
 		Key: map[string]types.AttributeValue{
 			"UserHandler": &types.AttributeValueMemberS{
@@ -290,42 +305,34 @@ func checkForActiveMatch(ctx context.Context, userHandler string) (entities.Acti
 	if err != nil {
 		return entities.ActiveMatch{}, false, err
 	}
-	if output.Item == nil {
+	if userMatchOutput.Item == nil {
 		return entities.ActiveMatch{}, false, nil
 	}
 
-	matchId := output.Item["MatchId"].(*types.AttributeValueMemberS).Value
+	var userMatch entities.UserMatch
+	if err := attributevalue.UnmarshalMap(userMatchOutput.Item, &userMatch); err != nil {
+		return entities.ActiveMatch{}, false, err
+	}
 
-	output, err = dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
+	activeMatchOutput, err := dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String("ActiveMatches"),
 		Key: map[string]types.AttributeValue{
-			"MatchId": &types.AttributeValueMemberS{Value: matchId},
+			"MatchId": &types.AttributeValueMemberS{Value: userMatch.MatchId},
 		},
 		ConsistentRead: aws.Bool(true),
 	})
 	if err != nil {
 		return entities.ActiveMatch{}, false, err
 	}
-	if output.Item == nil {
+	if activeMatchOutput.Item == nil {
 		return entities.ActiveMatch{}, false, nil
 	}
 
-	createdAt, err := time.Parse(timeLayout, output.Item["CreatedAt"].(*types.AttributeValueMemberS).Value)
-	if err != nil {
+	var activeMatch entities.ActiveMatch
+	if err := attributevalue.UnmarshalMap(userMatchOutput.Item, activeMatch); err != nil {
 		return entities.ActiveMatch{}, false, err
 	}
-	return entities.ActiveMatch{
-		MatchId: matchId,
-		Player1: entities.Player{
-			Handler: output.Item["Player1"].(*types.AttributeValueMemberS).Value,
-		},
-		Player2: entities.Player{
-			Handler: output.Item["Player2"].(*types.AttributeValueMemberS).Value,
-		},
-		GameMode:  output.Item["GameMode"].(*types.AttributeValueMemberS).Value,
-		Server:    output.Item["Server"].(*types.AttributeValueMemberS).Value,
-		CreatedAt: createdAt,
-	}, true, nil
+	return activeMatch, true, nil
 }
 
 func notifyUser(userHandler string, data []byte) error {
@@ -352,7 +359,7 @@ func notifyUser(userHandler string, data []byte) error {
 		return fmt.Errorf("failed to publish message to SNS: %v", err)
 	}
 	if result != nil {
-		log.Printf("Message published to SNS: %s\n", *result.MessageId)
+		logging.Info("Message published to SNS: %s\n", zap.String("id", *result.MessageId))
 	}
 
 	return nil
@@ -408,17 +415,7 @@ func getServerIp(ctx context.Context, clusterName, serviceName string) (string, 
 	return *eniResp.NetworkInterfaces[0].Association.PublicIp, nil
 }
 
-func checkAndStartServer() error {
-	ctx := context.TODO()
-
-	// Load AWS Config
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
-	if err != nil {
-		return fmt.Errorf("failed to load AWS config: %w", err)
-	}
-
-	ecsClient := ecs.NewFromConfig(cfg)
-
+func checkAndStartServer(ctx context.Context) error {
 	// Check running task count
 	listTasksOutput, err := ecsClient.ListTasks(ctx, &ecs.ListTasksInput{
 		Cluster:       aws.String(clusterName),
@@ -431,7 +428,7 @@ func checkAndStartServer() error {
 
 	// If no tasks are running, scale service to 1
 	if len(listTasksOutput.TaskArns) == 0 {
-		fmt.Println("No running tasks found. Scaling up ECS service...")
+		logging.Info("No running tasks found. Scaling up ECS service...")
 
 		_, err := ecsClient.UpdateService(ctx, &ecs.UpdateServiceInput{
 			Cluster:      aws.String(clusterName),
@@ -441,10 +438,9 @@ func checkAndStartServer() error {
 		if err != nil {
 			return fmt.Errorf("failed to update ECS desired count: %w", err)
 		}
-
-		fmt.Println("ECS service scaled to 1 instance.")
+		logging.Info("ECS service scaled to 1 instance.")
 	} else {
-		fmt.Println("ECS service already running, no scaling needed.")
+		logging.Info("ECS service already running, no scaling needed.")
 	}
 
 	return nil

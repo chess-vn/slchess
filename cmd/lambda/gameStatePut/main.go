@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"log"
 
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -11,6 +10,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/chess-vn/slchess/internal/domains/entities"
+	"github.com/chess-vn/slchess/pkg/logging"
+	"go.uber.org/zap"
 )
 
 var dynamoClient *dynamodb.Client
@@ -22,11 +23,13 @@ func init() {
 
 func handler(ctx context.Context, event json.RawMessage) {
 	var matchState entities.MatchState
-	json.Unmarshal(event, &matchState)
+	if err := json.Unmarshal(event, &matchState); err != nil {
+		logging.Fatal("Failed to save match state", zap.Error(err))
+	}
 
 	av, err := attributevalue.MarshalMap(matchState)
 	if err != nil {
-		log.Fatalf("Failed to save match state: %v", err)
+		logging.Fatal("Failed to save match state", zap.Error(err))
 	}
 
 	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
@@ -34,7 +37,7 @@ func handler(ctx context.Context, event json.RawMessage) {
 		Item:      av,
 	})
 	if err != nil {
-		log.Fatalf("Failed to save match state: %v", err)
+		logging.Fatal("Failed to save match state", zap.Error(err))
 	}
 }
 
