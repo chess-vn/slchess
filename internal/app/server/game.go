@@ -69,13 +69,13 @@ func (g *game) method() string {
 }
 
 type move struct {
-	playerHanlder string
-	uci           string
-	control       GameControl
+	playerId string
+	uci      string
+	control  GameControl
 }
 
 type player struct {
-	Handler       string
+	Id            string
 	Rating        float64
 	RatingChanges []float64
 	Conn          *websocket.Conn
@@ -85,9 +85,9 @@ type player struct {
 	TurnStartedAt time.Time
 }
 
-func newPlayer(conn *websocket.Conn, handler string, side Side, clock time.Duration, rating float64, ratingChanges []float64) player {
+func newPlayer(conn *websocket.Conn, playerId string, side Side, clock time.Duration, rating float64, ratingChanges []float64) player {
 	player := player{
-		Handler:       handler,
+		Id:            playerId,
 		Rating:        rating,
 		RatingChanges: ratingChanges,
 		Conn:          conn,

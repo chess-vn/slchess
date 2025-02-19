@@ -6,12 +6,12 @@ import (
 )
 
 type MatchmakingTicket struct {
-	UserHandler string  `dynamodbav:"UserHandler"`
-	Rating      float64 `dynamodbav:"Rating" json:"rating"`
-	MinRating   float64 `dynamodbav:"MinRating" json:"minRating"`
-	MaxRating   float64 `dynamodbav:"MaxRating" json:"maxRating"`
-	RD          float64 `dynamodbav:"RD" json:"rd"`
-	GameMode    string  `dynamodbav:"GameMode" json:"gameMode"`
+	UserId    string  `dynamodbav:"UserId"`
+	Rating    float64 `dynamodbav:"Rating" json:"rating"`
+	MinRating float64 `dynamodbav:"MinRating" json:"minRating"`
+	MaxRating float64 `dynamodbav:"MaxRating" json:"maxRating"`
+	RD        float64 `dynamodbav:"RD" json:"rd"`
+	GameMode  string  `dynamodbav:"GameMode" json:"gameMode"`
 }
 
 type ActiveMatch struct {
@@ -24,15 +24,15 @@ type ActiveMatch struct {
 }
 
 type Player struct {
-	Handler       string    `dynamodbav:"Handler"`
+	Id            string    `dynamodbav:"Id"`
 	Rating        float64   `dynamodbav:"Rating"`
 	RD            float64   `dynamodbav:"RD"`
 	RatingChanges []float64 `dynamodbav:"RatingChanges"`
 }
 
 type UserMatch struct {
-	UserHandler string `dynamodbav:"UserHandler"`
-	MatchId     string `dynamodbav:"MatchId"`
+	UserId  string `dynamodbav:"UserId"`
+	MatchId string `dynamodbav:"MatchId"`
 }
 
 type PlayerState struct {
@@ -48,7 +48,7 @@ type MatchState struct {
 }
 
 type PlayerRecord struct {
-	Handler   string  `dynamodbav:"Id" json:"id"`
+	Id        string  `dynamodbav:"Id" json:"id"`
 	OldRating float64 `dynamodbav:"Rating" json:"rating"`
 	NewRating float64 `dynamodbav:"NewRating" json:"newRating"`
 }

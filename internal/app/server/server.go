@@ -61,7 +61,7 @@ func NewServer() *server {
 // Start method    starts the game server
 func (s *server) Start() error {
 	http.HandleFunc("/game/{matchId}", func(w http.ResponseWriter, r *http.Request) {
-		playerHandler, err := s.auth(r)
+		playerId, err := s.auth(r)
 		if err != nil {
 			w.WriteHeader(http.StatusUnauthorized)
 			w.Write([]byte(err.Error()))
@@ -83,7 +83,7 @@ func (s *server) Start() error {
 			logging.Error("failed to load match", zap.String("error", err.Error()))
 			return
 		}
-		s.handlePlayerJoin(conn, match, playerHandler)
+		s.handlePlayerJoin(conn, match, playerId)
 
 		for {
 			_, message, err := conn.ReadMessage()
@@ -95,7 +95,7 @@ func (s *server) Start() error {
 				} else {
 					logging.Info("ws message read error", zap.String("remote_address", conn.RemoteAddr().String()), zap.Error(err))
 				}
-				s.handlePlayerDisconnect(match, playerHandler)
+				s.handlePlayerDisconnect(match, playerId)
 				break
 			}
 
@@ -103,14 +103,14 @@ func (s *server) Start() error {
 			if err := json.Unmarshal(message, &payload); err != nil {
 				conn.Close()
 			}
-			s.handleWebSocketMessage(playerHandler, match, payload)
+			s.handleWebSocketMessage(playerId, match, payload)
 		}
 	})
 	logging.Info("websocket server started", zap.String("port", s.config.Port))
 	return http.ListenAndServe(s.address, nil)
 }
 
-// mustAuth method    authenticates and extract userHandler
+// mustAuth method    authenticates and extract userId
 func (s *server) auth(r *http.Request) (string, error) {
 	token := r.Header.Get("Authorization")
 	if token == "" {
@@ -124,15 +124,15 @@ func (s *server) auth(r *http.Request) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("invalid map claims")
 	}
-	v, ok := mapClaims["cognito:username"]
+	v, ok := mapClaims["sub"]
 	if !ok {
-		return "", fmt.Errorf("user handler not found")
+		return "", fmt.Errorf("user id not found")
 	}
-	userHandler, ok := v.(string)
+	userId, ok := v.(string)
 	if !ok {
-		return "", fmt.Errorf("invalid user handler")
+		return "", fmt.Errorf("invalid user id")
 	}
-	return userHandler, nil
+	return userId, nil
 }
 
 // loadMatch method    loads match with corresponding matchId.
@@ -201,7 +201,7 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 		}
 		player1 := newPlayer(
 			nil,
-			activeMatch.Player1.Handler,
+			activeMatch.Player1.Id,
 			WHITE_SIDE,
 			clock1,
 			activeMatch.Player1.Rating,
@@ -209,7 +209,7 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 		)
 		player2 := newPlayer(
 			nil,
-			activeMatch.Player2.Handler,
+			activeMatch.Player2.Id,
 			BLACK_SIDE,
 			clock2,
 			activeMatch.Player2.Rating,

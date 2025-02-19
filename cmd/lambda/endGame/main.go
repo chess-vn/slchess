@@ -42,7 +42,7 @@ func handler(ctx context.Context, event json.RawMessage) {
 	_, err = dynamoClient.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String("UserMatches"),
 		Key: map[string]types.AttributeValue{
-			"UserHandler": &types.AttributeValueMemberS{Value: matchRecord.Players[0].Handler},
+			"UserId": &types.AttributeValueMemberS{Value: matchRecord.Players[0].Id},
 		},
 	})
 	if err != nil {
@@ -52,7 +52,7 @@ func handler(ctx context.Context, event json.RawMessage) {
 	_, err = dynamoClient.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String("UserMatches"),
 		Key: map[string]types.AttributeValue{
-			"UserHandler": &types.AttributeValueMemberS{Value: matchRecord.Players[1].Handler},
+			"UserId": &types.AttributeValueMemberS{Value: matchRecord.Players[1].Id},
 		},
 	})
 	if err != nil {

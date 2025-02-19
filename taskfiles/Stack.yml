@@ -43,6 +43,7 @@ tasks:
     deps: [utils:check-base-env]
     vars:
       HANDLERS:
+        - PostUserConfirmationFunction
         - GameStatePutFunction
         - EndGameFunction
         - MatchmakingFunction
