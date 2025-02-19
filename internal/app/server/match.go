@@ -51,11 +51,11 @@ type errorResponse struct {
 
 func (match *Match) start() {
 	for move := range match.moveCh {
-		player, exist := match.getPlayerWithHandler(move.playerHanlder)
+		player, exist := match.getPlayerWithId(move.playerId)
 		if !exist {
 			player.Conn.WriteJSON(errorResponse{
 				Type:  "error",
-				Error: ErrStatusInvalidPlayerHandler,
+				Error: ErrStatusInvalidPlayerId,
 			})
 			continue
 		}
@@ -66,10 +66,10 @@ func (match *Match) start() {
 		case AGREEMENT:
 			match.game.Draw(chess.DrawOffer)
 		default:
-			if expectedHandler := match.getCurrentTurnPlayer().Handler; player.Handler != expectedHandler {
+			if expectedId := match.getCurrentTurnPlayer().Id; player.Id != expectedId {
 				player.Conn.WriteJSON(errorResponse{
 					Type:  "error",
-					Error: fmt.Sprintf("%s: want %s - got %s", ErrStatusWrongTurn, expectedHandler, player.Handler),
+					Error: fmt.Sprintf("%s: want %s - got %s", ErrStatusWrongTurn, expectedId, player.Id),
 				})
 				continue
 			}
@@ -87,14 +87,14 @@ func (match *Match) start() {
 			// If clock runs out, end the game
 			if player.Clock <= 0 {
 				match.game.outOfTime(player.Side)
-				logging.Info("out of time", zap.String("player_handler", player.Handler))
+				logging.Info("out of time", zap.String("player_id", player.Id))
 			} else {
 				// else next turn
 				currentTurnPlayer := match.getCurrentTurnPlayer()
 				currentTurnPlayer.TurnStartedAt = time.Now()
 				match.setTimer(currentTurnPlayer.Clock)
 				logging.Info("new turn",
-					zap.String("player_handler", currentTurnPlayer.Handler),
+					zap.String("player_id", currentTurnPlayer.Id),
 					zap.String("clock_w", match.players[0].Clock.String()),
 					zap.String("clock_b", match.players[1].Clock.String()),
 				)
@@ -132,14 +132,14 @@ func (m *Match) notifyPlayers(resp gameStateResponse) {
 			GameState: resp,
 		})
 		if err != nil {
-			logging.Error("couldn't notify player: ", zap.String("player_handler", player.Handler))
+			logging.Error("couldn't notify player: ", zap.String("player_id", player.Id))
 		}
 	}
 }
 
-func (m *Match) getPlayerWithHandler(handler string) (*player, bool) {
+func (m *Match) getPlayerWithId(id string) (*player, bool) {
 	for _, player := range m.players {
-		if player.Handler == handler {
+		if player.Id == id {
 			return player, true
 		}
 	}
@@ -153,18 +153,18 @@ func (m *Match) getCurrentTurnPlayer() *player {
 	return m.players[1]
 }
 
-func (m *Match) processMove(playerHandler, moveUci string) {
+func (m *Match) processMove(playerId, moveUci string) {
 	m.moveCh <- move{
-		playerHanlder: playerHandler,
-		uci:           moveUci,
-		control:       NONE,
+		playerId: playerId,
+		uci:      moveUci,
+		control:  NONE,
 	}
 }
 
-func (m *Match) processGameControl(playerHandler string, control GameControl) {
+func (m *Match) processGameControl(playerId string, control GameControl) {
 	m.moveCh <- move{
-		playerHanlder: playerHandler,
-		control:       control,
+		playerId: playerId,
+		control:  control,
 	}
 }
 
@@ -235,4 +235,16 @@ func configForGameMode(gameMode string) MatchConfig {
 			CancelTimeout: 30 * time.Second,
 		}
 	}
+}
+
+func (m *Match) calculatePlayerRatings() ([]float64, error) {
+	switch m.game.outcome() {
+	case chess.WhiteWon:
+		return []float64{m.players[0].Rating + m.players[0].RatingChanges[0], m.players[1].Rating + m.players[1].RatingChanges[2]}, nil
+	case chess.BlackWon:
+		return []float64{m.players[0].Rating + m.players[0].RatingChanges[2], m.players[1].Rating + m.players[1].RatingChanges[0]}, nil
+	case chess.Draw:
+		return []float64{m.players[0].Rating + m.players[0].RatingChanges[1], m.players[1].Rating + m.players[1].RatingChanges[1]}, nil
+	}
+	return nil, ErrGameNotEnded
 }

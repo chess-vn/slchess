@@ -3,9 +3,12 @@ package server
 import "errors"
 
 var (
-	ErrStatusInvalidMove          string = "INVALID_MOVE"
-	ErrStatusInvalidPlayerHandler string = "INVALID_PLAYER_HANDLER"
-	ErrStatusWrongTurn            string = "WRONG_TURN"
+	ErrStatusInvalidMove     string = "INVALID_MOVE"
+	ErrStatusInvalidPlayerId string = "INVALID_PLAYER_ID"
+	ErrStatusWrongTurn       string = "WRONG_TURN"
 )
 
-var ErrFailedToLoadMatch = errors.New("failed to load match")
+var (
+	ErrFailedToLoadMatch = errors.New("failed to load match")
+	ErrGameNotEnded      = errors.New("game not ended")
+)

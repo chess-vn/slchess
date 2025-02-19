@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"time"
 
@@ -62,31 +61,47 @@ func (s *server) handleSaveGame(match *Match) {
 func (s *server) handleEndGame(match *Match) {
 	cfg, err := config.LoadDefaultConfig(context.Background())
 	if err != nil {
-		log.Fatalf("unable to load SDK config, %v", err)
+		logging.Fatal("unable to load SDK config", zap.Error(err))
 	}
 	lambdaClient := lambda.NewFromConfig(cfg)
 
-	payload := map[string]interface{}{
-		"matchId": match.id,
-		"player1": match.players[0].Handler,
-		"player2": match.players[1].Handler,
-	}
-	payloadJson, err := json.Marshal(payload)
+	newRatings, err := match.calculatePlayerRatings()
 	if err != nil {
-		fmt.Println("Error:", err)
-		return
+		logging.Fatal("failed to invoke end game", zap.Error(err))
+	}
+	matchRecord := entities.MatchRecord{
+		MatchId: match.id,
+		Players: []entities.PlayerRecord{
+			{
+				Id:        match.players[0].Id,
+				OldRating: match.players[0].Rating,
+				NewRating: newRatings[0],
+			},
+			{
+				Id:        match.players[1].Id,
+				OldRating: match.players[1].Rating,
+				NewRating: newRatings[1],
+			},
+		},
+		Pgn:       match.game.String(),
+		StartedAt: match.startAt,
+		EndedAt:   time.Now(),
+	}
+	payload, err := json.Marshal(matchRecord)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	// Invoke Lambda function
 	input := &lambda.InvokeInput{
 		FunctionName:   aws.String(s.config.EndGameFunctionName),
-		Payload:        payloadJson,
+		Payload:        payload,
 		InvocationType: types.InvocationTypeEvent,
 	}
 
 	_, err = lambdaClient.Invoke(context.TODO(), input)
 	if err != nil {
-		logging.Error("failed to invoke end game", zap.Error(err))
+		logging.Fatal("failed to invoke end game", zap.Error(err))
 	}
 
 	s.removeMatch(match.id)
@@ -94,14 +109,14 @@ func (s *server) handleEndGame(match *Match) {
 }
 
 // Handler for when a user connection closes
-func (s *server) handlePlayerDisconnect(match *Match, playerHandler string) {
+func (s *server) handlePlayerDisconnect(match *Match, playerId string) {
 	if match == nil {
 		return
 	}
 
-	player, exist := match.getPlayerWithHandler(playerHandler)
+	player, exist := match.getPlayerWithId(playerId)
 	if !exist {
-		logging.Fatal("invalid player handler", zap.String("player_handler", playerHandler))
+		logging.Fatal("invalid player id", zap.String("player_id", playerId))
 		return
 	}
 	player.Conn = nil
@@ -113,21 +128,21 @@ func (s *server) handlePlayerDisconnect(match *Match, playerHandler string) {
 		match.end()
 	} else {
 		// Else only set the timer for the disconnected player
-		logging.Info("player disconnected", zap.String("match_id", match.id), zap.String("player_handler", player.Handler))
+		logging.Info("player disconnected", zap.String("match_id", match.id), zap.String("player_id", player.Id))
 		if !match.isEnded() {
 			match.setTimer(60 * time.Second)
 		}
 	}
 }
 
-func (s *server) handlePlayerJoin(conn *websocket.Conn, match *Match, playerHandler string) {
+func (s *server) handlePlayerJoin(conn *websocket.Conn, match *Match, playerId string) {
 	if match == nil {
 		return
 	}
 
-	player, exist := match.getPlayerWithHandler(playerHandler)
+	player, exist := match.getPlayerWithId(playerId)
 	if !exist {
-		logging.Fatal("invalid player handler", zap.String("player_handler", playerHandler))
+		logging.Fatal("invalid player id", zap.String("player_id", playerId))
 		return
 	}
 	if player.Status == INIT && player.Side == WHITE_SIDE {
@@ -139,7 +154,7 @@ func (s *server) handlePlayerJoin(conn *websocket.Conn, match *Match, playerHand
 	player.Status = CONNECTED
 
 	logging.Info("player connected",
-		zap.String("player_handler", playerHandler),
+		zap.String("player_id", playerId),
 		zap.String("match_id", match.id),
 	)
 }
