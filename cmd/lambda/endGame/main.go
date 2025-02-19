@@ -68,7 +68,33 @@ func handler(ctx context.Context, event json.RawMessage) {
 		Item:      av,
 	})
 
-	// TODO: calculate new rating for both players
+	userRating := entities.UserRating{
+		UserId: matchRecord.Players[0].Id,
+		Rating: matchRecord.Players[0].NewRating,
+		RD:     200,
+	}
+	userRatingAv, err := attributevalue.MarshalMap(userRating)
+	if err != nil {
+		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
+	}
+	dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: aws.String("UserRatings"),
+		Item:      userRatingAv,
+	})
+
+	userRating = entities.UserRating{
+		UserId: matchRecord.Players[1].Id,
+		Rating: matchRecord.Players[1].NewRating,
+		RD:     200,
+	}
+	userRatingAv, err = attributevalue.MarshalMap(userRating)
+	if err != nil {
+		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
+	}
+	dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: aws.String("UserRatings"),
+		Item:      userRatingAv,
+	})
 }
 
 func main() {
