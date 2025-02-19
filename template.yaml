@@ -238,6 +238,8 @@ Resources:
             TableName: UserMatches
         - DynamoDBCrudPolicy:
             TableName: ActiveMatches
+        - DynamoDBCrudPolicy:
+            TableName: MatchResults
         - EcsRunTaskPolicy:
             TaskDefinition: !Ref SlchessServerDefinition
         - Statement:
@@ -344,6 +346,18 @@ Resources:
           AttributeType: S
       KeySchema:
         - AttributeName: MatchId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  MatchResults:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: MatchResults
+      AttributeDefinitions:
+        - AttributeName: UserId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: UserId
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 

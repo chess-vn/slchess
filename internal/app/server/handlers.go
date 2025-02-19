@@ -65,7 +65,7 @@ func (s *server) handleEndGame(match *Match) {
 	}
 	lambdaClient := lambda.NewFromConfig(cfg)
 
-	newRatings, err := match.calculatePlayerRatings()
+	newRatings, newRDs, err := match.getNewPlayerRatings()
 	if err != nil {
 		logging.Fatal("failed to invoke end game", zap.Error(err))
 	}
@@ -76,11 +76,13 @@ func (s *server) handleEndGame(match *Match) {
 				Id:        match.players[0].Id,
 				OldRating: match.players[0].Rating,
 				NewRating: newRatings[0],
+				NewRD:     newRDs[0],
 			},
 			{
 				Id:        match.players[1].Id,
 				OldRating: match.players[1].Rating,
 				NewRating: newRatings[1],
+				NewRD:     newRDs[1],
 			},
 		},
 		Pgn:       match.game.String(),

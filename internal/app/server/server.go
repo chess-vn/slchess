@@ -205,7 +205,8 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 			WHITE_SIDE,
 			clock1,
 			activeMatch.Player1.Rating,
-			activeMatch.Player1.RatingChanges,
+			activeMatch.Player1.NewRatings,
+			activeMatch.Player1.NewRDs,
 		)
 		player2 := newPlayer(
 			nil,
@@ -213,7 +214,8 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 			BLACK_SIDE,
 			clock2,
 			activeMatch.Player2.Rating,
-			activeMatch.Player2.RatingChanges,
+			activeMatch.Player2.NewRatings,
+			activeMatch.Player1.NewRDs,
 		)
 		match := s.newMatch(matchId, player1, player2, config)
 		s.matches.Store(matchId, match)

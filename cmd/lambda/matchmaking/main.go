@@ -72,8 +72,13 @@ func handler(event events.APIGatewayProxyRequest) (events.APIGatewayProxyRespons
 		logging.Error("Failed to extract ticket", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest}, nil
 	}
-	if err := ticket.Validate(); err != nil {
-		logging.Error("Invalid ticket", zap.Error(err))
+	userRating, err := getUserRating(userId)
+	if err != nil {
+		logging.Error("Failed to get user rating", zap.Error(err))
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+	}
+	if userRating.Rating < ticket.MinRating || userRating.Rating > ticket.MaxRating {
+		logging.Error("Invalid matchmaking ticket", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest}, nil
 	}
 	ticket.UserId = userId
@@ -91,31 +96,25 @@ func handler(event events.APIGatewayProxyRequest) (events.APIGatewayProxyRespons
 
 	// Attempt matchmaking
 	logging.Info("Attempt matchmaking", zap.Float64("minRating", ticket.MinRating), zap.Float64("maxRating", ticket.MaxRating))
-	opponents, err := findOpponents(ticket)
+	opponentIds, err := findOpponents(ticket)
 	if err != nil {
 		logging.Error("Failed to find opponents", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
 	}
 
 	// If no match found, queue the player by caching the matchmaking ticket
-	if len(opponents) == 0 {
+	if len(opponentIds) == 0 {
 		logging.Info("No match found. Start queuing")
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusAccepted, Body: "Queued"}, nil
 	}
 
-	user := entities.Player{
-		Id:     ticket.UserId,
-		Rating: ticket.Rating,
-		RD:     ticket.RD,
-	}
-
 	// Try to create new match
-	for _, opponent := range opponents {
-		match, err := createMatch(ctx, user, opponent, ticket.GameMode)
+	for _, opponentId := range opponentIds {
+		match, err := createMatch(ctx, userRating, opponentId, ticket.GameMode)
 		if err != nil {
 			logging.Error("Failed to create match",
-				zap.String("user", user.Id),
-				zap.String("opponent", opponent.Id),
+				zap.String("user", userId),
+				zap.String("opponent", opponentId),
 				zap.Error(err),
 			)
 			continue
@@ -131,7 +130,7 @@ func handler(event events.APIGatewayProxyRequest) (events.APIGatewayProxyRespons
 		err = notifyUser(userId, matchJson)
 		if err != nil {
 			logging.Error("Failed to notify user",
-				zap.String("userId", opponent.Id),
+				zap.String("userId", opponentId),
 				zap.Error(err),
 			)
 		}
@@ -159,7 +158,7 @@ func mustAuth(authorizer map[string]interface{}) string {
 }
 
 // Matchmaking function using go-redis commands
-func findOpponents(ticket entities.MatchmakingTicket) ([]entities.Player, error) {
+func findOpponents(ticket entities.MatchmakingTicket) ([]string, error) {
 	output, err := dynamoClient.Scan(ctx, &dynamodb.ScanInput{
 		TableName:        aws.String("MatchmakingTickets"),
 		FilterExpression: aws.String("MinRating >= :minRating AND MaxRating <= :maxRating AND GameMode = :gameMode"),
@@ -179,17 +178,13 @@ func findOpponents(ticket entities.MatchmakingTicket) ([]entities.Player, error)
 		return nil, err
 	}
 
-	var opponents []entities.Player
+	var opponentIds []string
 	if output.Count > 0 {
 		for _, opTicket := range tickets {
 			if opTicket.UserId == ticket.UserId {
 				continue
 			}
-			opponents = append(opponents, entities.Player{
-				Id:     opTicket.UserId,
-				Rating: opTicket.Rating,
-				RD:     opTicket.RD,
-			})
+			opponentIds = append(opponentIds, opTicket.UserId)
 		}
 	} else {
 		// No match found, add the user ticket to the queue
@@ -203,10 +198,10 @@ func findOpponents(ticket entities.MatchmakingTicket) ([]entities.Player, error)
 		}
 	}
 
-	return opponents, nil
+	return opponentIds, nil
 }
 
-func createMatch(ctx context.Context, user, opponent entities.Player, gameMode string) (entities.ActiveMatch, error) {
+func createMatch(ctx context.Context, userRating entities.UserRating, opponentId, gameMode string) (entities.ActiveMatch, error) {
 	// Try to wait till the server is running
 	var (
 		serverIp string
@@ -224,9 +219,8 @@ func createMatch(ctx context.Context, user, opponent entities.Player, gameMode s
 	}
 
 	match := entities.ActiveMatch{
-		MatchId:   utils.GenerateUUID(),
-		Player1:   user,
-		Player2:   opponent,
+		MatchId: utils.GenerateUUID(),
+
 		GameMode:  gameMode,
 		Server:    serverIp,
 		CreatedAt: time.Now(),
@@ -237,14 +231,14 @@ func createMatch(ctx context.Context, user, opponent entities.Player, gameMode s
 		TableName:           aws.String("UserMatches"),
 		ConditionExpression: aws.String("attribute_not_exists(UserId)"),
 		Item: map[string]types.AttributeValue{
-			"UserId":  &types.AttributeValueMemberS{Value: opponent.Id},
+			"UserId":  &types.AttributeValueMemberS{Value: opponentId},
 			"MatchId": &types.AttributeValueMemberS{Value: match.MatchId},
 		},
 	})
 	if err != nil {
 		var condCheckFailed *types.ConditionalCheckFailedException
 		if errors.As(err, &condCheckFailed) {
-			return entities.ActiveMatch{}, fmt.Errorf("user already in a match: %s", opponent.Id)
+			return entities.ActiveMatch{}, fmt.Errorf("user already in a match: %s", opponentId)
 		}
 		return entities.ActiveMatch{}, err
 	}
@@ -253,20 +247,37 @@ func createMatch(ctx context.Context, user, opponent entities.Player, gameMode s
 		TableName:           aws.String("UserMatches"),
 		ConditionExpression: aws.String("attribute_not_exists(UserId)"),
 		Item: map[string]types.AttributeValue{
-			"UserId":  &types.AttributeValueMemberS{Value: user.Id},
+			"UserId":  &types.AttributeValueMemberS{Value: userRating.UserId},
 			"MatchId": &types.AttributeValueMemberS{Value: match.MatchId},
 		},
 	})
 	if err != nil {
 		var condCheckFailed *types.ConditionalCheckFailedException
 		if errors.As(err, &condCheckFailed) {
-			return entities.ActiveMatch{}, fmt.Errorf("user already in a match: %s", user.Id)
+			return entities.ActiveMatch{}, fmt.Errorf("user already in a match: %s", userRating.UserId)
 		}
 		return entities.ActiveMatch{}, err
 	}
 
-	match.Player1.RatingChanges = calculateRatingChange(match.Player1, match.Player2.Rating)
-	match.Player2.RatingChanges = calculateRatingChange(match.Player2, match.Player1.Rating)
+	opponentRating, err := getUserRating(opponentId)
+	if err != nil {
+		return entities.ActiveMatch{}, err
+	}
+	newRatings, newRDs, err := calculateNewRatings(ctx, userRating, opponentRating)
+	if err != nil {
+		return entities.ActiveMatch{}, err
+	}
+	match.Player1 = entities.Player{
+		Id:         userRating.UserId,
+		Rating:     userRating.Rating,
+		NewRatings: newRatings,
+		NewRDs:     newRDs,
+	}
+	match.Player2 = entities.Player{
+		Id:         opponentRating.UserId,
+		Rating:     opponentRating.Rating,
+		NewRatings: []float64{},
+	}
 	matchAv, err := attributevalue.MarshalMap(match)
 	if err != nil {
 		log.Fatalf("Failed to save match state: %v", err)
@@ -283,7 +294,7 @@ func createMatch(ctx context.Context, user, opponent entities.Player, gameMode s
 	_, err = dynamoClient.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String("MatchmakingTickets"),
 		Key: map[string]types.AttributeValue{
-			"UserId": &types.AttributeValueMemberS{Value: opponent.Id},
+			"UserId": &types.AttributeValueMemberS{Value: opponentId},
 		},
 	})
 	if err != nil {
@@ -446,8 +457,21 @@ func checkAndStartServer(ctx context.Context) error {
 	return nil
 }
 
-func calculateRatingChange(player entities.Player, opRating float64) []float64 {
-	return []float64{10.0, 0, -10.0}
+func getUserRating(userId string) (entities.UserRating, error) {
+	userRatingOutput, err := dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String("UserRatings"),
+		Key: map[string]types.AttributeValue{
+			"UserId": &types.AttributeValueMemberS{Value: userId},
+		},
+	})
+	if err != nil {
+		return entities.UserRating{}, err
+	}
+	var userRating entities.UserRating
+	if err := attributevalue.UnmarshalMap(userRatingOutput.Item, &userRating); err != nil {
+		return entities.UserRating{}, err
+	}
+	return userRating, nil
 }
 
 func main() {

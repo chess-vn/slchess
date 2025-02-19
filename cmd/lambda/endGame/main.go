@@ -71,7 +71,7 @@ func handler(ctx context.Context, event json.RawMessage) {
 	userRating := entities.UserRating{
 		UserId: matchRecord.Players[0].Id,
 		Rating: matchRecord.Players[0].NewRating,
-		RD:     200,
+		RD:     matchRecord.Players[0].NewRD,
 	}
 	userRatingAv, err := attributevalue.MarshalMap(userRating)
 	if err != nil {
@@ -85,7 +85,7 @@ func handler(ctx context.Context, event json.RawMessage) {
 	userRating = entities.UserRating{
 		UserId: matchRecord.Players[1].Id,
 		Rating: matchRecord.Players[1].NewRating,
-		RD:     200,
+		RD:     matchRecord.Players[1].NewRD,
 	}
 	userRatingAv, err = attributevalue.MarshalMap(userRating)
 	if err != nil {

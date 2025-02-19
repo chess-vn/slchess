@@ -1,16 +1,13 @@
 package entities
 
 import (
-	"fmt"
 	"time"
 )
 
 type MatchmakingTicket struct {
 	UserId    string  `dynamodbav:"UserId"`
-	Rating    float64 `dynamodbav:"Rating" json:"rating"`
 	MinRating float64 `dynamodbav:"MinRating" json:"minRating"`
 	MaxRating float64 `dynamodbav:"MaxRating" json:"maxRating"`
-	RD        float64 `dynamodbav:"RD" json:"rd"`
 	GameMode  string  `dynamodbav:"GameMode" json:"gameMode"`
 }
 
@@ -24,10 +21,10 @@ type ActiveMatch struct {
 }
 
 type Player struct {
-	Id            string    `dynamodbav:"Id"`
-	Rating        float64   `dynamodbav:"Rating"`
-	RD            float64   `dynamodbav:"RD"`
-	RatingChanges []float64 `dynamodbav:"RatingChanges"`
+	Id         string    `dynamodbav:"Id"`
+	Rating     float64   `dynamodbav:"Rating"`
+	NewRatings []float64 `dynamodbav:"NewRatings"`
+	NewRDs     []float64 `dynamodbav:"NewRDs"`
 }
 
 type UserMatch struct {
@@ -51,6 +48,7 @@ type PlayerRecord struct {
 	Id        string  `dynamodbav:"Id" json:"id"`
 	OldRating float64 `dynamodbav:"Rating" json:"rating"`
 	NewRating float64 `dynamodbav:"NewRating" json:"newRating"`
+	NewRD     float64 `json:"newRD"`
 }
 
 type MatchRecord struct {
@@ -61,9 +59,12 @@ type MatchRecord struct {
 	EndedAt   time.Time      `dynamodbav:"EndedAt" json:"endedAt"`
 }
 
-func (t *MatchmakingTicket) Validate() error {
-	if t.MinRating > t.Rating || t.MaxRating < t.Rating {
-		return fmt.Errorf("invalid rating range")
-	}
-	return nil
+type MatchResult struct {
+	UserId         string  `dynamodbav:"UserId"`
+	MatchId        string  `dynamodbav:"MatchId"`
+	OpponentId     string  `dynamodbav:"OpponentId"`
+	OpponentRating float64 `dynamodbav:"OpponentRating"`
+	OpponentRD     float64 `dynamodbav:"OpponentRD"`
+	Result         float64 `dynamodbav:"Result"`
+	Timestamp      string  `dynamodbav:"Timestamp"`
 }
