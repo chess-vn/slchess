@@ -23,6 +23,7 @@ type ActiveMatch struct {
 type Player struct {
 	Id         string    `dynamodbav:"Id"`
 	Rating     float64   `dynamodbav:"Rating"`
+	RD         float64   `dynamodbav:"RD"`
 	NewRatings []float64 `dynamodbav:"NewRatings"`
 	NewRDs     []float64 `dynamodbav:"NewRDs"`
 }
@@ -48,6 +49,7 @@ type PlayerRecord struct {
 	Id        string  `dynamodbav:"Id" json:"id"`
 	OldRating float64 `dynamodbav:"Rating" json:"rating"`
 	NewRating float64 `dynamodbav:"NewRating" json:"newRating"`
+	OldRD     float64 `json:"oldRD"`
 	NewRD     float64 `json:"newRD"`
 }
 
@@ -57,6 +59,7 @@ type MatchRecord struct {
 	Pgn       string         `dynamodbav:"Pgn" json:"pgn"`
 	StartedAt time.Time      `dynamodbav:"StartedAt" json:"startedAt"`
 	EndedAt   time.Time      `dynamodbav:"EndedAt" json:"endedAt"`
+	Results   []float64      `json:"results"`
 }
 
 type MatchResult struct {

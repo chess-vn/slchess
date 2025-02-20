@@ -13,6 +13,7 @@ import (
 	"github.com/chess-vn/slchess/internal/domains/entities"
 	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/gorilla/websocket"
+	"github.com/notnil/chess"
 	"go.uber.org/zap"
 )
 
@@ -76,6 +77,7 @@ func (s *server) handleEndGame(match *Match) {
 				Id:        match.players[0].Id,
 				OldRating: match.players[0].Rating,
 				NewRating: newRatings[0],
+				OldRD:     match.players[0].RD,
 				NewRD:     newRDs[0],
 			},
 			{
@@ -83,11 +85,20 @@ func (s *server) handleEndGame(match *Match) {
 				OldRating: match.players[1].Rating,
 				NewRating: newRatings[1],
 				NewRD:     newRDs[1],
+				OldRD:     match.players[1].RD,
 			},
 		},
 		Pgn:       match.game.String(),
 		StartedAt: match.startAt,
 		EndedAt:   time.Now(),
+	}
+	switch match.game.outcome() {
+	case chess.WhiteWon:
+		matchRecord.Results = []float64{1.0, 0.0}
+	case chess.BlackWon:
+		matchRecord.Results = []float64{0.0, 1.0}
+	case chess.Draw:
+		matchRecord.Results = []float64{0.5, 0.5}
 	}
 	payload, err := json.Marshal(matchRecord)
 	if err != nil {

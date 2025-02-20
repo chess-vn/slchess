@@ -205,6 +205,7 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 			WHITE_SIDE,
 			clock1,
 			activeMatch.Player1.Rating,
+			activeMatch.Player1.RD,
 			activeMatch.Player1.NewRatings,
 			activeMatch.Player1.NewRDs,
 		)
@@ -214,6 +215,7 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 			BLACK_SIDE,
 			clock2,
 			activeMatch.Player2.Rating,
+			activeMatch.Player2.RD,
 			activeMatch.Player2.NewRatings,
 			activeMatch.Player1.NewRDs,
 		)
