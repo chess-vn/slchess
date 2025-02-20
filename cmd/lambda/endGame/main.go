@@ -64,10 +64,13 @@ func handler(ctx context.Context, event json.RawMessage) {
 	if err != nil {
 		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
 	}
-	dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
+	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String("MatchRecords"),
 		Item:      av,
 	})
+	if err != nil {
+		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
+	}
 
 	player1Rating := entities.UserRating{
 		UserId: matchRecord.Players[0].Id,
@@ -78,10 +81,13 @@ func handler(ctx context.Context, event json.RawMessage) {
 	if err != nil {
 		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
 	}
-	dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
+	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String("UserRatings"),
 		Item:      player1RatingAv,
 	})
+	if err != nil {
+		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
+	}
 
 	player2Rating := entities.UserRating{
 		UserId: matchRecord.Players[1].Id,
@@ -92,10 +98,13 @@ func handler(ctx context.Context, event json.RawMessage) {
 	if err != nil {
 		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
 	}
-	dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
+	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String("UserRatings"),
 		Item:      player2RatingAv,
 	})
+	if err != nil {
+		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
+	}
 
 	player1MatchResult := entities.MatchResult{
 		UserId:         matchRecord.Players[0].Id,
@@ -111,10 +120,13 @@ func handler(ctx context.Context, event json.RawMessage) {
 	if err != nil {
 		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
 	}
-	dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String("UserRatings"),
+	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: aws.String("MatchResults"),
 		Item:      player1MatchResultAv,
 	})
+	if err != nil {
+		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
+	}
 
 	player2MatchResult := entities.MatchResult{
 		UserId:         matchRecord.Players[1].Id,
@@ -130,10 +142,13 @@ func handler(ctx context.Context, event json.RawMessage) {
 	if err != nil {
 		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
 	}
-	dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String("UserRatings"),
+	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: aws.String("MatchResults"),
 		Item:      player2MatchResultAv,
 	})
+	if err != nil {
+		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
+	}
 }
 
 func main() {

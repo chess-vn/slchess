@@ -46,8 +46,8 @@ func handler(ctx context.Context, event events.CognitoEventUserPoolsPostConfirma
 	// Default user rating
 	userRating := entities.UserRating{
 		UserId: userId,
-		Rating: 200,
-		RD:     350,
+		Rating: 1200,
+		RD:     200,
 	}
 	userRatingAv, err := attributevalue.MarshalMap(userRating)
 	if err != nil {

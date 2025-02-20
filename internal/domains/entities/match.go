@@ -23,9 +23,9 @@ type ActiveMatch struct {
 type Player struct {
 	Id         string    `dynamodbav:"Id"`
 	Rating     float64   `dynamodbav:"Rating"`
-	RD         float64   `dynamodbav:"RD"`
+	RD         float64   `dynamodbav:"RD" json:"-"`
 	NewRatings []float64 `dynamodbav:"NewRatings"`
-	NewRDs     []float64 `dynamodbav:"NewRDs"`
+	NewRDs     []float64 `dynamodbav:"NewRDs" json:"-"`
 }
 
 type UserMatch struct {

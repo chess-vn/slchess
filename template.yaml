@@ -204,6 +204,10 @@ Resources:
             TableName: MatchStates
         - DynamoDBCrudPolicy:
             TableName: MatchRecords
+        - DynamoDBCrudPolicy:
+            TableName: MatchResults
+        - DynamoDBCrudPolicy:
+            TableName: UserRatings
 
   GameStatePutFunction:
     Type: AWS::Serverless::Function
