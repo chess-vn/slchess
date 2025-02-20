@@ -50,7 +50,7 @@ func calculateNewRatings(ctx context.Context, userRating, opponentRating entitie
 		TableName:              aws.String("MatchResults"),
 		KeyConditionExpression: aws.String("UserId = :userId"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":playerId": &types.AttributeValueMemberS{Value: userRating.UserId},
+			":userId": &types.AttributeValueMemberS{Value: userRating.UserId},
 		},
 		ScanIndexForward: aws.Bool(false), // Sort by timestamp DESCENDING (most recent first)
 		Limit:            aws.Int32(2),

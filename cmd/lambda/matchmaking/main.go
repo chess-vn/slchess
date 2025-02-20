@@ -219,8 +219,7 @@ func createMatch(ctx context.Context, userRating entities.UserRating, opponentId
 	}
 
 	match := entities.ActiveMatch{
-		MatchId: utils.GenerateUUID(),
-
+		MatchId:   utils.GenerateUUID(),
 		GameMode:  gameMode,
 		Server:    serverIp,
 		CreatedAt: time.Now(),
@@ -259,25 +258,37 @@ func createMatch(ctx context.Context, userRating entities.UserRating, opponentId
 		return entities.ActiveMatch{}, err
 	}
 
+	// Pre-calculate players' rating in each possible outcome
 	opponentRating, err := getUserRating(opponentId)
 	if err != nil {
 		return entities.ActiveMatch{}, err
 	}
-	newRatings, newRDs, err := calculateNewRatings(ctx, userRating, opponentRating)
+
+	newUserRatings, newUserRDs, err := calculateNewRatings(ctx, userRating, opponentRating)
 	if err != nil {
 		return entities.ActiveMatch{}, err
 	}
 	match.Player1 = entities.Player{
 		Id:         userRating.UserId,
 		Rating:     userRating.Rating,
-		NewRatings: newRatings,
-		NewRDs:     newRDs,
+		RD:         userRating.RD,
+		NewRatings: newUserRatings,
+		NewRDs:     newUserRDs,
+	}
+
+	newOpponentRatings, newOpponentRatingsRDs, err := calculateNewRatings(ctx, opponentRating, userRating)
+	if err != nil {
+		return entities.ActiveMatch{}, err
 	}
 	match.Player2 = entities.Player{
 		Id:         opponentRating.UserId,
 		Rating:     opponentRating.Rating,
-		NewRatings: []float64{},
+		RD:         opponentRating.RD,
+		NewRatings: newOpponentRatings,
+		NewRDs:     newOpponentRatingsRDs,
 	}
+
+	// Save match information
 	matchAv, err := attributevalue.MarshalMap(match)
 	if err != nil {
 		log.Fatalf("Failed to save match state: %v", err)
