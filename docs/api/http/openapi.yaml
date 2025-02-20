@@ -11,6 +11,12 @@ paths:
     post:
       summary: Request matchmaking
       description: Submit a matchmaking request with player rating and game mode.
+      headers:
+        Authorization:
+          description: Cognito IdToken for authentication
+          schema:
+            type: string
+            example: "eyJraWQiOiI2WkZjQUx1d2RrK01LRGN0R1poM3pwM2NTSDkwbHlSYUVsXC9iVkFJRlZkUT0iLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIzOWFlZjRiOC02MGMxLTcwZjAtZWNhOS1lMmU1Y2JkZjVlOTkiLCJlbWFpbF92ZXJpZmllZCI6ZmFsc2UsImlzcyI6Imh0dHBzOlwvXC9jb2duaXRvLWlkcC5hcC1zb3V0aGVhc3QtMi5hbWF6b25hd3MuY29tXC9hcC1zb3V0aGVhc3QtMl85eDlydkw3ekoiLCJjb2duaXRvOnVzZXJuYW1lIjoidGVzdHVzZXIxIiwib3JpZ2luX2p0aSI6IjVmMTk4MzQzLTYzOTEtNDAxYi1hYTI5LTY5Y2EwZTJmYzY0ZCIsImF1ZCI6IjVjbmcwdTlnNmZtM2MxanZrcTViaHF0MmxmIiwiZXZlbnRfaWQiOiJlNzU5N2Y3Ni1kYjYyLTQ4NGUtOWRhYS01Nzk4ZGFmNGE5YTIiLCJ0b2tlbl91c2UiOiJpZCIsImF1dGhfdGltZSI6MTc0MDAyNDY1NCwiZXhwIjoxNzQwMDI4MjU0LCJpYXQiOjE3NDAwMjQ2NTQsImp0aSI6ImM3N2EwM2MyLTY5MjItNDNjZC04NTQ4LWU4YzllNmM2YjRmOCIsImVtYWlsIjoidGVzdHVzZXIxQGdtYWlsLmNvbSJ9.Mhco3ZMEy672iYnmCql3sDH5zGDGMT0bF4hOedGrbAktEYtl9B3iPjfinx8aBY3NNGK2Gg5WopKfhw9GZpX1TcpEi_LV6aU0Thx_xYF28_Ou597X3l-Xe1wwviQf-JCxXzwfVPrms8zlkmXO621oQKvT1aVHvpwNmAOuoT-3dqHL_NZt5csLoo5K3Yuwiq5InqiFgwxJEv3Dt-9mTdjqq0DH1LbblNpXdnyjHANTK0u4HpGJ7oGUxuEYTh1p3JKU7fdkC3v31POBbYACUd4A6unmhPpSTAS6NOcKB0lNRuOvvko-m4X3E3er4XCP6Q1w2caCt5wnQnxPngYSm6TuUA"
       requestBody:
         required: true
         content:
@@ -18,9 +24,6 @@ paths:
             schema:
               type: object
               properties:
-                rating:
-                  type: integer
-                  example: 1050
                 minRating:
                   type: integer
                   example: 900
@@ -31,7 +34,6 @@ paths:
                   type: string
                   example: "10min"
               required:
-                - rating
                 - minRating
                 - maxRating
                 - gameMode
@@ -41,56 +43,60 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  MatchId:
-                    type: string
-                    format: uuid
-                    example: "6ef44066-8c3e-4d3e-b1a1-bb36c16098f2"
-                  Player1:
-                    type: object
-                    properties:
-                      Handler:
-                        type: string
-                        example: "testuser1"
-                      Rating:
+              type: object
+              properties:
+                MatchId:
+                  type: string
+                  format: uuid
+                  example: "a418b2c9-bccd-49b7-a646-536061113ddf"
+                Player1:
+                  type: object
+                  properties:
+                    Id:
+                      type: string
+                      example: "39aef4b8-60c1-70f0-eca9-e2e5cbdf5e99"
+                    Rating:
+                      type: integer
+                      example: 200
+                    NewRatings:
+                      type: array
+                      items:
                         type: integer
-                        example: 1050
-                      RD:
+                      example: [200, 200, 200]
+                    NewRDs:
+                      type: array
+                      items:
                         type: integer
-                        example: 0
-                      RatingChanges:
-                        type: array
-                        items:
-                          type: integer
-                        example: [10, 0, -10]
-                  Player2:
-                    type: object
-                    properties:
-                      Handler:
-                        type: string
-                        example: "testuser2"
-                      Rating:
+                      example: [0, 0, 0]
+                Player2:
+                  type: object
+                  properties:
+                    Id:
+                      type: string
+                      example: "199e84a8-6031-70c7-efe5-89fdf66ba8a6"
+                    Rating:
+                      type: integer
+                      example: 200
+                    NewRatings:
+                      type: array
+                      items:
                         type: integer
-                        example: 1050
-                      RD:
+                      example: [200, 200, 200]
+                    NewRDs:
+                      type: array
+                      items:
                         type: integer
-                        example: 0
-                      RatingChanges:
-                        type: array
-                        items:
-                          type: integer
-                        example: [10, 0, -10]
-                  GameMode:
-                    type: string
-                    example: "10min"
-                  Server:
-                    type: string
-                    example: "54.79.195.246"
-                  CreatedAt:
-                    type: string
-                    format: date-time
-                    example: "2025-02-18T06:36:13.519760767Z"
+                      example: [0, 0, 0]
+                GameMode:
+                  type: string
+                  example: "10min"
+                Server:
+                  type: string
+                  example: "13.211.190.175"
+                CreatedAt:
+                  type: string
+                  format: date-time
+                  example: "2025-02-20T04:25:37.975024301Z"
         "202":
           description: Queued for matchmaking
           content:

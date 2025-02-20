@@ -15,3 +15,17 @@ type User struct {
 	Membership string
 	CreatedAt  time.Time
 }
+
+type UserProfile struct {
+	UserId     string    `dynamodbav:"UserId"`
+	Phone      string    `dynamodbav:"Phone"`
+	Locale     string    `dynamodbav:"Locale"`
+	Membership string    `dynamodbav:"Membership"`
+	CreatedAt  time.Time `dynamodbav:"CreatedAt"`
+}
+
+type UserRating struct {
+	UserId string  `dynamodbav:"UserId"`
+	Rating float64 `dynamodbav:"Rating"`
+	RD     float64 `dynamodbav:"RD"`
+}
