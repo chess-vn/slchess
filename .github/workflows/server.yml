@@ -29,5 +29,5 @@ jobs:
           REPOSITORY: slchess/server
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -f server.dockerfile -t $REGISTRY/$REPOSITORY:$IMAGE_TAG .
+          docker build -f ./build/server/server.dockerfile -t $REGISTRY/$REPOSITORY:$IMAGE_TAG .
           docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG

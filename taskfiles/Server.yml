@@ -10,23 +10,23 @@ tasks:
   up:
     desc: Run the game server on docker container
     preconditions:
-      - test -f compose.yml
+      - test -f ./build/server/compose.yml
     cmds:
-      - docker compose up --build
+      - docker compose -f ./build/server/compose.yml up --build
 
   up-detach:
     desc: Run the game server on docker container in detach mode
     preconditions:
-      - test -f compose.yml
+      - test -f ./build/server/compose.yml
     cmds:
-      - docker compose up --build -d
+      - docker compose -f ./build/server/compose.yml up --build -d
 
   down:
     desc: Shutdown the game server docker container
     preconditions:
-      - test -f compose.yml
+      - test -f ./build/server/compose.yml
     cmds:
-      - docker compose down
+      - docker compose -f ./build/server/compose.yml down
 
   local:
     desc: Run the game server locally
