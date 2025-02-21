@@ -111,6 +111,12 @@ func (match *Match) start() {
 		// Save game state
 		match.save()
 
+		// Aborted because both player had disconnected
+		if match.isEnded() {
+			logging.Info("Game aborted", zap.String("matchId", match.id))
+			return
+		}
+
 		// Check if game ended
 		if match.game.Outcome() != chess.NoOutcome {
 			logging.Info("Game end by outcome",
@@ -135,6 +141,30 @@ func (m *Match) notifyPlayers(resp gameStateResponse) {
 			logging.Error("couldn't notify player: ", zap.String("player_id", player.Id))
 		}
 	}
+}
+
+func (m *Match) syncPlayer(player *player) {
+	err := player.Conn.WriteJSON(matchResponse{
+		Type: "game_state",
+		GameState: gameStateResponse{
+			Outcome: m.game.outcome().String(),
+			Method:  m.game.method(),
+			Fen:     m.game.FEN(),
+			Clocks:  []string{m.players[0].Clock.String(), m.players[1].Clock.String()},
+		},
+	})
+	if err != nil {
+		logging.Error("couldn't sync player: ", zap.String("player_id", player.Id))
+	}
+}
+
+func (m *Match) syncPlayerWithId(id string) {
+	player, exist := m.getPlayerWithId(id)
+	if !exist {
+		logging.Error("couldn't sync player: ", zap.String("player_id", player.Id))
+		return
+	}
+	m.syncPlayer(player)
 }
 
 func (m *Match) getPlayerWithId(id string) (*player, bool) {
@@ -216,6 +246,7 @@ func (m *Match) setTimer(d time.Duration) {
 // skipTimer method    skips timer by set timer to 0 duration timeout
 func (m *Match) skipTimer() {
 	if m.timer == nil {
+		logging.Info("clock nil", zap.String("match_id", m.id))
 		return
 	}
 	m.timer.Reset(0)
@@ -251,6 +282,10 @@ func (m *Match) getNewPlayerRatings() ([]float64, []float64, error) {
 		return []float64{m.players[0].NewRatings[1], m.players[1].NewRatings[1]},
 			[]float64{m.players[0].NewRDs[1], m.players[1].NewRDs[1]},
 			nil
+	case chess.NoOutcome:
+		return []float64{m.players[0].Rating, m.players[1].Rating},
+			[]float64{m.players[0].RD, m.players[1].RD},
+			nil
 	}
-	return nil, nil, ErrGameNotEnded
+	return nil, nil, ErrInvalidOutcome
 }

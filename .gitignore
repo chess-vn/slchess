@@ -1,2 +1,3 @@
 .aws-sam/
-configs/aws/
+configs/aws/*
+configs/e2e/*

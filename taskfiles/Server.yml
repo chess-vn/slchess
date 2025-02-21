@@ -13,6 +13,14 @@ tasks:
       - test -f compose.yml
     cmds:
       - docker compose up --build
+
+  up-detach:
+    desc: Run the game server on docker container in detach mode
+    preconditions:
+      - test -f compose.yml
+    cmds:
+      - docker compose up --build -d
+
   down:
     desc: Shutdown the game server docker container
     preconditions:

@@ -28,6 +28,7 @@ type server struct {
 
 	config  Config
 	matches sync.Map
+	mu      sync.Mutex
 
 	cognitoPublicKeys map[string]*rsa.PublicKey
 	shutdownTimer     *time.Timer
@@ -160,6 +161,9 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 	var activeMatch entities.ActiveMatch
 	attributevalue.UnmarshalMap(activeMatchOutput.Item, &activeMatch)
 
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	value, loaded := s.matches.Load(matchId)
 	if loaded {
 		match, ok := value.(*Match)
@@ -253,12 +257,12 @@ func (s *server) resetShutdownTimer() {
 	s.shutdownTimer = time.NewTimer(s.config.IdleTimeout)
 	go func() {
 		<-s.shutdownTimer.C
-		s.shutdown()
+		s.Shutdown()
 	}()
 	logging.Info("shutdowm timer set", zap.String("duration", s.config.IdleTimeout.String()))
 }
 
-func (s *server) shutdown() {
+func (s *server) Shutdown() {
 	logging.Info("server terminating")
 	s.matches.Range(func(key, value interface{}) bool {
 		match, ok := value.(*Match)

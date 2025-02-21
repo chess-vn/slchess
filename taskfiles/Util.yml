@@ -18,3 +18,9 @@ tasks:
     preconditions:
       - sh: "test -f ./configs/aws/lambda.env"
         msg: "lambda.env file not generated. Try running 'env:generate' task"
+
+  check-apigateway-env:
+    internal: true
+    preconditions:
+      - sh: "test -f ./configs/aws/apigateway.env"
+        msg: "apigateway.env file not generated. Try running 'env:generate' task"

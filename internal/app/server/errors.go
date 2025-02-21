@@ -10,5 +10,5 @@ var (
 
 var (
 	ErrFailedToLoadMatch = errors.New("failed to load match")
-	ErrGameNotEnded      = errors.New("game not ended")
+	ErrInvalidOutcome    = errors.New("invalid outcome")
 )
