@@ -23,18 +23,10 @@ jobs:
           sudo mv ./bin/task /usr/local/bin/task
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-southeast-2
-
-      - name: Verify AWS Configuration
         run: |
-          aws configure list
-          aws sts get-caller-identity
-          task env:base
-          task env:generate
+          aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws configure set region ap-southeast-2
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -46,5 +38,7 @@ jobs:
           REPOSITORY: slchess/server
           IMAGE_TAG: ${{ github.sha }}
         run: |
+          task env:base
+          task env:generate
           docker build -f ./build/server/server.dockerfile -t $REGISTRY/$REPOSITORY:$IMAGE_TAG .
           docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
