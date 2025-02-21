@@ -60,6 +60,9 @@ func (s *server) handleSaveGame(match *Match) {
 
 // Handler for when a game match ends.
 func (s *server) handleEndGame(match *Match) {
+	if match == nil {
+		return
+	}
 	cfg, err := config.LoadDefaultConfig(context.Background())
 	if err != nil {
 		logging.Fatal("unable to load SDK config", zap.Error(err))
@@ -97,7 +100,7 @@ func (s *server) handleEndGame(match *Match) {
 		matchRecord.Results = []float64{1.0, 0.0}
 	case chess.BlackWon:
 		matchRecord.Results = []float64{0.0, 1.0}
-	case chess.Draw:
+	case chess.Draw, chess.NoOutcome:
 		matchRecord.Results = []float64{0.5, 0.5}
 	}
 	payload, err := json.Marshal(matchRecord)
@@ -166,6 +169,8 @@ func (s *server) handlePlayerJoin(conn *websocket.Conn, match *Match, playerId s
 	player.Conn = conn
 	player.Status = CONNECTED
 
+	match.syncPlayer(player)
+
 	logging.Info("player connected",
 		zap.String("player_id", playerId),
 		zap.String("match_id", match.id),
@@ -208,6 +213,8 @@ func (s *server) handleWebSocketMessage(playerId string, match *Match, payload p
 			zap.String("match_id", match.id),
 			zap.String("action", action),
 		)
+	case "sync":
+		match.syncPlayerWithId(playerId)
 	default:
 		logging.Info("invalid payload type:", zap.String("type", payload.Type))
 	}

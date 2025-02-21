@@ -12,19 +12,19 @@ type MatchmakingTicket struct {
 }
 
 type ActiveMatch struct {
-	MatchId   string    `dynamodbav:"MatchId"`
-	Player1   Player    `dynamodbav:"Player1"`
-	Player2   Player    `dynamodbav:"Player2"`
-	GameMode  string    `dynamodbav:"GameMode"`
-	Server    string    `dynamodbav:"GameMode"`
-	CreatedAt time.Time `dynamodbav:"CreatedAt"`
+	MatchId   string    `dynamodbav:"MatchId" json:"MatchId"`
+	Player1   Player    `dynamodbav:"Player1" json:"Player1"`
+	Player2   Player    `dynamodbav:"Player2" json:"Player2"`
+	GameMode  string    `dynamodbav:"GameMode" json:"GameMode"`
+	Server    string    `dynamodbav:"GameMode" json:"Server"`
+	CreatedAt time.Time `dynamodbav:"CreatedAt" json:"CreatedAt"`
 }
 
 type Player struct {
-	Id         string    `dynamodbav:"Id"`
-	Rating     float64   `dynamodbav:"Rating"`
+	Id         string    `dynamodbav:"Id" json:"Id"`
+	Rating     float64   `dynamodbav:"Rating" json:"Rating"`
 	RD         float64   `dynamodbav:"RD" json:"-"`
-	NewRatings []float64 `dynamodbav:"NewRatings"`
+	NewRatings []float64 `dynamodbav:"NewRatings" json:"NewRatings"`
 	NewRDs     []float64 `dynamodbav:"NewRDs" json:"-"`
 }
 
