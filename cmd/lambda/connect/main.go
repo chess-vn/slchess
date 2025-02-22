@@ -117,7 +117,7 @@ func handler(event events.APIGatewayWebsocketProxyRequest) (events.APIGatewayPro
 
 	// Store connection in DynamoDB
 	_, err = dynamoClient.PutItem(context.TODO(), &dynamodb.PutItemInput{
-		TableName: aws.String(os.Getenv("TABLE_NAME")),
+		TableName: aws.String("Connections"),
 		Item: map[string]types.AttributeValue{
 			"Id":     &types.AttributeValueMemberS{Value: connectionId},
 			"UserId": &types.AttributeValueMemberS{Value: userId},

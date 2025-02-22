@@ -43,6 +43,9 @@ tasks:
     deps: [utils:check-base-env]
     vars:
       HANDLERS:
+        - ConnectFunction
+        - DisconnectFunction
+        - QueueingFunction
         - PostUserConfirmationFunction
         - GameStatePutFunction
         - EndGameFunction
