@@ -5,7 +5,7 @@ tasks:
     internal: true
     preconditions:
       - sh: "test -f ./configs/aws/base.env"
-        msg: "base.env file not generated. Try running 'env:generate' task"
+        msg: "base.env file not generated. Try running 'env:base' task"
 
   check-cognito-env:
     internal: true

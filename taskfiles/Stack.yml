@@ -16,12 +16,13 @@ tasks:
     desc: Deploy the current local stack on AWS
     deps: [utils:check-base-env]
     cmds:
+      - task: build
       - sam deploy
         --stack-name $STACK
         --region $AWS_REGION
         --parameter-overrides "ServerImageUri=$SERVER_IMAGE_URI"
         --confirm-changeset
-        --capabilities CAPABILITY_IAM
+        --capabilities CAPABILITY_NAMED_IAM
         --no-disable-rollback
         --config-file samconfig.yaml
         --config-env default

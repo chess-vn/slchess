@@ -17,12 +17,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
+	"github.com/aws/aws-sdk-go-v2/service/apigatewaymanagementapi"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
-	snsTypes "github.com/aws/aws-sdk-go-v2/service/sns/types"
 	"github.com/chess-vn/slchess/internal/domains/entities"
 	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/chess-vn/slchess/pkg/utils"
@@ -127,9 +127,9 @@ func handler(event events.APIGatewayProxyRequest) (events.APIGatewayProxyRespons
 		matchJson, _ := json.Marshal(match)
 
 		// Notify the opponent about the match
-		err = notifyUser(userId, matchJson)
+		err = notifyQueueingUser(ctx, opponentId, matchJson)
 		if err != nil {
-			logging.Error("Failed to notify user",
+			logging.Error("Failed to notify queueing user",
 				zap.String("userId", opponentId),
 				zap.Error(err),
 			)
@@ -357,31 +357,43 @@ func checkForActiveMatch(ctx context.Context, userId string) (entities.ActiveMat
 	return activeMatch, true, nil
 }
 
-func notifyUser(userId string, data []byte) error {
-	// Get the SNS topic ARN from environment variables
-	topicARN := os.Getenv("SNS_TOPIC_ARN")
-	if topicARN == "" {
-		return fmt.Errorf("SNS_TOPIC_ARN environment variable is not set")
-	}
+func notifyQueueingUser(ctx context.Context, userId string, matchJson []byte) error {
+	cfg, _ := config.LoadDefaultConfig(ctx)
 
-	// Publish a message to the SNS topic
-	publishInput := &sns.PublishInput{
-		TopicArn: aws.String(topicARN),
-		Message:  aws.String(string(data)), // Use the input message or customize it
-		MessageAttributes: map[string]snsTypes.MessageAttributeValue{
-			"userId": {
-				DataType:    aws.String("String"),
-				StringValue: aws.String(userId),
-			},
+	// Get user ID from DynamoDB
+	connectionOutput, err := dynamoClient.Query(ctx, &dynamodb.QueryInput{
+		TableName:              aws.String("Connections"),
+		IndexName:              aws.String("UserIdIndex"),
+		KeyConditionExpression: aws.String("UserId = :userId"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":userId": &types.AttributeValueMemberS{Value: userId},
 		},
-	}
-
-	result, err := snsClient.Publish(ctx, publishInput)
+		Limit: aws.Int32(1),
+	})
 	if err != nil {
-		return fmt.Errorf("failed to publish message to SNS: %v", err)
+		return err
 	}
-	if result != nil {
-		logging.Info("Message published to SNS: %s\n", zap.String("id", *result.MessageId))
+	if len(connectionOutput.Items) > 0 {
+		var connection entities.Connection
+		if err := attributevalue.UnmarshalMap(connectionOutput.Items[0], &connection); err != nil {
+			return err
+		}
+		apiEndpoint := fmt.Sprintf("https://%s.execute-api.%s.amazonaws.com/%s", os.Getenv("WEBSOCKET_API_ID"), os.Getenv("AWS_REGION"), os.Getenv("WEBSOCKET_API_STAGE"))
+		apiGatewayClient := apigatewaymanagementapi.New(apigatewaymanagementapi.Options{
+			BaseEndpoint: aws.String(apiEndpoint),
+			Region:       os.Getenv("AWS_REGION"),
+			Credentials:  cfg.Credentials,
+		})
+		_, err := apiGatewayClient.PostToConnection(ctx, &apigatewaymanagementapi.PostToConnectionInput{
+			ConnectionId: &connection.Id,
+			Data:         matchJson,
+		})
+		if err != nil {
+			return err
+		}
+		logging.Info("User notified", zap.String("userId", userId))
+	} else {
+		logging.Info("User not connected", zap.String("userId", userId))
 	}
 
 	return nil
