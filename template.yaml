@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: WebSocket-based Chess Game Backend
+Description: Slchess Backend
 
 Globals:
   Function:
@@ -11,6 +11,9 @@ Parameters:
   ServerImageUri:
     Type: String
     Description: "URI of the Docker image for game server in ECR"
+  SlchessDeploymentStage:
+    Type: String
+    Default: dev
 
 Resources:
   ### Cognito User Pool ###
@@ -147,12 +150,132 @@ Resources:
         ScaleInCooldown: 1800 # 30 minutes cooldown before scaling down
         ScaleOutCooldown: 60 # 1-minute cooldown before scaling up
 
+  ### Websocket API ###
+  SlchessWebsocketApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: SlchessWebsocketApi
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: $request.body.action
+
+  SlchessWebsocketApiDeployment:
+    Type: AWS::ApiGatewayV2::Deployment
+    Properties:
+      ApiId: !Ref SlchessWebsocketApi
+    DependsOn:
+      - ConnectRoute
+      - DisconnectRoute
+      - QueueingRoute
+
+  SlchessWebsocketApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref SlchessWebsocketApi
+      DeploymentId: !Ref SlchessWebsocketApiDeployment
+      StageName: !Ref SlchessDeploymentStage
+
+  ConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SlchessWebsocketApi
+      RouteKey: $connect
+      AuthorizationType: NONE
+      OperationName: ConnectRoute
+      Target: !Sub "integrations/${ConnectIntegration}"
+  ConnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref SlchessWebsocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ConnectFunction.Arn}/invocations"
+  ConnectFunctionPermission:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - SlchessWebsocketApi
+      - ConnectFunction
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ConnectFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SlchessWebsocketApi}/*/$connect
+
+  DisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SlchessWebsocketApi
+      RouteKey: $disconnect
+      AuthorizationType: NONE
+      OperationName: DisconnectRoute
+      Target: !Sub "integrations/${DisconnectIntegration}"
+  DisconnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref SlchessWebsocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DisconnectFunction.Arn}/invocations"
+  DisconnectFunctionPermission:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - SlchessWebsocketApi
+      - DisconnectFunction
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref DisconnectFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SlchessWebsocketApi}/*/$disconnect
+
+  QueueingRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SlchessWebsocketApi
+      RouteKey: queueing
+      AuthorizationType: NONE
+      OperationName: QueueingRoute
+      Target: !Sub "integrations/${QueueingIntegration}"
+  QueueingIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref SlchessWebsocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${QueueingFunction.Arn}/invocations"
+  QueueingFunctionPermission:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - SlchessWebsocketApi
+      - QueueingFunction
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref QueueingFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SlchessWebsocketApi}/*/queueing
+
+  SlchessApiGatewayRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SlchessApiGatewayRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: ""
+            Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SlchessInvokeLambdaPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: "*"
+
   ### HTTP API ###
-  SlchessApi:
+  SlchessHttpApi:
     Type: AWS::Serverless::Api
     Properties:
-      Name: SlchessApi
-      StageName: prod
+      Name: SlchessHttpApi
+      StageName: !Ref SlchessDeploymentStage
       Cors: "'*'"
       Auth:
         Authorizers:
@@ -161,6 +284,52 @@ Resources:
         DefaultAuthorizer: SlchessAuth
 
   ### Lambda Functions ###
+  ConnectFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-Connect
+      CodeUri: ./cmd/lambda/connect/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: Connections
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref SlchessUserPool
+
+  DisconnectFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-Disconnect
+      CodeUri: ./cmd/lambda/disconnect/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: Connections
+
+  QueueingFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-Queueing
+      CodeUri: ./cmd/lambda/queueing/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: Connections
+        - DynamoDBCrudPolicy:
+            TableName: UserMatches
+        - DynamoDBCrudPolicy:
+            TableName: ActiveMatches
+
   PostUserConfirmationFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -237,6 +406,8 @@ Resources:
         - SNSPublishMessagePolicy:
             TopicName: !GetAtt SlchessSNSTopic.TopicName
         - DynamoDBCrudPolicy:
+            TableName: Connections
+        - DynamoDBCrudPolicy:
             TableName: MatchmakingTickets
         - DynamoDBCrudPolicy:
             TableName: UserMatches
@@ -260,21 +431,50 @@ Resources:
               Action:
                 - "ec2:DescribeNetworkInterfaces"
               Resource: "*"
+        - Statement:
+            - Effect: Allow
+              Action:
+                - "execute-api:ManageConnections"
+              Resource:
+                - !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SlchessWebsocketApi}/*"
       Environment:
         Variables:
           SNS_TOPIC_ARN: !Ref SlchessSNSTopic
           ECS_CLUSTER_NAME: !Ref SlchessServerCluster
           ECS_SERVICE_NAME: !GetAtt SlchessServerService.Name
           ECS_TASK_DEFINITION: !Ref SlchessServerDefinition
+          WEBSOCKET_API_ID: !Ref SlchessWebsocketApi
+          WEBSOCKET_API_STAGE: !Ref SlchessWebsocketApiStage
       Events:
         ApiEvent:
           Type: Api
           Properties:
             Path: /matchmaking
             Method: post
-            RestApiId: !Ref SlchessApi
+            RestApiId: !Ref SlchessHttpApi
 
   ### DynamoDB Tables ###
+  Connections:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Connections
+      AttributeDefinitions:
+        - AttributeName: Id
+          AttributeType: S
+        - AttributeName: UserId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: Id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: UserIdIndex
+          KeySchema:
+            - AttributeName: UserId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      BillingMode: PAY_PER_REQUEST
+
   UserProfiles:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -377,6 +577,10 @@ Resources:
 Outputs:
   MatchmakingEndpointUrl:
     Description: "Endpoint URL for matchmaking"
-    Value: !Sub "https://${SlchessApi}.execute-api.${AWS::Region}.amazonaws.com/prod/matchmaking"
+    Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/matchmaking"
     Export:
       Name: "MatchmakingEndpointUrl"
+
+  SlchessWebsocketApiUrl:
+    Value: !Sub "wss://${SlchessWebsocketApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessWebsocketApiStage}"
+    Description: WebSocket API URL

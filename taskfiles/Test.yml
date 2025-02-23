@@ -21,7 +21,7 @@ tasks:
     deps: [utils:check-apigateway-env]
     cmds:
       - task: server:up-detach
-      - task: cognito:authenticate-test-users
+      # - task: cognito:authenticate-test-users
       - go test -v ./test/e2e/*.go
-      - task: cognito:delete-test-users
+      # - task: cognito:delete-test-users
       - task: server:down

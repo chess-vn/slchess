@@ -21,11 +21,11 @@ func init() {
 }
 
 func handler(request events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
-	connectionID := request.RequestContext.ConnectionID
+	connectionId := request.RequestContext.ConnectionID
 	_, err := dynamoClient.DeleteItem(context.TODO(), &dynamodb.DeleteItemInput{
-		TableName: aws.String("WebSocketConnections"),
+		TableName: aws.String("Connections"),
 		Key: map[string]types.AttributeValue{
-			"ConnectionId": &types.AttributeValueMemberS{Value: connectionID},
+			"Id": &types.AttributeValueMemberS{Value: connectionId},
 		},
 	})
 	if err != nil {

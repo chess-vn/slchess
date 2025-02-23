@@ -2,7 +2,7 @@ name: Deploy server image to production
 
 on:
   push:
-    branches: ["feat/game-server", "feat/automation"]
+    branches: ["feat/game-server"]
 
 jobs:
   build:
