@@ -329,6 +329,10 @@ Resources:
             TableName: UserMatches
         - DynamoDBCrudPolicy:
             TableName: ActiveMatches
+      Environment:
+        Variables:
+          WEBSOCKET_API_ID: !Ref SlchessWebsocketApi
+          WEBSOCKET_API_STAGE: !Ref SlchessDeploymentStage
 
   PostUserConfirmationFunction:
     Type: AWS::Serverless::Function

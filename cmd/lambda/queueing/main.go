@@ -27,7 +27,7 @@ func init() {
 	ctx = context.Background()
 	cfg, _ := config.LoadDefaultConfig(context.TODO())
 	dynamoClient = dynamodb.NewFromConfig(cfg)
-	apiEndpoint := fmt.Sprintf("https://%s.execute-api.%s.amazonaws.com/Prod", os.Getenv("AWS_API_ID"), os.Getenv("AWS_REGION"))
+	apiEndpoint := fmt.Sprintf("https://%s.execute-api.%s.amazonaws.com/%s", os.Getenv("WEBSOCKET_API_ID"), os.Getenv("AWS_REGION"), os.Getenv("WEBSOCKET_API_STAGE"))
 	apiGatewayClient = apigatewaymanagementapi.New(apigatewaymanagementapi.Options{
 		BaseEndpoint: aws.String(apiEndpoint),
 		Region:       os.Getenv("AWS_REGION"),
