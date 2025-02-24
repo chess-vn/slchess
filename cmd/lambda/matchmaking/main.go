@@ -384,11 +384,17 @@ func notifyQueueingUser(ctx context.Context, userId string, matchJson []byte) er
 			Credentials:  cfg.Credentials,
 		})
 		_, err := apiGatewayClient.PostToConnection(ctx, &apigatewaymanagementapi.PostToConnectionInput{
-			ConnectionId: &connection.Id,
+			ConnectionId: aws.String(connection.Id),
 			Data:         matchJson,
 		})
 		if err != nil {
 			return err
+		}
+		_, err = apiGatewayClient.DeleteConnection(ctx, &apigatewaymanagementapi.DeleteConnectionInput{
+			ConnectionId: aws.String(connection.Id),
+		})
+		if err != nil {
+			logging.Error("Failed to delete connection", zap.Error(err))
 		}
 		logging.Info("User notified", zap.String("userId", userId))
 	} else {

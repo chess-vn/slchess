@@ -24,7 +24,7 @@ func init() {
 
 func handler(ctx context.Context, event events.CognitoEventUserPoolsPostConfirmation) (events.CognitoEventUserPoolsPostConfirmation, error) {
 	userId := event.Request.UserAttributes["sub"]
-	username := event.Request.UserAttributes["cognito:username"]
+	username := event.UserName
 
 	// Default user profile
 	userProfile := entities.UserProfile{
