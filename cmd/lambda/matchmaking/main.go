@@ -22,7 +22,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
-	"github.com/aws/aws-sdk-go-v2/service/sns"
+	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/internal/domains/entities"
 	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/chess-vn/slchess/pkg/utils"
@@ -31,11 +31,8 @@ import (
 
 var (
 	dynamoClient *dynamodb.Client
-	snsClient    *sns.Client
 	ecsClient    *ecs.Client
 	ec2Client    *ec2.Client
-	ctx          context.Context
-	timeLayout   string
 
 	clusterName       = os.Getenv("ECS_CLUSTER_NAME")
 	serviceName       = os.Getenv("ECS_SERVICE_NAME")
@@ -46,20 +43,19 @@ var (
 	ErrNoMatchFound       = errors.New("failed to matchmaking")
 	ErrInvalidGameMode    = errors.New("invalid game mode")
 	ErrServerNotAvailable = errors.New("server not available")
+
+	timeLayout = "2006-01-02 15:04:05.999999999 -0700 MST"
 )
 
 func init() {
-	ctx = context.Background()
-	timeLayout = "2006-01-02 15:04:05.999999999 -0700 MST"
-	cfg, _ := config.LoadDefaultConfig(ctx)
+	cfg, _ := config.LoadDefaultConfig(context.TODO())
 	dynamoClient = dynamodb.NewFromConfig(cfg)
-	snsClient = sns.NewFromConfig(cfg)
 	ecsClient = ecs.NewFromConfig(cfg)
 	ec2Client = ec2.NewFromConfig(cfg)
 }
 
 // Handle matchmaking requests
-func handler(event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	userId := mustAuth(event.RequestContext.Authorizer)
 
 	// Start game server beforehand if none available
@@ -69,36 +65,36 @@ func handler(event events.APIGatewayProxyRequest) (events.APIGatewayProxyRespons
 	}
 
 	// Extract and validate matchmaking ticket
-	var ticket entities.MatchmakingTicket
-	if err := json.Unmarshal([]byte(event.Body), &ticket); err != nil {
-		logging.Error("Failed to extract ticket", zap.Error(err))
+	var matchmakingReq dtos.MatchmakingRequest
+	if err := json.Unmarshal([]byte(event.Body), &matchmakingReq); err != nil {
+		logging.Error("Failed to validate request", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest}, nil
 	}
-	userRating, err := getUserRating(userId)
+	userRating, err := getUserRating(ctx, userId)
 	if err != nil {
 		logging.Error("Failed to get user rating", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
 	}
-	if userRating.Rating < ticket.MinRating || userRating.Rating > ticket.MaxRating {
+	if userRating.Rating < matchmakingReq.MinRating || userRating.Rating > matchmakingReq.MaxRating {
 		logging.Error("Invalid matchmaking ticket", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest}, nil
 	}
-	ticket.UserId = userId
+	ticket := dtos.MatchmakingRequestToEntity(userId, matchmakingReq)
 
-	// Check if user already in a match
-	match, exist, err := checkForActiveMatch(ctx, userId)
+	// Check if user already in a activeMatch
+	activeMatch, exist, err := checkForActiveMatch(ctx, userId)
 	if err != nil {
 		logging.Error("Failed to check for active match", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
 	}
 	if exist {
-		data, _ := json.Marshal(match)
+		data, _ := json.Marshal(activeMatch)
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(data)}, nil
 	}
 
 	// Attempt matchmaking
 	logging.Info("Attempt matchmaking", zap.Float64("minRating", ticket.MinRating), zap.Float64("maxRating", ticket.MaxRating))
-	opponentIds, err := findOpponents(ticket)
+	opponentIds, err := findOpponents(ctx, ticket)
 	if err != nil {
 		logging.Error("Failed to find opponents", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
@@ -126,10 +122,11 @@ func handler(event events.APIGatewayProxyRequest) (events.APIGatewayProxyRespons
 			zap.String("player1", match.Player1.Id),
 			zap.String("player2", match.Player2.Id),
 		)
-		matchJson, _ := json.Marshal(match)
+		matchResp := dtos.ActiveMatchResponseFromEntity(match)
+		matchRespJson, _ := json.Marshal(matchResp)
 
 		// Notify the opponent about the match
-		err = notifyQueueingUser(ctx, opponentId, matchJson)
+		err = notifyQueueingUser(ctx, opponentId, matchRespJson)
 		if err != nil {
 			logging.Error("Failed to notify queueing user",
 				zap.String("userId", opponentId),
@@ -137,7 +134,7 @@ func handler(event events.APIGatewayProxyRequest) (events.APIGatewayProxyRespons
 			)
 		}
 
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(matchJson)}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(matchRespJson)}, nil
 	}
 
 	return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
@@ -160,7 +157,7 @@ func mustAuth(authorizer map[string]interface{}) string {
 }
 
 // Matchmaking function using go-redis commands
-func findOpponents(ticket entities.MatchmakingTicket) ([]string, error) {
+func findOpponents(ctx context.Context, ticket entities.MatchmakingTicket) ([]string, error) {
 	output, err := dynamoClient.Scan(ctx, &dynamodb.ScanInput{
 		TableName:        aws.String("MatchmakingTickets"),
 		FilterExpression: aws.String("MinRating >= :minRating AND MaxRating <= :maxRating AND GameMode = :gameMode"),
@@ -261,7 +258,7 @@ func createMatch(ctx context.Context, userRating entities.UserRating, opponentId
 	}
 
 	// Pre-calculate players' rating in each possible outcome
-	opponentRating, err := getUserRating(opponentId)
+	opponentRating, err := getUserRating(ctx, opponentId)
 	if err != nil {
 		return entities.ActiveMatch{}, err
 	}
@@ -387,11 +384,17 @@ func notifyQueueingUser(ctx context.Context, userId string, matchJson []byte) er
 			Credentials:  cfg.Credentials,
 		})
 		_, err := apiGatewayClient.PostToConnection(ctx, &apigatewaymanagementapi.PostToConnectionInput{
-			ConnectionId: &connection.Id,
+			ConnectionId: aws.String(connection.Id),
 			Data:         matchJson,
 		})
 		if err != nil {
 			return err
+		}
+		_, err = apiGatewayClient.DeleteConnection(ctx, &apigatewaymanagementapi.DeleteConnectionInput{
+			ConnectionId: aws.String(connection.Id),
+		})
+		if err != nil {
+			logging.Error("Failed to delete connection", zap.Error(err))
 		}
 		logging.Info("User notified", zap.String("userId", userId))
 	} else {
@@ -482,7 +485,7 @@ func checkAndStartServer(ctx context.Context) error {
 	return nil
 }
 
-func getUserRating(userId string) (entities.UserRating, error) {
+func getUserRating(ctx context.Context, userId string) (entities.UserRating, error) {
 	userRatingOutput, err := dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String("UserRatings"),
 		Key: map[string]types.AttributeValue{

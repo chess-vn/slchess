@@ -24,10 +24,12 @@ func init() {
 
 func handler(ctx context.Context, event events.CognitoEventUserPoolsPostConfirmation) (events.CognitoEventUserPoolsPostConfirmation, error) {
 	userId := event.Request.UserAttributes["sub"]
+	username := event.UserName
 
 	// Default user profile
 	userProfile := entities.UserProfile{
 		UserId:     userId,
+		Username:   username,
 		Membership: "guest",
 		CreatedAt:  time.Now(),
 	}

@@ -9,7 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/chess-vn/slchess/internal/domains/entities"
+	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/pkg/logging"
 	"go.uber.org/zap"
 )
@@ -22,11 +22,12 @@ func init() {
 }
 
 func handler(ctx context.Context, event json.RawMessage) {
-	var matchState entities.MatchState
-	if err := json.Unmarshal(event, &matchState); err != nil {
+	var matchStateReq dtos.MatchStateRequest
+	if err := json.Unmarshal(event, &matchStateReq); err != nil {
 		logging.Fatal("Failed to save match state", zap.Error(err))
 	}
 
+	matchState := dtos.MatchStateRequestToEntity(matchStateReq)
 	av, err := attributevalue.MarshalMap(matchState)
 	if err != nil {
 		logging.Fatal("Failed to save match state", zap.Error(err))

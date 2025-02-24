@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/aws/aws-lambda-go/lambda"
 
@@ -20,19 +21,20 @@ func init() {
 	dynamoClient = dynamodb.NewFromConfig(cfg)
 }
 
-func handler(request events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
+func handler(ctx context.Context, request events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
 	connectionId := request.RequestContext.ConnectionID
-	_, err := dynamoClient.DeleteItem(context.TODO(), &dynamodb.DeleteItemInput{
+	_, err := dynamoClient.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String("Connections"),
 		Key: map[string]types.AttributeValue{
 			"Id": &types.AttributeValueMemberS{Value: connectionId},
 		},
 	})
 	if err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: 500}, fmt.Errorf("failed to delete connecction: %w", err)
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to delete connection: %w", err)
 	}
 
-	return events.APIGatewayProxyResponse{StatusCode: 200}, nil
+	return events.APIGatewayProxyResponse{StatusCode: http.StatusOK}, nil
 }
 
 func main() {

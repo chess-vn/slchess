@@ -10,7 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/lambda/types"
-	"github.com/chess-vn/slchess/internal/domains/entities"
+	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/gorilla/websocket"
 	"github.com/notnil/chess"
@@ -25,9 +25,9 @@ func (s *server) handleSaveGame(match *Match) {
 	}
 	lambdaClient := lambda.NewFromConfig(cfg)
 
-	matchState := entities.MatchState{
+	matchStateReq := dtos.MatchStateRequest{
 		MatchId: match.id,
-		Players: []entities.PlayerState{
+		Players: []dtos.PlayerStateRequest{
 			{
 				Clock:  match.players[0].Clock.String(),
 				Status: match.players[0].Status.String(),
@@ -40,7 +40,7 @@ func (s *server) handleSaveGame(match *Match) {
 		GameState: match.game.FEN(),
 		UpdatedAt: time.Now(),
 	}
-	payload, err := json.Marshal(matchState)
+	payload, err := json.Marshal(matchStateReq)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -73,9 +73,9 @@ func (s *server) handleEndGame(match *Match) {
 	if err != nil {
 		logging.Fatal("failed to invoke end game", zap.Error(err))
 	}
-	matchRecord := entities.MatchRecord{
+	matchRecordReq := dtos.MatchRecordRequest{
 		MatchId: match.id,
-		Players: []entities.PlayerRecord{
+		Players: []dtos.PlayerRecordRequest{
 			{
 				Id:        match.players[0].Id,
 				OldRating: match.players[0].Rating,
@@ -97,13 +97,13 @@ func (s *server) handleEndGame(match *Match) {
 	}
 	switch match.game.outcome() {
 	case chess.WhiteWon:
-		matchRecord.Results = []float64{1.0, 0.0}
+		matchRecordReq.Results = []float64{1.0, 0.0}
 	case chess.BlackWon:
-		matchRecord.Results = []float64{0.0, 1.0}
+		matchRecordReq.Results = []float64{0.0, 1.0}
 	case chess.Draw, chess.NoOutcome:
-		matchRecord.Results = []float64{0.5, 0.5}
+		matchRecordReq.Results = []float64{0.5, 0.5}
 	}
-	payload, err := json.Marshal(matchRecord)
+	payload, err := json.Marshal(matchRecordReq)
 	if err != nil {
 		log.Fatal(err)
 	}
