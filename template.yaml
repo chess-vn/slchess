@@ -471,6 +471,13 @@ Resources:
             TableName: UserProfiles
         - DynamoDBCrudPolicy:
             TableName: UserRatings
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /user
+            Method: get
+            RestApiId: !Ref SlchessHttpApi
 
   ### DynamoDB Tables ###
   Connections:
@@ -594,12 +601,18 @@ Resources:
       BillingMode: PAY_PER_REQUEST
 
 Outputs:
+  SlchessWebsocketApiUrl:
+    Value: !Sub "wss://${SlchessWebsocketApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessWebsocketApiStage}"
+    Description: WebSocket API URL
+
   MatchmakingEndpointUrl:
     Description: "Endpoint URL for matchmaking"
     Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/matchmaking"
     Export:
       Name: "MatchmakingEndpointUrl"
 
-  SlchessWebsocketApiUrl:
-    Value: !Sub "wss://${SlchessWebsocketApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessWebsocketApiStage}"
-    Description: WebSocket API URL
+  UserGetEndpointUrl:
+    Description: "Endpoint URL for get user information"
+    Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/user"
+    Export:
+      Name: "UserGetEndpointUrl"
