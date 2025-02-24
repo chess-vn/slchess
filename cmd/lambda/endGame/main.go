@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/internal/domains/entities"
 	"github.com/chess-vn/slchess/pkg/logging"
 	"go.uber.org/zap"
@@ -25,10 +26,12 @@ func init() {
 
 func handler(ctx context.Context, event json.RawMessage) {
 	// Get match data
-	var matchRecord entities.MatchRecord
-	if err := json.Unmarshal(event, &matchRecord); err != nil {
+	var matchRecordReq dtos.MatchRecordRequest
+	if err := json.Unmarshal(event, &matchRecordReq); err != nil {
 		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
 	}
+
+	matchRecord := dtos.MatchRecordRequestToEntity(matchRecordReq)
 
 	_, err := dynamoClient.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String("ActiveMatches"),
@@ -73,9 +76,9 @@ func handler(ctx context.Context, event json.RawMessage) {
 	}
 
 	player1Rating := entities.UserRating{
-		UserId: matchRecord.Players[0].Id,
-		Rating: matchRecord.Players[0].NewRating,
-		RD:     matchRecord.Players[0].NewRD,
+		UserId: matchRecordReq.Players[0].Id,
+		Rating: matchRecordReq.Players[0].NewRating,
+		RD:     matchRecordReq.Players[0].NewRD,
 	}
 	player1RatingAv, err := attributevalue.MarshalMap(player1Rating)
 	if err != nil {
@@ -90,9 +93,9 @@ func handler(ctx context.Context, event json.RawMessage) {
 	}
 
 	player2Rating := entities.UserRating{
-		UserId: matchRecord.Players[1].Id,
-		Rating: matchRecord.Players[1].NewRating,
-		RD:     matchRecord.Players[1].NewRD,
+		UserId: matchRecordReq.Players[1].Id,
+		Rating: matchRecordReq.Players[1].NewRating,
+		RD:     matchRecordReq.Players[1].NewRD,
 	}
 	player2RatingAv, err := attributevalue.MarshalMap(player2Rating)
 	if err != nil {
@@ -107,13 +110,13 @@ func handler(ctx context.Context, event json.RawMessage) {
 	}
 
 	player1MatchResult := entities.MatchResult{
-		UserId:         matchRecord.Players[0].Id,
-		MatchId:        matchRecord.MatchId,
-		OpponentId:     matchRecord.Players[1].Id,
-		OpponentRating: matchRecord.Players[1].OldRating,
-		OpponentRD:     matchRecord.Players[1].OldRD,
-		Result:         matchRecord.Results[0],
-		Timestamp:      matchRecord.EndedAt.Format(time.RFC3339),
+		UserId:         matchRecordReq.Players[0].Id,
+		MatchId:        matchRecordReq.MatchId,
+		OpponentId:     matchRecordReq.Players[1].Id,
+		OpponentRating: matchRecordReq.Players[1].OldRating,
+		OpponentRD:     matchRecordReq.Players[1].OldRD,
+		Result:         matchRecordReq.Results[0],
+		Timestamp:      matchRecordReq.EndedAt.Format(time.RFC3339),
 	}
 	attributevalue.MarshalMap(&player1MatchResult)
 	player1MatchResultAv, err := attributevalue.MarshalMap(player1MatchResult)
@@ -129,13 +132,13 @@ func handler(ctx context.Context, event json.RawMessage) {
 	}
 
 	player2MatchResult := entities.MatchResult{
-		UserId:         matchRecord.Players[1].Id,
-		MatchId:        matchRecord.MatchId,
-		OpponentId:     matchRecord.Players[0].Id,
-		OpponentRating: matchRecord.Players[0].OldRating,
-		OpponentRD:     matchRecord.Players[0].OldRD,
-		Result:         matchRecord.Results[1],
-		Timestamp:      matchRecord.EndedAt.Format(time.RFC3339),
+		UserId:         matchRecordReq.Players[1].Id,
+		MatchId:        matchRecordReq.MatchId,
+		OpponentId:     matchRecordReq.Players[0].Id,
+		OpponentRating: matchRecordReq.Players[0].OldRating,
+		OpponentRD:     matchRecordReq.Players[0].OldRD,
+		Result:         matchRecordReq.Results[1],
+		Timestamp:      matchRecordReq.EndedAt.Format(time.RFC3339),
 	}
 	attributevalue.MarshalMap(&player2MatchResult)
 	player2MatchResultAv, err := attributevalue.MarshalMap(player2MatchResult)

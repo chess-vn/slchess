@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -28,7 +29,6 @@ var (
 )
 
 func init() {
-	ctx = context.Background()
 	cfg, _ := config.LoadDefaultConfig(context.TODO())
 	dynamoClient = dynamodb.NewFromConfig(cfg)
 	apiEndpoint := fmt.Sprintf("https://%s.execute-api.%s.amazonaws.com/%s", websocketApiId, region, websocketApiStage)
@@ -39,7 +39,6 @@ func init() {
 	})
 }
 
-// Handle matchmaking requests
 func handler(ctx context.Context, event events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
 	connectionId := event.RequestContext.ConnectionID
 
@@ -51,11 +50,12 @@ func handler(ctx context.Context, event events.APIGatewayWebsocketProxyRequest) 
 		},
 	})
 	if err != nil || connectionOutput.Item == nil {
-		return events.APIGatewayProxyResponse{StatusCode: 401, Body: "Unauthorized"}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized}, nil
 	}
-
 	var connection entities.Connection
-	attributevalue.UnmarshalMap(connectionOutput.Item, &connection)
+	if err := attributevalue.UnmarshalMap(connectionOutput.Item, &connection); err != nil {
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+	}
 
 	activeMatch, exist, err := checkForActiveMatch(ctx, connection.UserId)
 	if err != nil {
@@ -64,19 +64,19 @@ func handler(ctx context.Context, event events.APIGatewayWebsocketProxyRequest) 
 	if exist {
 		activeMatchJson, err := json.Marshal(activeMatch)
 		if err != nil {
-			return events.APIGatewayProxyResponse{StatusCode: 500}, nil
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
 		}
 		_, err = apiGatewayClient.PostToConnection(ctx, &apigatewaymanagementapi.PostToConnectionInput{
 			ConnectionId: &connection.Id,
 			Data:         activeMatchJson,
 		})
 		if err != nil {
-			return events.APIGatewayProxyResponse{StatusCode: 500, Body: "Failed to send message"}, nil
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: "Failed to send message"}, nil
 		}
-		return events.APIGatewayProxyResponse{StatusCode: 200}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusOK}, nil
 	}
 
-	return events.APIGatewayProxyResponse{StatusCode: 200}, nil
+	return events.APIGatewayProxyResponse{StatusCode: http.StatusOK}, nil
 }
 
 func checkForActiveMatch(ctx context.Context, userId string) (entities.ActiveMatch, bool, error) {

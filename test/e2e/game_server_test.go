@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chess-vn/slchess/internal/domains/entities"
+	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/chess-vn/slchess/pkg/utils"
 	"github.com/gorilla/websocket"
@@ -129,15 +129,15 @@ func TestGameServer(t *testing.T) {
 
 func testMatchmaking(t *testing.T) string {
 	client := http.Client{}
-	matchmakingTicket := randomMatchmakingTicket()
-	ticketJson, err := json.Marshal(matchmakingTicket)
+	matchmakingReq := getMatchmakingRequest()
+	matchmakingReqJson, err := json.Marshal(matchmakingReq)
 	require.NoError(t, err)
 
 	apiUrl, err := url.Parse(cfg.ApiUrl)
 	require.NoError(t, err)
 	matchmakingUrl := apiUrl.JoinPath("matchmaking")
 
-	user2MatchmakingRequest, err := http.NewRequest(http.MethodPost, matchmakingUrl.String(), bytes.NewBuffer(ticketJson))
+	user2MatchmakingRequest, err := http.NewRequest(http.MethodPost, matchmakingUrl.String(), bytes.NewBuffer(matchmakingReqJson))
 	require.NoError(t, err)
 	user2MatchmakingRequest.Header.Add("Content-Type", "application/json")
 	user2MatchmakingRequest.Header.Add("Authorization", cfg.User2IdToken)
@@ -145,7 +145,7 @@ func testMatchmaking(t *testing.T) string {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusAccepted, resp.StatusCode)
 
-	user1MatchmakingRequest, err := http.NewRequest(http.MethodPost, matchmakingUrl.String(), bytes.NewBuffer(ticketJson))
+	user1MatchmakingRequest, err := http.NewRequest(http.MethodPost, matchmakingUrl.String(), bytes.NewBuffer(matchmakingReqJson))
 	require.NoError(t, err)
 	user1MatchmakingRequest.Header.Add("Content-Type", "application/json")
 	user1MatchmakingRequest.Header.Add("Authorization", cfg.User1IdToken)
@@ -155,15 +155,15 @@ func testMatchmaking(t *testing.T) string {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	var activeMatch entities.ActiveMatch
-	err = json.Unmarshal(body, &activeMatch)
+	var activeMatchResp dtos.ActiveMatchResponse
+	err = json.Unmarshal(body, &activeMatchResp)
 	require.NoError(t, err)
 
-	return activeMatch.MatchId
+	return activeMatchResp.MatchId
 }
 
-func randomMatchmakingTicket() entities.MatchmakingTicket {
-	return entities.MatchmakingTicket{
+func getMatchmakingRequest() dtos.MatchmakingRequest {
+	return dtos.MatchmakingRequest{
 		MinRating: 1100,
 		MaxRating: 1300,
 		GameMode:  "10min",

@@ -18,7 +18,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/golang-jwt/jwt/v5"
+	"go.uber.org/zap"
 )
 
 var (
@@ -100,23 +102,22 @@ func validateJWT(tokenString string) (*jwt.Token, error) {
 }
 
 // Handle WebSocket connection with authentication
-func handler(event events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
+func handler(ctx context.Context, event events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
 	connectionId := event.RequestContext.ConnectionID
 	token := event.Headers["Authorization"]
 
-	if token == "" {
-		return events.APIGatewayProxyResponse{StatusCode: 401, Body: "Unauthorized: No token provided"}, nil
-	}
-
 	validToken, err := validateJWT(token)
 	if err != nil || !validToken.Valid {
-		return events.APIGatewayProxyResponse{StatusCode: 401, Body: fmt.Sprintf("Unauthorized: %v", err)}, nil
+		logging.Error("Failed to connect", zap.Error(err))
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusUnauthorized,
+		}, nil
 	}
 
 	userId := validToken.Claims.(jwt.MapClaims)["sub"].(string)
 
 	// Store connection in DynamoDB
-	_, err = dynamoClient.PutItem(context.TODO(), &dynamodb.PutItemInput{
+	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String("Connections"),
 		Item: map[string]types.AttributeValue{
 			"Id":     &types.AttributeValueMemberS{Value: connectionId},
@@ -124,11 +125,11 @@ func handler(event events.APIGatewayWebsocketProxyRequest) (events.APIGatewayPro
 		},
 	})
 	if err != nil {
-		fmt.Println("Error saving connection:", err)
-		return events.APIGatewayProxyResponse{StatusCode: 500, Body: "Internal Server Error"}, nil
+		logging.Error("Failed to connect:", zap.Error(err))
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
 	}
 
-	return events.APIGatewayProxyResponse{StatusCode: 200, Body: "Connected and authenticated"}, nil
+	return events.APIGatewayProxyResponse{StatusCode: http.StatusOK}, nil
 }
 
 func main() {

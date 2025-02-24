@@ -12,7 +12,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.203.0
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.53.13
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.69.12
-	github.com/aws/aws-sdk-go-v2/service/sns v1.33.19
 	github.com/freeeve/uci v1.0.0
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/google/uuid v1.6.0

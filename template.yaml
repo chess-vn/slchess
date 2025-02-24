@@ -457,6 +457,21 @@ Resources:
             Method: post
             RestApiId: !Ref SlchessHttpApi
 
+  UserGetFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-UserGet
+      CodeUri: ./cmd/lambda/userGet/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: UserProfiles
+        - DynamoDBCrudPolicy:
+            TableName: UserRatings
+
   ### DynamoDB Tables ###
   Connections:
     Type: AWS::DynamoDB::Table
