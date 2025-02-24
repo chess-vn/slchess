@@ -37,9 +37,11 @@ var (
 	ctx          context.Context
 	timeLayout   string
 
-	clusterName = os.Getenv("ECS_CLUSTER_NAME")
-	serviceName = os.Getenv("ECS_SERVICE_NAME")
-	region      = os.Getenv("AWS_REGION")
+	clusterName       = os.Getenv("ECS_CLUSTER_NAME")
+	serviceName       = os.Getenv("ECS_SERVICE_NAME")
+	region            = os.Getenv("AWS_REGION")
+	websocketApiId    = os.Getenv("WEBSOCKET_API_ID")
+	websocketApiStage = os.Getenv("WEBSOCKET_API_STAGE")
 
 	ErrNoMatchFound       = errors.New("failed to matchmaking")
 	ErrInvalidGameMode    = errors.New("invalid game mode")
@@ -378,10 +380,10 @@ func notifyQueueingUser(ctx context.Context, userId string, matchJson []byte) er
 		if err := attributevalue.UnmarshalMap(connectionOutput.Items[0], &connection); err != nil {
 			return err
 		}
-		apiEndpoint := fmt.Sprintf("https://%s.execute-api.%s.amazonaws.com/%s", os.Getenv("WEBSOCKET_API_ID"), os.Getenv("AWS_REGION"), os.Getenv("WEBSOCKET_API_STAGE"))
+		apiEndpoint := fmt.Sprintf("https://%s.execute-api.%s.amazonaws.com/%s", websocketApiId, region, websocketApiStage)
 		apiGatewayClient := apigatewaymanagementapi.New(apigatewaymanagementapi.Options{
 			BaseEndpoint: aws.String(apiEndpoint),
-			Region:       os.Getenv("AWS_REGION"),
+			Region:       region,
 			Credentials:  cfg.Credentials,
 		})
 		_, err := apiGatewayClient.PostToConnection(ctx, &apigatewaymanagementapi.PostToConnectionInput{
