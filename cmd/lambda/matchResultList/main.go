@@ -29,7 +29,7 @@ func init() {
 
 func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	userId := mustAuth(event.RequestContext.Authorizer)
-	startKey, limit, err := extractScanParameters(userId, event.PathParameters)
+	startKey, limit, err := extractScanParameters(userId, event.QueryStringParameters)
 	if err != nil {
 		logging.Error("Failed to get match record", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest}, nil
@@ -43,7 +43,7 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 	matchResultListResp := dtos.MatchResultListResponseFromEntities(matchResults)
 	if lastEvaluatedKey != nil {
 		matchResultListResp.NextPageToken = dtos.NextPageToken{
-			MatchId: lastEvaluatedKey["MatchId"].(*types.AttributeValueMemberS).Value,
+			Timestamp: lastEvaluatedKey["Timestamp"].(*types.AttributeValueMemberS).Value,
 		}
 	}
 
@@ -108,11 +108,11 @@ func extractScanParameters(userId string, params map[string]string) (map[string]
 	}
 
 	// Check for startKey (optional)
-	startKey := make(map[string]types.AttributeValue)
+	var startKey map[string]types.AttributeValue
 	if startKeyStr, ok := params["startKey"]; ok {
 		startKey = map[string]types.AttributeValue{
-			"UserId":  &types.AttributeValueMemberS{Value: userId},
-			"MatchId": &types.AttributeValueMemberS{Value: startKeyStr},
+			"UserId":    &types.AttributeValueMemberS{Value: userId},
+			"Timestamp": &types.AttributeValueMemberS{Value: startKeyStr},
 		}
 	}
 

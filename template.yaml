@@ -74,8 +74,8 @@ Resources:
       NetworkMode: awsvpc
       RequiresCompatibilities:
         - FARGATE
-      Cpu: "512"
-      Memory: "1024"
+      Cpu: "256"
+      Memory: "512"
       ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
       ContainerDefinitions:
         - Image: !Ref ServerImageUri
@@ -144,7 +144,7 @@ Resources:
       PolicyType: TargetTrackingScaling
       ScalingTargetId: !Ref ECSAutoScalingTarget
       TargetTrackingScalingPolicyConfiguration:
-        TargetValue: 0.0005 # Scale down when CPU usage is below 0.0005%
+        TargetValue: 0.05 # Scale down when CPU usage is below 0.0005%
         PredefinedMetricSpecification:
           PredefinedMetricType: ECSServiceAverageCPUUtilization
         ScaleInCooldown: 1800 # 30 minutes cooldown before scaling down
@@ -449,6 +449,7 @@ Resources:
           ECS_TASK_DEFINITION: !Ref SlchessServerDefinition
           WEBSOCKET_API_ID: !Ref SlchessWebsocketApi
           WEBSOCKET_API_STAGE: !Ref SlchessWebsocketApiStage
+          DEPLOYMENT_STAGE: !Ref SlchessDeploymentStage
       Events:
         ApiEvent:
           Type: Api
@@ -495,7 +496,7 @@ Resources:
         ApiEvent:
           Type: Api
           Properties:
-            Path: /matchRecord
+            Path: /matchRecord/{matchId}
             Method: get
             RestApiId: !Ref SlchessHttpApi
 

@@ -39,6 +39,7 @@ var (
 	region            = os.Getenv("AWS_REGION")
 	websocketApiId    = os.Getenv("WEBSOCKET_API_ID")
 	websocketApiStage = os.Getenv("WEBSOCKET_API_STAGE")
+	deploymentStage   = os.Getenv("DEPLOYMENT_STAGE")
 
 	ErrNoMatchFound       = errors.New("failed to matchmaking")
 	ErrInvalidGameMode    = errors.New("invalid game mode")
@@ -106,9 +107,23 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusAccepted, Body: "Queued"}, nil
 	}
 
+	// Retrieve ip address of an available server
+	var serverIp string
+	for range 5 {
+		serverIp, err = getServerIp(ctx, clusterName, serviceName)
+		if err == nil {
+			break
+		}
+		<-time.After(5 * time.Second)
+	}
+	if err != nil {
+		logging.Error("Failed to retreive server ip", zap.Error(err))
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+	}
+
 	// Try to create new match
 	for _, opponentId := range opponentIds {
-		match, err := createMatch(ctx, userRating, opponentId, ticket.GameMode)
+		match, err := createMatch(ctx, userRating, opponentId, ticket.GameMode, serverIp)
 		if err != nil {
 			logging.Error("Failed to create match",
 				zap.String("user", userId),
@@ -200,23 +215,7 @@ func findOpponents(ctx context.Context, ticket entities.MatchmakingTicket) ([]st
 	return opponentIds, nil
 }
 
-func createMatch(ctx context.Context, userRating entities.UserRating, opponentId, gameMode string) (entities.ActiveMatch, error) {
-	// Try to wait till the server is running
-	var (
-		serverIp string
-		err      error
-	)
-	for range 5 {
-		serverIp, err = getServerIp(ctx, clusterName, serviceName)
-		if err == nil {
-			break
-		}
-		<-time.After(5 * time.Second)
-	}
-	if err != nil {
-		return entities.ActiveMatch{}, err
-	}
-
+func createMatch(ctx context.Context, userRating entities.UserRating, opponentId, gameMode string, serverIp string) (entities.ActiveMatch, error) {
 	match := entities.ActiveMatch{
 		MatchId:   utils.GenerateUUID(),
 		GameMode:  gameMode,
@@ -225,7 +224,7 @@ func createMatch(ctx context.Context, userRating entities.UserRating, opponentId
 	}
 
 	// Associate the players with created match to kind of mark them as matched
-	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
+	_, err := dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName:           aws.String("UserMatches"),
 		ConditionExpression: aws.String("attribute_not_exists(UserId)"),
 		Item: map[string]types.AttributeValue{
@@ -405,6 +404,9 @@ func notifyQueueingUser(ctx context.Context, userId string, matchJson []byte) er
 }
 
 func getServerIp(ctx context.Context, clusterName, serviceName string) (string, error) {
+	if deploymentStage == "dev" {
+		return "", nil
+	}
 	// List tasks in the cluster
 	listTasksOutput, err := ecsClient.ListTasks(ctx, &ecs.ListTasksInput{
 		Cluster:       &clusterName,
@@ -455,6 +457,9 @@ func getServerIp(ctx context.Context, clusterName, serviceName string) (string, 
 }
 
 func checkAndStartServer(ctx context.Context) error {
+	if deploymentStage == "dev" {
+		return nil
+	}
 	// Check running task count
 	listTasksOutput, err := ecsClient.ListTasks(ctx, &ecs.ListTasksInput{
 		Cluster:       aws.String(clusterName),

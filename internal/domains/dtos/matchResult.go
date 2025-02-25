@@ -18,7 +18,7 @@ type MatchResultResponse struct {
 }
 
 type NextPageToken struct {
-	MatchId string `json:"matchId"`
+	Timestamp string `json:"timestamp"`
 }
 
 func MatchResultListResponseFromEntities(matchResults []entities.MatchResult) MatchResultListResponse {

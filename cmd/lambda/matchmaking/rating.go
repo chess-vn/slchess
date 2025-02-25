@@ -46,6 +46,11 @@ func calculateNewRating(userRating entities.UserRating, opponentRatings []entiti
 }
 
 func calculateNewRatings(ctx context.Context, userRating, opponentRating entities.UserRating) ([]float64, []float64, error) {
+	if deploymentStage == "dev" {
+		return []float64{userRating.Rating, userRating.Rating, userRating.Rating},
+			[]float64{userRating.RD, userRating.RD, userRating.RD},
+			nil
+	}
 	matchResultOutputs, err := dynamoClient.Query(ctx, &dynamodb.QueryInput{
 		TableName:              aws.String("MatchResults"),
 		KeyConditionExpression: aws.String("UserId = :userId"),
