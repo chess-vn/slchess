@@ -479,6 +479,46 @@ Resources:
             Method: get
             RestApiId: !Ref SlchessHttpApi
 
+  MatchRecordGetFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-MatchRecordGet
+      CodeUri: ./cmd/lambda/matchRecordGet/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: MatchRecords
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /matchRecord
+            Method: get
+            RestApiId: !Ref SlchessHttpApi
+
+  MatchResultListFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-MatchResultList
+      CodeUri: ./cmd/lambda/matchResultList/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: MatchResults
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /matchResults
+            Method: get
+            RestApiId: !Ref SlchessHttpApi
+
   ### DynamoDB Tables ###
   Connections:
     Type: AWS::DynamoDB::Table
