@@ -51,6 +51,8 @@ tasks:
         - GameStatePutFunction
         - EndGameFunction
         - MatchmakingFunction
+        - MatchRecordGetFunction
+        - MatchResultListFunction
     cmds:
       - sam build --region $AWS_REGION --config-file samconfig.yaml
       - for: { var: HANDLERS }

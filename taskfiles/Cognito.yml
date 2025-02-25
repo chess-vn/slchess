@@ -11,6 +11,7 @@ tasks:
     desc: Return 2 id tokens for testing api
     deps: [create-test-users]
     cmds:
+      - mkdir -p ./configs/e2e
       - echo "USER_1_ID_TOKEN=$(aws cognito-idp initiate-auth --region $AWS_REGION --client-id $COGNITO_USER_POOL_CLIENT_ID --cli-input-json file://./test/cognito/user1.json --output json | jq -r '.AuthenticationResult.IdToken')" > ./configs/e2e/e2e.env
       - echo "USER_2_ID_TOKEN=$(aws cognito-idp initiate-auth --region $AWS_REGION --client-id $COGNITO_USER_POOL_CLIENT_ID --cli-input-json file://./test/cognito/user2.json --output json | jq -r '.AuthenticationResult.IdToken')" >> ./configs/e2e/e2e.env
 

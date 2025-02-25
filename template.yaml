@@ -74,8 +74,8 @@ Resources:
       NetworkMode: awsvpc
       RequiresCompatibilities:
         - FARGATE
-      Cpu: "512"
-      Memory: "1024"
+      Cpu: "256"
+      Memory: "512"
       ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
       ContainerDefinitions:
         - Image: !Ref ServerImageUri
@@ -144,7 +144,7 @@ Resources:
       PolicyType: TargetTrackingScaling
       ScalingTargetId: !Ref ECSAutoScalingTarget
       TargetTrackingScalingPolicyConfiguration:
-        TargetValue: 0.0005 # Scale down when CPU usage is below 0.0005%
+        TargetValue: 0.05 # Scale down when CPU usage is below 0.0005%
         PredefinedMetricSpecification:
           PredefinedMetricType: ECSServiceAverageCPUUtilization
         ScaleInCooldown: 1800 # 30 minutes cooldown before scaling down
@@ -449,6 +449,7 @@ Resources:
           ECS_TASK_DEFINITION: !Ref SlchessServerDefinition
           WEBSOCKET_API_ID: !Ref SlchessWebsocketApi
           WEBSOCKET_API_STAGE: !Ref SlchessWebsocketApiStage
+          DEPLOYMENT_STAGE: !Ref SlchessDeploymentStage
       Events:
         ApiEvent:
           Type: Api
@@ -476,6 +477,46 @@ Resources:
           Type: Api
           Properties:
             Path: /user
+            Method: get
+            RestApiId: !Ref SlchessHttpApi
+
+  MatchRecordGetFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-MatchRecordGet
+      CodeUri: ./cmd/lambda/matchRecordGet/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: MatchRecords
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /matchRecord/{matchId}
+            Method: get
+            RestApiId: !Ref SlchessHttpApi
+
+  MatchResultListFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-MatchResultList
+      CodeUri: ./cmd/lambda/matchResultList/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: MatchResults
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /matchResults
             Method: get
             RestApiId: !Ref SlchessHttpApi
 
