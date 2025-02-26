@@ -28,26 +28,26 @@ func init() {
 }
 
 func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	userId := mustAuth(event.RequestContext.Authorizer)
-	startKey, limit, err := extractScanParameters(userId, event.QueryStringParameters)
+	mustAuth(event.RequestContext.Authorizer)
+	startKey, limit, err := extractScanParameters(event.QueryStringParameters)
 	if err != nil {
 		logging.Error("Failed to get match record", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest}, nil
 	}
-	matchResults, lastEvaluatedKey, err := fetchMatchResults(ctx, userId, startKey, limit)
+	activeMatches, lastEvaluatedKey, err := fetchActiveMatchList(ctx, startKey, limit)
 	if err != nil {
 		logging.Error("Failed to get match record", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
 	}
 
-	matchResultListResp := dtos.MatchResultListResponseFromEntities(matchResults)
+	activeMatchListResp := dtos.ActiveMatchListResponseFromEntities(activeMatches)
 	if lastEvaluatedKey != nil {
-		matchResultListResp.NextPageToken = dtos.NextMatchResultPageToken{
-			Timestamp: lastEvaluatedKey["Timestamp"].(*types.AttributeValueMemberS).Value,
+		activeMatchListResp.NextPageToken = dtos.NextActiveMatchPageToken{
+			CreatedAt: lastEvaluatedKey["CreatedAt"].(*types.AttributeValueMemberS).Value,
 		}
 	}
 
-	matchResultListJson, err := json.Marshal(matchResultListResp)
+	matchResultListJson, err := json.Marshal(activeMatchListResp)
 	if err != nil {
 		logging.Error("Failed to get match record", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
@@ -55,12 +55,16 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 	return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(matchResultListJson)}, nil
 }
 
-func fetchMatchResults(ctx context.Context, userId string, lastKey map[string]types.AttributeValue, limit int32) ([]entities.MatchResult, map[string]types.AttributeValue, error) {
+func fetchActiveMatchList(ctx context.Context, lastKey map[string]types.AttributeValue, limit int32) ([]entities.ActiveMatch, map[string]types.AttributeValue, error) {
 	input := &dynamodb.QueryInput{
-		TableName:              aws.String("MatchResults"),
-		KeyConditionExpression: aws.String("UserId = :userId"),
+		TableName:              aws.String("ActiveMatches"),
+		IndexName:              aws.String("AverageRatingIndex"),
+		KeyConditionExpression: aws.String("#rating >= :rating"),
+		ExpressionAttributeNames: map[string]string{
+			"#rating": "AverageRating",
+		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":userId": &types.AttributeValueMemberS{Value: userId},
+			":rating": &types.AttributeValueMemberN{Value: "1600.0"},
 		},
 		ScanIndexForward: aws.Bool(false), // Sort by timestamp DESCENDING (most recent first)
 		Limit:            aws.Int32(limit),
@@ -68,16 +72,16 @@ func fetchMatchResults(ctx context.Context, userId string, lastKey map[string]ty
 	if lastKey != nil {
 		input.ExclusiveStartKey = lastKey
 	}
-	matchResultsOutput, err := dynamoClient.Query(ctx, input)
+	activeMatchesOutput, err := dynamoClient.Query(ctx, input)
 	if err != nil {
 		return nil, nil, err
 	}
-	var matchResults []entities.MatchResult
-	if err := attributevalue.UnmarshalListOfMaps(matchResultsOutput.Items, &matchResults); err != nil {
+	var activeMatches []entities.ActiveMatch
+	if err := attributevalue.UnmarshalListOfMaps(activeMatchesOutput.Items, &activeMatches); err != nil {
 		return nil, nil, err
 	}
 
-	return matchResults, matchResultsOutput.LastEvaluatedKey, nil
+	return activeMatches, activeMatchesOutput.LastEvaluatedKey, nil
 }
 
 func mustAuth(authorizer map[string]interface{}) string {
@@ -96,7 +100,7 @@ func mustAuth(authorizer map[string]interface{}) string {
 	return userId
 }
 
-func extractScanParameters(userId string, params map[string]string) (map[string]types.AttributeValue, int32, error) {
+func extractScanParameters(params map[string]string) (map[string]types.AttributeValue, int32, error) {
 	limitStr, ok := params["limit"]
 	if !ok {
 		return nil, 0, fmt.Errorf("missing parameter: limit")
@@ -111,8 +115,7 @@ func extractScanParameters(userId string, params map[string]string) (map[string]
 	var startKey map[string]types.AttributeValue
 	if startKeyStr, ok := params["startKey"]; ok {
 		startKey = map[string]types.AttributeValue{
-			"UserId":    &types.AttributeValueMemberS{Value: userId},
-			"Timestamp": &types.AttributeValueMemberS{Value: startKeyStr},
+			"CreatedAt": &types.AttributeValueMemberS{Value: startKeyStr},
 		}
 	}
 
