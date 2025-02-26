@@ -624,8 +624,6 @@ Resources:
       KeySchema:
         - AttributeName: MatchId
           KeyType: HASH
-        - AttributeName: CreatedAt
-          KeyType: RANGE
       GlobalSecondaryIndexes:
         - IndexName: AverageRatingIndex
           KeySchema:
