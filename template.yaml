@@ -520,6 +520,26 @@ Resources:
             Method: get
             RestApiId: !Ref SlchessHttpApi
 
+  ActiveMatchListFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-ActiveMatchList
+      CodeUri: ./cmd/lambda/activeMatchList/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: ActiveMatches
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /activeMatches
+            Method: get
+            RestApiId: !Ref SlchessHttpApi
+
   ### DynamoDB Tables ###
   Connections:
     Type: AWS::DynamoDB::Table
@@ -597,9 +617,24 @@ Resources:
       AttributeDefinitions:
         - AttributeName: MatchId
           AttributeType: S
+        - AttributeName: CreatedAt
+          AttributeType: S
+        - AttributeName: AverageRating
+          AttributeType: N
       KeySchema:
         - AttributeName: MatchId
           KeyType: HASH
+        - AttributeName: CreatedAt
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: AverageRatingIndex
+          KeySchema:
+            - AttributeName: AverageRating
+              KeyType: HASH
+            - AttributeName: CreatedAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
       BillingMode: PAY_PER_REQUEST
 
   MatchStates:
@@ -657,3 +692,21 @@ Outputs:
     Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/user"
     Export:
       Name: "UserGetEndpointUrl"
+
+  MatchRecordGetEndpointUrl:
+    Description: "Endpoint URL for get a single match record"
+    Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/matchRecord/{matchId}"
+    Export:
+      Name: "MatchRecordGetEndpointUrl"
+
+  MatchResultListEndpointUrl:
+    Description: "Endpoint URL for get a list of match results"
+    Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/matchResults?limit=5&startKey=<START-KEY>"
+    Export:
+      Name: "MatchResultListEndpointUrl"
+
+  ActiveMatchListEndpointUrl:
+    Description: "Endpoint URL for get a list of active matches"
+    Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/activeMatches?limit=5&startKey=<START-KEY>"
+    Export:
+      Name: "ActiveMatchListEndpointUrl"

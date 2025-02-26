@@ -286,6 +286,8 @@ func createMatch(ctx context.Context, userRating entities.UserRating, opponentId
 		NewRDs:     newOpponentRatingsRDs,
 	}
 
+	match.AverageRating = (match.Player1.Rating + match.Player2.Rating) / 2
+
 	// Save match information
 	matchAv, err := attributevalue.MarshalMap(match)
 	if err != nil {
