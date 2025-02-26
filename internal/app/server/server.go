@@ -37,7 +37,7 @@ type server struct {
 type payload struct {
 	Type      string            `json:"type"`
 	Data      map[string]string `json:"data"`
-	CreatedAt time.Time         `json:"created_at"`
+	CreatedAt time.Time         `json:"createdAt"`
 }
 
 func NewServer() *server {

@@ -134,7 +134,7 @@ func (m *Match) notifyPlayers(resp gameStateResponse) {
 			continue
 		}
 		err := player.Conn.WriteJSON(matchResponse{
-			Type:      "game_state",
+			Type:      "gameState",
 			GameState: resp,
 		})
 		if err != nil {
@@ -145,7 +145,7 @@ func (m *Match) notifyPlayers(resp gameStateResponse) {
 
 func (m *Match) syncPlayer(player *player) {
 	err := player.Conn.WriteJSON(matchResponse{
-		Type: "game_state",
+		Type: "gameState",
 		GameState: gameStateResponse{
 			Outcome: m.game.outcome().String(),
 			Method:  m.game.method(),

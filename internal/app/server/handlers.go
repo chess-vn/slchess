@@ -194,12 +194,12 @@ func (s *server) handleWebSocketMessage(playerId string, match *Match, payload p
 	switch payload.Type {
 	case "chat":
 		_ = payload.Data["message"]
-	case "game_data":
+	case "gameData":
 		action := payload.Data["action"]
 		switch action {
 		case "resign":
 			match.processGameControl(playerId, RESIGNAION)
-		case "offer_draw":
+		case "offerDraw":
 			match.processGameControl(playerId, DRAW_OFFER)
 		case "agreement":
 			match.processGameControl(playerId, AGREEMENT)

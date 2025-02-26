@@ -27,7 +27,7 @@ type SyncMessages struct {
 type Message struct {
 	Type      string    `json:"type"`
 	Data      Data      `json:"data"`
-	CreatedAt time.Time `json:"created_at"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 type Data struct {
@@ -176,7 +176,7 @@ func getTestMessages() ([]Message, []Message) {
 	player2Messages := make([]Message, 0, 3)
 	for i, move := range moves {
 		msg := Message{
-			Type: "game_data",
+			Type: "gameData",
 			Data: Data{
 				Action: "move",
 				Move:   move,
