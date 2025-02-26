@@ -53,6 +53,7 @@ tasks:
         - MatchmakingFunction
         - MatchRecordGetFunction
         - MatchResultListFunction
+        - ActiveMatchListFunction
     cmds:
       - sam build --region $AWS_REGION --config-file samconfig.yaml
       - for: { var: HANDLERS }

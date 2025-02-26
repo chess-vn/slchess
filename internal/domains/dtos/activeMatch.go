@@ -7,18 +7,27 @@ import (
 )
 
 type ActiveMatchResponse struct {
-	MatchId   string         `json:"MatchId"`
-	Player1   PlayerResponse `json:"Player1"`
-	Player2   PlayerResponse `json:"Player2"`
-	GameMode  string         `json:"GameMode"`
-	Server    string         `json:"Server"`
-	CreatedAt time.Time      `json:"CreatedAt"`
+	MatchId   string         `json:"matchId"`
+	Player1   PlayerResponse `json:"player1"`
+	Player2   PlayerResponse `json:"player2"`
+	GameMode  string         `json:"gameMode"`
+	Server    string         `json:"server"`
+	CreatedAt time.Time      `json:"createdAt"`
 }
 
 type PlayerResponse struct {
-	Id         string    `json:"Id"`
-	Rating     float64   `json:"Rating"`
-	NewRatings []float64 `json:"NewRatings"`
+	Id         string    `json:"id"`
+	Rating     float64   `json:"rating"`
+	NewRatings []float64 `json:"newRatings,omitempty"`
+}
+
+type ActiveMatchListResponse struct {
+	Items         []ActiveMatchResponse    `json:"items"`
+	NextPageToken NextActiveMatchPageToken `json:"nextPageToken"`
+}
+
+type NextActiveMatchPageToken struct {
+	CreatedAt string `json:"createdAt"`
 }
 
 func ActiveMatchResponseFromEntity(activeMatch entities.ActiveMatch) ActiveMatchResponse {
@@ -37,5 +46,28 @@ func ActiveMatchResponseFromEntity(activeMatch entities.ActiveMatch) ActiveMatch
 		GameMode:  activeMatch.GameMode,
 		Server:    activeMatch.Server,
 		CreatedAt: activeMatch.CreatedAt,
+	}
+}
+
+func ActiveMatchListResponseFromEntities(activeMatches []entities.ActiveMatch) ActiveMatchListResponse {
+	activeMatchResponses := make([]ActiveMatchResponse, 0, len(activeMatches))
+	for _, activeMatch := range activeMatches {
+		activeMatchResponses = append(activeMatchResponses, ActiveMatchResponse{
+			MatchId: activeMatch.MatchId,
+			Player1: PlayerResponse{
+				Id:     activeMatch.Player1.Id,
+				Rating: activeMatch.Player1.Rating,
+			},
+			Player2: PlayerResponse{
+				Id:     activeMatch.Player2.Id,
+				Rating: activeMatch.Player2.Rating,
+			},
+			GameMode:  activeMatch.GameMode,
+			Server:    activeMatch.Server,
+			CreatedAt: activeMatch.CreatedAt,
+		})
+	}
+	return ActiveMatchListResponse{
+		Items: activeMatchResponses,
 	}
 }
