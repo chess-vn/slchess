@@ -18,7 +18,7 @@ type ActiveMatchResponse struct {
 type PlayerResponse struct {
 	Id         string    `json:"id"`
 	Rating     float64   `json:"rating"`
-	NewRatings []float64 `json:"newRatings"`
+	NewRatings []float64 `json:"newRatings,omitempty"`
 }
 
 type ActiveMatchListResponse struct {
@@ -52,7 +52,20 @@ func ActiveMatchResponseFromEntity(activeMatch entities.ActiveMatch) ActiveMatch
 func ActiveMatchListResponseFromEntities(activeMatches []entities.ActiveMatch) ActiveMatchListResponse {
 	activeMatchResponses := make([]ActiveMatchResponse, 0, len(activeMatches))
 	for _, activeMatch := range activeMatches {
-		activeMatchResponses = append(activeMatchResponses, ActiveMatchResponseFromEntity(activeMatch))
+		activeMatchResponses = append(activeMatchResponses, ActiveMatchResponse{
+			MatchId: activeMatch.MatchId,
+			Player1: PlayerResponse{
+				Id:     activeMatch.Player1.Id,
+				Rating: activeMatch.Player1.Rating,
+			},
+			Player2: PlayerResponse{
+				Id:     activeMatch.Player2.Id,
+				Rating: activeMatch.Player2.Rating,
+			},
+			GameMode:  activeMatch.GameMode,
+			Server:    activeMatch.Server,
+			CreatedAt: activeMatch.CreatedAt,
+		})
 	}
 	return ActiveMatchListResponse{
 		Items: activeMatchResponses,
