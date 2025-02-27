@@ -12,6 +12,11 @@ includes:
     dir: ../
 
 tasks:
+  output:
+    desc: Print stack output to json file
+    cmds:
+      - sam list stack-outputs --stack-name slchess --output json
+
   deploy:
     desc: Deploy the current local stack on AWS
     deps: [utils:check-base-env]
