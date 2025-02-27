@@ -352,7 +352,7 @@ func checkForActiveMatch(ctx context.Context, userId string) (entities.ActiveMat
 	}
 
 	var activeMatch entities.ActiveMatch
-	if err := attributevalue.UnmarshalMap(userMatchOutput.Item, activeMatch); err != nil {
+	if err := attributevalue.UnmarshalMap(activeMatchOutput.Item, activeMatch); err != nil {
 		return entities.ActiveMatch{}, false, err
 	}
 	return activeMatch, true, nil
