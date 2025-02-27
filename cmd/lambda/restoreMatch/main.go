@@ -21,6 +21,7 @@ import (
 	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/internal/domains/entities"
 	"github.com/chess-vn/slchess/pkg/logging"
+	"go.uber.org/zap"
 )
 
 var (
@@ -48,9 +49,11 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 
 	activeMatch, err := getActiveMatch(ctx, matchId)
 	if err != nil {
+		logging.Error("Failed to restore match", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest}, nil
 	}
 	if activeMatch.Player1.Id != userId && activeMatch.Player2.Id != userId {
+		logging.Error("Failed to restore match: user not in match")
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest}, nil
 	}
 
@@ -61,6 +64,10 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 			break
 		}
 		<-time.After(5 * time.Second)
+	}
+	if err != nil {
+		logging.Error("Failed to restore match", zap.Error(err))
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
 	}
 	activeMatch.Server = serverIp
 
@@ -102,7 +109,7 @@ func getActiveMatch(ctx context.Context, matchId string) (entities.ActiveMatch, 
 	}
 
 	var activeMatch entities.ActiveMatch
-	if err := attributevalue.UnmarshalMap(activeMatchOutput.Item, activeMatch); err != nil {
+	if err := attributevalue.UnmarshalMap(activeMatchOutput.Item, &activeMatch); err != nil {
 		return entities.ActiveMatch{}, err
 	}
 	return activeMatch, nil
@@ -110,7 +117,7 @@ func getActiveMatch(ctx context.Context, matchId string) (entities.ActiveMatch, 
 
 func checkAndGetNewServerIp(ctx context.Context, clusterName, serviceName, targetPublicIp string) (string, error) {
 	if deploymentStage == "dev" {
-		return "", nil
+		return "SERVER_IP", nil
 	}
 	// List tasks in the cluster
 	listTasksOutput, err := ecsClient.ListTasks(ctx, &ecs.ListTasksInput{

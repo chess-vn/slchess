@@ -44,6 +44,7 @@ func ActiveMatchResponseFromEntity(activeMatch entities.ActiveMatch) ActiveMatch
 			NewRatings: activeMatch.Player2.NewRatings,
 		},
 		GameMode:  activeMatch.GameMode,
+		Server:    activeMatch.Server,
 		CreatedAt: activeMatch.CreatedAt,
 	}
 }
@@ -62,7 +63,6 @@ func ActiveMatchListResponseFromEntities(activeMatches []entities.ActiveMatch) A
 				Rating: activeMatch.Player2.Rating,
 			},
 			GameMode:  activeMatch.GameMode,
-			Server:    activeMatch.Server,
 			CreatedAt: activeMatch.CreatedAt,
 		})
 	}

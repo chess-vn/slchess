@@ -785,3 +785,9 @@ Outputs:
     Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/userRatings?limit=5&startKey=<START-KEY>"
     Export:
       Name: "UserRatingListEndpointUrl"
+
+  RestoreMatchEndpointUrl:
+    Description: "Endpoint URL for restoring a match"
+    Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/restoreMatch/{matchId}"
+    Export:
+      Name: "RestoreMatchEndpointUrl"
