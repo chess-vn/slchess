@@ -603,13 +603,15 @@ Resources:
           AttributeType: S
         - AttributeName: Rating
           AttributeType: N
+        - AttributeName: PartitionKey # Static partition key for GSI
+          AttributeType: S
       KeySchema:
         - AttributeName: UserId
           KeyType: HASH
       GlobalSecondaryIndexes:
         - IndexName: RatingIndex
           KeySchema:
-            - AttributeName: UserId
+            - AttributeName: PartitionKey # Static key
               KeyType: HASH
             - AttributeName: Rating
               KeyType: RANGE
@@ -650,13 +652,15 @@ Resources:
           AttributeType: S
         - AttributeName: AverageRating
           AttributeType: N
+        - AttributeName: PartitionKey # Static partition key for GSI
+          AttributeType: S
       KeySchema:
         - AttributeName: MatchId
           KeyType: HASH
       GlobalSecondaryIndexes:
         - IndexName: AverageRatingIndex
           KeySchema:
-            - AttributeName: MatchId
+            - AttributeName: PartitionKey
               KeyType: HASH
             - AttributeName: AverageRating
               KeyType: RANGE

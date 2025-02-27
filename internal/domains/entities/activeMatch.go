@@ -4,6 +4,7 @@ import "time"
 
 type ActiveMatch struct {
 	MatchId       string    `dynamodbav:"MatchId"`
+	PartitionKey  string    `dynamodbav:"PartitionKey"`
 	Player1       Player    `dynamodbav:"Player1"`
 	Player2       Player    `dynamodbav:"Player2"`
 	GameMode      string    `dynamodbav:"GameMode"`
