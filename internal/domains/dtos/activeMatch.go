@@ -11,7 +11,7 @@ type ActiveMatchResponse struct {
 	Player1   PlayerResponse `json:"player1"`
 	Player2   PlayerResponse `json:"player2"`
 	GameMode  string         `json:"gameMode"`
-	Server    string         `json:"server"`
+	Server    string         `json:"server,omitempty"`
 	CreatedAt time.Time      `json:"createdAt"`
 }
 
@@ -44,7 +44,6 @@ func ActiveMatchResponseFromEntity(activeMatch entities.ActiveMatch) ActiveMatch
 			NewRatings: activeMatch.Player2.NewRatings,
 		},
 		GameMode:  activeMatch.GameMode,
-		Server:    activeMatch.Server,
 		CreatedAt: activeMatch.CreatedAt,
 	}
 }

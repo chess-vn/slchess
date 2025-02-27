@@ -55,7 +55,7 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 	return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(matchResultListJson)}, nil
 }
 
-func fetchActiveMatchList(ctx context.Context, lastKey map[string]types.AttributeValue, limit int32) ([]entities.ActiveMatch, map[string]types.AttributeValue, error) {
+func fetchActiveMatchList(ctx context.Context, gameMode string, lastKey map[string]types.AttributeValue, limit int32) ([]entities.ActiveMatch, map[string]types.AttributeValue, error) {
 	input := &dynamodb.QueryInput{
 		TableName:              aws.String("ActiveMatches"),
 		IndexName:              aws.String("AverageRatingIndex"),
@@ -65,15 +65,16 @@ func fetchActiveMatchList(ctx context.Context, lastKey map[string]types.Attribut
 			"#rating": "AverageRating",
 		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":rating":   &types.AttributeValueMemberN{Value: "1600.0"},
-			":gameMode": &types.AttributeValueMemberS{Value: gameMode},
+			":pk":     &types.AttributeValueMemberS{Value: "ActiveMatches"},
+			":rating": &types.AttributeValueMemberN{Value: "1600.0"},
 		},
 		ScanIndexForward: aws.Bool(false),
 		Limit:            aws.Int32(limit),
 	}
-	if gameMode == "" {
-		input.FilterExpression = aws.String("AverageRating >= :rating")
-		delete(input.ExpressionAttributeValues, ":gameMode")
+	if gameMode != "" {
+		input.FilterExpression = aws.String("#gameMode = :gameMode")
+		input.ExpressionAttributeNames["#gameMode"] = "GameMode"
+		input.ExpressionAttributeValues[":gameMode"] = &types.AttributeValueMemberS{Value: gameMode}
 	}
 	if lastKey != nil {
 		input.ExclusiveStartKey = lastKey
