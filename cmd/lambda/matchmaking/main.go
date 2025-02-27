@@ -217,10 +217,11 @@ func findOpponents(ctx context.Context, ticket entities.MatchmakingTicket) ([]st
 
 func createMatch(ctx context.Context, userRating entities.UserRating, opponentId, gameMode string, serverIp string) (entities.ActiveMatch, error) {
 	match := entities.ActiveMatch{
-		MatchId:   utils.GenerateUUID(),
-		GameMode:  gameMode,
-		Server:    serverIp,
-		CreatedAt: time.Now(),
+		MatchId:      utils.GenerateUUID(),
+		PartitionKey: "ActiveMatches",
+		GameMode:     gameMode,
+		Server:       serverIp,
+		CreatedAt:    time.Now(),
 	}
 
 	// Associate the players with created match to kind of mark them as matched
