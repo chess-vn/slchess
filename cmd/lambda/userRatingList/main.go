@@ -29,66 +29,59 @@ func init() {
 
 func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	mustAuth(event.RequestContext.Authorizer)
-	gameMode, startKey, limit, err := extractParameters(event.QueryStringParameters)
+	startKey, limit, err := extractScanParameters(event.QueryStringParameters)
 	if err != nil {
-		logging.Error("Failed to list active matches", zap.Error(err))
+		logging.Error("Failed to list user ratings", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest}, nil
 	}
-	activeMatches, lastEvaluatedKey, err := fetchActiveMatchList(ctx, gameMode, startKey, limit)
+	userRatings, lastEvaluatedKey, err := fetchUserRatingList(ctx, startKey, limit)
 	if err != nil {
-		logging.Error("Failed to list active matches", zap.Error(err))
+		logging.Error("Failed to list user ratings", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
 	}
 
-	activeMatchListResp := dtos.ActiveMatchListResponseFromEntities(activeMatches)
+	userRatingListResp := dtos.UserRatingListResponseFromEntities(userRatings)
 	if lastEvaluatedKey != nil {
-		activeMatchListResp.NextPageToken = dtos.NextActiveMatchPageToken{
-			CreatedAt: lastEvaluatedKey["CreatedAt"].(*types.AttributeValueMemberS).Value,
+		userRatingListResp.NextPageToken = dtos.NextUserRatingPageToken{
+			Rating: lastEvaluatedKey["Rating"].(*types.AttributeValueMemberS).Value,
 		}
 	}
 
-	matchResultListJson, err := json.Marshal(activeMatchListResp)
+	userRatingListJson, err := json.Marshal(userRatingListResp)
 	if err != nil {
-		logging.Error("Failed to list active matches", zap.Error(err))
+		logging.Error("Failed to list user ratings", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
 	}
-	return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(matchResultListJson)}, nil
+	return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(userRatingListJson)}, nil
 }
 
-func fetchActiveMatchList(ctx context.Context, gameMode string, lastKey map[string]types.AttributeValue, limit int32) ([]entities.ActiveMatch, map[string]types.AttributeValue, error) {
+func fetchUserRatingList(ctx context.Context, lastKey map[string]types.AttributeValue, limit int32) ([]entities.UserRating, map[string]types.AttributeValue, error) {
 	input := &dynamodb.QueryInput{
-		TableName:              aws.String("ActiveMatches"),
-		IndexName:              aws.String("AverageRatingIndex"),
-		KeyConditionExpression: aws.String("#pk = :pk AND #rating >= :rating"),
+		TableName:              aws.String("UserRatings"),
+		IndexName:              aws.String("RatingIndex"),
+		KeyConditionExpression: aws.String("#pk = :pk"),
 		ExpressionAttributeNames: map[string]string{
-			"#pk":     "PartitionKey",
-			"#rating": "AverageRating",
+			"#pk": "PartitionKey",
 		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk":     &types.AttributeValueMemberS{Value: "ActiveMatches"},
-			":rating": &types.AttributeValueMemberN{Value: "1600.0"},
+			":pk": &types.AttributeValueMemberS{Value: "UserRatings"},
 		},
 		ScanIndexForward: aws.Bool(false),
 		Limit:            aws.Int32(limit),
 	}
-	if gameMode != "" {
-		input.FilterExpression = aws.String("#gameMode = :gameMode")
-		input.ExpressionAttributeNames["#gameMode"] = "GameMode"
-		input.ExpressionAttributeValues[":gameMode"] = &types.AttributeValueMemberS{Value: gameMode}
-	}
 	if lastKey != nil {
 		input.ExclusiveStartKey = lastKey
 	}
-	activeMatchesOutput, err := dynamoClient.Query(ctx, input)
+	userRatingsOutput, err := dynamoClient.Query(ctx, input)
 	if err != nil {
 		return nil, nil, err
 	}
-	var activeMatches []entities.ActiveMatch
-	if err := attributevalue.UnmarshalListOfMaps(activeMatchesOutput.Items, &activeMatches); err != nil {
+	var userRatings []entities.UserRating
+	if err := attributevalue.UnmarshalListOfMaps(userRatingsOutput.Items, &userRatings); err != nil {
 		return nil, nil, err
 	}
 
-	return activeMatches, activeMatchesOutput.LastEvaluatedKey, nil
+	return userRatings, userRatingsOutput.LastEvaluatedKey, nil
 }
 
 func mustAuth(authorizer map[string]interface{}) string {
@@ -107,28 +100,26 @@ func mustAuth(authorizer map[string]interface{}) string {
 	return userId
 }
 
-func extractParameters(params map[string]string) (string, map[string]types.AttributeValue, int32, error) {
-	gameMode := params["gameMode"]
-
+func extractScanParameters(params map[string]string) (map[string]types.AttributeValue, int32, error) {
 	limitStr, ok := params["limit"]
 	if !ok {
-		return "", nil, 0, fmt.Errorf("missing parameter: limit")
+		return nil, 0, fmt.Errorf("missing parameter: limit")
 	}
 
 	limit, err := strconv.ParseInt(limitStr, 10, 32)
 	if err != nil {
-		return "", nil, 0, fmt.Errorf("invalid limit: %v", err)
+		return nil, 0, fmt.Errorf("invalid limit: %v", err)
 	}
 
 	// Check for startKey (optional)
 	var startKey map[string]types.AttributeValue
 	if startKeyStr, ok := params["startKey"]; ok {
 		startKey = map[string]types.AttributeValue{
-			"CreatedAt": &types.AttributeValueMemberS{Value: startKeyStr},
+			"Rating": &types.AttributeValueMemberS{Value: startKeyStr},
 		}
 	}
 
-	return gameMode, startKey, int32(limit), nil
+	return startKey, int32(limit), nil
 }
 
 func main() {
