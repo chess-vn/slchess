@@ -57,8 +57,15 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 
 func fetchUserRatingList(ctx context.Context, lastKey map[string]types.AttributeValue, limit int32) ([]entities.UserRating, map[string]types.AttributeValue, error) {
 	input := &dynamodb.QueryInput{
-		TableName:        aws.String("UserRatings"),
-		IndexName:        aws.String("RatingIndex"),
+		TableName:              aws.String("UserRatings"),
+		IndexName:              aws.String("RatingIndex"),
+		KeyConditionExpression: aws.String("#pk = :pk"),
+		ExpressionAttributeNames: map[string]string{
+			"#pk": "PartitionKey",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":pk": &types.AttributeValueMemberS{Value: "UserRatings"},
+		},
 		ScanIndexForward: aws.Bool(false),
 		Limit:            aws.Int32(limit),
 	}
