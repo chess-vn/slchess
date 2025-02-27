@@ -352,7 +352,7 @@ func checkForActiveMatch(ctx context.Context, userId string) (entities.ActiveMat
 	}
 
 	var activeMatch entities.ActiveMatch
-	if err := attributevalue.UnmarshalMap(userMatchOutput.Item, activeMatch); err != nil {
+	if err := attributevalue.UnmarshalMap(activeMatchOutput.Item, activeMatch); err != nil {
 		return entities.ActiveMatch{}, false, err
 	}
 	return activeMatch, true, nil
@@ -408,7 +408,7 @@ func notifyQueueingUser(ctx context.Context, userId string, matchJson []byte) er
 
 func getServerIp(ctx context.Context, clusterName, serviceName string) (string, error) {
 	if deploymentStage == "dev" {
-		return "", nil
+		return "SERVER_IP", nil
 	}
 	// List tasks in the cluster
 	listTasksOutput, err := ecsClient.ListTasks(ctx, &ecs.ListTasksInput{

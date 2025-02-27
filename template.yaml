@@ -443,10 +443,8 @@ Resources:
                 - !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SlchessWebsocketApi}/*"
       Environment:
         Variables:
-          SNS_TOPIC_ARN: !Ref SlchessSNSTopic
           ECS_CLUSTER_NAME: !Ref SlchessServerCluster
           ECS_SERVICE_NAME: !GetAtt SlchessServerService.Name
-          ECS_TASK_DEFINITION: !Ref SlchessServerDefinition
           WEBSOCKET_API_ID: !Ref SlchessWebsocketApi
           WEBSOCKET_API_STAGE: !Ref SlchessWebsocketApiStage
           DEPLOYMENT_STAGE: !Ref SlchessDeploymentStage
@@ -558,6 +556,46 @@ Resources:
           Properties:
             Path: /userRatings
             Method: get
+            RestApiId: !Ref SlchessHttpApi
+
+  RestoreMatchFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-RestoreMatch
+      CodeUri: ./cmd/lambda/restoreMatch/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Timeout: 60
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: ActiveMatches
+        - EcsRunTaskPolicy:
+            TaskDefinition: !Ref SlchessServerDefinition
+        - Statement:
+            - Effect: Allow
+              Action:
+                - "ecs:ListTasks"
+                - "ecs:DescribeTasks"
+                - "ecs:UpdateService"
+              Resource: "*"
+        - Statement:
+            - Effect: Allow
+              Action:
+                - "ec2:DescribeNetworkInterfaces"
+              Resource: "*"
+      Environment:
+        Variables:
+          ECS_CLUSTER_NAME: !Ref SlchessServerCluster
+          ECS_SERVICE_NAME: !GetAtt SlchessServerService.Name
+          DEPLOYMENT_STAGE: !Ref SlchessDeploymentStage
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /restoreMatch/{matchId}
+            Method: post
             RestApiId: !Ref SlchessHttpApi
 
   ### DynamoDB Tables ###
@@ -747,3 +785,9 @@ Outputs:
     Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/userRatings?limit=5&startKey=<START-KEY>"
     Export:
       Name: "UserRatingListEndpointUrl"
+
+  RestoreMatchEndpointUrl:
+    Description: "Endpoint URL for restoring a match"
+    Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/restoreMatch/{matchId}"
+    Export:
+      Name: "RestoreMatchEndpointUrl"
