@@ -29,14 +29,14 @@ func init() {
 
 func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	userId := mustAuth(event.RequestContext.Authorizer)
-	startKey, limit, err := extractScanParameters(userId, event.QueryStringParameters)
+	targetId, startKey, limit, err := extractScanParameters(userId, event.QueryStringParameters)
 	if err != nil {
-		logging.Error("Failed to get match record", zap.Error(err))
+		logging.Error("Failed to get match results", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest}, nil
 	}
-	matchResults, lastEvaluatedKey, err := fetchMatchResults(ctx, userId, startKey, limit)
+	matchResults, lastEvaluatedKey, err := fetchMatchResults(ctx, targetId, startKey, limit)
 	if err != nil {
-		logging.Error("Failed to get match record", zap.Error(err))
+		logging.Error("Failed to get match results", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
 	}
 
@@ -96,15 +96,23 @@ func mustAuth(authorizer map[string]interface{}) string {
 	return userId
 }
 
-func extractScanParameters(userId string, params map[string]string) (map[string]types.AttributeValue, int32, error) {
-	limitStr, ok := params["limit"]
-	if !ok {
-		return nil, 0, fmt.Errorf("missing parameter: limit")
+func extractScanParameters(userId string, params map[string]string) (string, map[string]types.AttributeValue, int32, error) {
+	var targetId string
+	if userIdStr, ok := params["userId"]; ok {
+		targetId = userId
+	} else {
+		targetId = userIdStr
 	}
 
-	limit, err := strconv.ParseInt(limitStr, 10, 32)
-	if err != nil {
-		return nil, 0, fmt.Errorf("invalid limit: %v", err)
+	var limit int32
+	if limitStr, ok := params["limit"]; ok {
+		limitInt64, err := strconv.ParseInt(limitStr, 10, 32)
+		if err != nil {
+			return "", nil, 0, fmt.Errorf("invalid limit: %v", err)
+		}
+		limit = int32(limitInt64)
+	} else {
+		limit = 10
 	}
 
 	// Check for startKey (optional)
@@ -116,7 +124,7 @@ func extractScanParameters(userId string, params map[string]string) (map[string]
 		}
 	}
 
-	return startKey, int32(limit), nil
+	return targetId, startKey, int32(limit), nil
 }
 
 func main() {

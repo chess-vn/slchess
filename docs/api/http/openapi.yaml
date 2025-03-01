@@ -45,11 +45,11 @@ paths:
               schema:
               type: object
               properties:
-                MatchId:
+                matchId:
                   type: string
                   format: uuid
                   example: "a418b2c9-bccd-49b7-a646-536061113ddf"
-                Player1:
+                player1:
                   type: object
                   properties:
                     Id:
@@ -68,7 +68,7 @@ paths:
                       items:
                         type: integer
                       example: [0, 0, 0]
-                Player2:
+                player2:
                   type: object
                   properties:
                     Id:
@@ -87,13 +87,13 @@ paths:
                       items:
                         type: integer
                       example: [0, 0, 0]
-                GameMode:
+                gameMode:
                   type: string
                   example: "10min"
-                Server:
+                server:
                   type: string
                   example: "13.211.190.175"
-                CreatedAt:
+                createdAt:
                   type: string
                   format: date-time
                   example: "2025-02-20T04:25:37.975024301Z"
@@ -109,5 +109,218 @@ paths:
                     example: "Queued"
         "400":
           description: Bad request
+        "500":
+          description: Internal server error
+
+  /user/{id}:
+    get:
+      summary: Get user information
+      description: Get user information.
+      headers:
+        Authorization:
+          description: Cognito IdToken for authentication
+          schema:
+            type: string
+            example: "eyJraWQiOiI2WkZjQUx1d2RrK01LRGN0R1poM3pwM2NTSDkwbHlSYUVsXC9iVkFJRlZkUT0iLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIzOWFlZjRiOC02MGMxLTcwZjAtZWNhOS1lMmU1Y2JkZjVlOTkiLCJlbWFpbF92ZXJpZmllZCI6ZmFsc2UsImlzcyI6Imh0dHBzOlwvXC9jb2duaXRvLWlkcC5hcC1zb3V0aGVhc3QtMi5hbWF6b25hd3MuY29tXC9hcC1zb3V0aGVhc3QtMl85eDlydkw3ekoiLCJjb2duaXRvOnVzZXJuYW1lIjoidGVzdHVzZXIxIiwib3JpZ2luX2p0aSI6IjVmMTk4MzQzLTYzOTEtNDAxYi1hYTI5LTY5Y2EwZTJmYzY0ZCIsImF1ZCI6IjVjbmcwdTlnNmZtM2MxanZrcTViaHF0MmxmIiwiZXZlbnRfaWQiOiJlNzU5N2Y3Ni1kYjYyLTQ4NGUtOWRhYS01Nzk4ZGFmNGE5YTIiLCJ0b2tlbl91c2UiOiJpZCIsImF1dGhfdGltZSI6MTc0MDAyNDY1NCwiZXhwIjoxNzQwMDI4MjU0LCJpYXQiOjE3NDAwMjQ2NTQsImp0aSI6ImM3N2EwM2MyLTY5MjItNDNjZC04NTQ4LWU4YzllNmM2YjRmOCIsImVtYWlsIjoidGVzdHVzZXIxQGdtYWlsLmNvbSJ9.Mhco3ZMEy672iYnmCql3sDH5zGDGMT0bF4hOedGrbAktEYtl9B3iPjfinx8aBY3NNGK2Gg5WopKfhw9GZpX1TcpEi_LV6aU0Thx_xYF28_Ou597X3l-Xe1wwviQf-JCxXzwfVPrms8zlkmXO621oQKvT1aVHvpwNmAOuoT-3dqHL_NZt5csLoo5K3Yuwiq5InqiFgwxJEv3Dt-9mTdjqq0DH1LbblNpXdnyjHANTK0u4HpGJ7oGUxuEYTh1p3JKU7fdkC3v31POBbYACUd4A6unmhPpSTAS6NOcKB0lNRuOvvko-m4X3E3er4XCP6Q1w2caCt5wnQnxPngYSm6TuUA"
+      parameters:
+        - name: id
+          in: path
+          required: false
+          description: user id
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response with user information
+          content:
+            application/json:
+              schema:
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                  example: "a418b2c9-bccd-49b7-a646-536061113ddf"
+                username:
+                  type: string
+                  format: uuid
+                  example: "user1"
+                locale:
+                  type: string
+                  example: Vietnam
+                picture:
+                  type: string
+                  example: "s3://user/pictures/user1.jpg"
+                phone:
+                  type: string
+                  example: "0912345678"
+                rating:
+                  type: number
+                  format: float
+                  example: 1264.234
+                membership:
+                  type: string
+                  example: "guest"
+                createdAt:
+                  type: string
+                  format: date-time
+                  example: "2025-02-20T04:25:37.975024301Z"
+        "404":
+          description: User not found
+        "500":
+          description: Internal server error
+
+  /matchRecord/{id}:
+    get:
+      summary: Get match record by match id
+      description: Get match record by match id
+      headers:
+        Authorization:
+          description: Cognito IdToken for authentication
+          schema:
+            type: string
+            example: "eyJraWQiOiI2WkZjQUx1d2RrK01LRGN0R1poM3pwM2NTSDkwbHlSYUVsXC9iVkFJRlZkUT0iLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIzOWFlZjRiOC02MGMxLTcwZjAtZWNhOS1lMmU1Y2JkZjVlOTkiLCJlbWFpbF92ZXJpZmllZCI6ZmFsc2UsImlzcyI6Imh0dHBzOlwvXC9jb2duaXRvLWlkcC5hcC1zb3V0aGVhc3QtMi5hbWF6b25hd3MuY29tXC9hcC1zb3V0aGVhc3QtMl85eDlydkw3ekoiLCJjb2duaXRvOnVzZXJuYW1lIjoidGVzdHVzZXIxIiwib3JpZ2luX2p0aSI6IjVmMTk4MzQzLTYzOTEtNDAxYi1hYTI5LTY5Y2EwZTJmYzY0ZCIsImF1ZCI6IjVjbmcwdTlnNmZtM2MxanZrcTViaHF0MmxmIiwiZXZlbnRfaWQiOiJlNzU5N2Y3Ni1kYjYyLTQ4NGUtOWRhYS01Nzk4ZGFmNGE5YTIiLCJ0b2tlbl91c2UiOiJpZCIsImF1dGhfdGltZSI6MTc0MDAyNDY1NCwiZXhwIjoxNzQwMDI4MjU0LCJpYXQiOjE3NDAwMjQ2NTQsImp0aSI6ImM3N2EwM2MyLTY5MjItNDNjZC04NTQ4LWU4YzllNmM2YjRmOCIsImVtYWlsIjoidGVzdHVzZXIxQGdtYWlsLmNvbSJ9.Mhco3ZMEy672iYnmCql3sDH5zGDGMT0bF4hOedGrbAktEYtl9B3iPjfinx8aBY3NNGK2Gg5WopKfhw9GZpX1TcpEi_LV6aU0Thx_xYF28_Ou597X3l-Xe1wwviQf-JCxXzwfVPrms8zlkmXO621oQKvT1aVHvpwNmAOuoT-3dqHL_NZt5csLoo5K3Yuwiq5InqiFgwxJEv3Dt-9mTdjqq0DH1LbblNpXdnyjHANTK0u4HpGJ7oGUxuEYTh1p3JKU7fdkC3v31POBbYACUd4A6unmhPpSTAS6NOcKB0lNRuOvvko-m4X3E3er4XCP6Q1w2caCt5wnQnxPngYSm6TuUA"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: match id
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response with match record information
+          content:
+            application/json:
+              schema:
+              type: object
+              properties:
+                matchId:
+                  type: string
+                  format: uuid
+                  example: "a418b2c9-bccd-49b7-a646-536061113ddf"
+                players:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      Id:
+                        type: string
+                        example: "199e84a8-6031-70c7-efe5-89fdf66ba8a6"
+                      Rating:
+                        type: integer
+                        example: 200
+                      NewRatings:
+                        type: array
+                        items:
+                          type: integer
+                          example: [200, 200, 200]
+                      NewRDs:
+                        type: array
+                        items:
+                          type: integer
+                          example: [0, 0, 0]
+                pgn:
+                  type: string
+                  example: Vietnam
+                startedAt:
+                  type: string
+                  format: date-time
+                  example: "2025-02-20T04:25:37.975024301Z"
+                endedAt:
+                  type: string
+                  format: date-time
+                  example: "2025-02-20T04:25:37.975024301Z"
+        "404":
+          description: Match record not found
+        "500":
+          description: Internal server error
+
+  /matchResults:
+    get:
+      summary: Get match results of a single user
+      description: Get match results of a single user
+      headers:
+        Authorization:
+          description: Cognito IdToken for authentication
+          schema:
+            type: string
+            example: "eyJraWQiOiI2WkZjQUx1d2RrK01LRGN0R1poM3pwM2NTSDkwbHlSYUVsXC9iVkFJRlZkUT0iLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIzOWFlZjRiOC02MGMxLTcwZjAtZWNhOS1lMmU1Y2JkZjVlOTkiLCJlbWFpbF92ZXJpZmllZCI6ZmFsc2UsImlzcyI6Imh0dHBzOlwvXC9jb2duaXRvLWlkcC5hcC1zb3V0aGVhc3QtMi5hbWF6b25hd3MuY29tXC9hcC1zb3V0aGVhc3QtMl85eDlydkw3ekoiLCJjb2duaXRvOnVzZXJuYW1lIjoidGVzdHVzZXIxIiwib3JpZ2luX2p0aSI6IjVmMTk4MzQzLTYzOTEtNDAxYi1hYTI5LTY5Y2EwZTJmYzY0ZCIsImF1ZCI6IjVjbmcwdTlnNmZtM2MxanZrcTViaHF0MmxmIiwiZXZlbnRfaWQiOiJlNzU5N2Y3Ni1kYjYyLTQ4NGUtOWRhYS01Nzk4ZGFmNGE5YTIiLCJ0b2tlbl91c2UiOiJpZCIsImF1dGhfdGltZSI6MTc0MDAyNDY1NCwiZXhwIjoxNzQwMDI4MjU0LCJpYXQiOjE3NDAwMjQ2NTQsImp0aSI6ImM3N2EwM2MyLTY5MjItNDNjZC04NTQ4LWU4YzllNmM2YjRmOCIsImVtYWlsIjoidGVzdHVzZXIxQGdtYWlsLmNvbSJ9.Mhco3ZMEy672iYnmCql3sDH5zGDGMT0bF4hOedGrbAktEYtl9B3iPjfinx8aBY3NNGK2Gg5WopKfhw9GZpX1TcpEi_LV6aU0Thx_xYF28_Ou597X3l-Xe1wwviQf-JCxXzwfVPrms8zlkmXO621oQKvT1aVHvpwNmAOuoT-3dqHL_NZt5csLoo5K3Yuwiq5InqiFgwxJEv3Dt-9mTdjqq0DH1LbblNpXdnyjHANTK0u4HpGJ7oGUxuEYTh1p3JKU7fdkC3v31POBbYACUd4A6unmhPpSTAS6NOcKB0lNRuOvvko-m4X3E3er4XCP6Q1w2caCt5wnQnxPngYSm6TuUA"
+      parameters:
+        - name: userId
+          in: query
+          required: false
+          description: user id
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: limit
+          schema:
+            type: number
+            format: integer
+            example: 10
+        - name: startKey
+          in: query
+          required: false
+          description: start key to use for querying next page
+          schema:
+            type: object
+            properties:
+              timestamp:
+                type: string
+                format: date-time
+                example: "2025-02-20T04:25:37.975024301Z"
+      responses:
+        "200":
+          description: Successful response with match result list
+          content:
+            application/json:
+              schema:
+              type: object
+              properties:
+                items:
+                  type: array
+                  properties:
+                    type: object
+                    properties:
+                      userId:
+                        type: string
+                        format: uuid
+                        example: "a418b2c9-bccd-49b7-a646-536061113ddf"
+                      matchId:
+                        type: string
+                        format: uuid
+                        example: "a418b2c9-bccd-49b7-a646-536061113ddf"
+                      opponentId:
+                        type: string
+                        format: uuid
+                        example: "a418b2c9-bccd-49b7-a646-536061113ddf"
+                      opponentRating:
+                        type: number
+                        format: float
+                        example: 1234.345
+                      opponentRD:
+                        type: number
+                        format: float
+                        example: 134.234
+                      result:
+                        type: number
+                        format: float
+                        example: 0.5
+                      timestamp:
+                        type: string
+                        format: date-time
+                        example: "2025-02-20T04:25:37.975024301Z"
+                nextPageToken:
+                  type: objects
+                  properties:
+                    timestamp:
+                      type: string
+                      format: date-time
+                      example: "2025-02-20T04:25:37.975024301Z"
+        "400":
+          description: Invalid query parameters
         "500":
           description: Internal server error

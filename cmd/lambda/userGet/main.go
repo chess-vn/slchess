@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -18,7 +20,10 @@ import (
 	"go.uber.org/zap"
 )
 
-var dynamoClient *dynamodb.Client
+var (
+	dynamoClient    *dynamodb.Client
+	ErrUserNotFound = fmt.Errorf("user not found")
+)
 
 func init() {
 	cfg, _ := config.LoadDefaultConfig(context.TODO())
@@ -33,6 +38,10 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 	}
 	targetProfile, err := getUserProfile(ctx, targetId)
 	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			logging.Error("Failed to get user profile", zap.Error(err))
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusNotFound}, nil
+		}
 		logging.Error("Failed to get user profile", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
 	}
@@ -67,6 +76,9 @@ func getUserProfile(ctx context.Context, userId string) (entities.UserProfile, e
 	})
 	if err != nil {
 		return entities.UserProfile{}, err
+	}
+	if userProfileOutput.Item == nil {
+		return entities.UserProfile{}, ErrUserNotFound
 	}
 	var userProfile entities.UserProfile
 	if err := attributevalue.UnmarshalMap(userProfileOutput.Item, &userProfile); err != nil {

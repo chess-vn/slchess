@@ -14,7 +14,7 @@ type UserResponse struct {
 	Picture    string    `json:"picture"`
 	Rating     float64   `json:"rating"`
 	Membership string    `json:"membership"`
-	CreatedAt  time.Time `json:"created_at"`
+	CreatedAt  time.Time `json:"createdAt"`
 }
 
 func UserResponseFromEntities(userProfile entities.UserProfile, userRating entities.UserRating, full bool) UserResponse {
