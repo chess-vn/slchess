@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -12,12 +14,16 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/internal/domains/entities"
 	"github.com/chess-vn/slchess/pkg/logging"
 	"go.uber.org/zap"
 )
 
-var dynamoClient *dynamodb.Client
+var (
+	dynamoClient           *dynamodb.Client
+	ErrMatchRecordNotFound = fmt.Errorf("match record not found")
+)
 
 func init() {
 	cfg, _ := config.LoadDefaultConfig(context.TODO())
@@ -30,11 +36,16 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 
 	matchRecord, err := getMatchRecord(ctx, matchId)
 	if err != nil {
+		if errors.Is(err, ErrMatchRecordNotFound) {
+			logging.Error("Failed to get match record", zap.Error(err))
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusNotFound}, nil
+		}
 		logging.Error("Failed to get match record", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
 	}
 
-	matchRecordJson, err := json.Marshal(matchRecord)
+	matchRecordResp := dtos.MatchRecordGetResponseFromEntity(matchRecord)
+	matchRecordJson, err := json.Marshal(matchRecordResp)
 	if err != nil {
 		logging.Error("Failed to get match record", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
@@ -53,6 +64,9 @@ func getMatchRecord(ctx context.Context, matchId string) (entities.MatchRecord, 
 	})
 	if err != nil {
 		return entities.MatchRecord{}, err
+	}
+	if matchRecordOutput.Item == nil {
+		return entities.MatchRecord{}, ErrMatchRecordNotFound
 	}
 	var matchRecord entities.MatchRecord
 	if err := attributevalue.UnmarshalMap(matchRecordOutput.Item, &matchRecord); err != nil {
