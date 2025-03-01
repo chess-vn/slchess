@@ -474,7 +474,7 @@ Resources:
         ApiEvent:
           Type: Api
           Properties:
-            Path: /user
+            Path: /user/{id}
             Method: get
             RestApiId: !Ref SlchessHttpApi
 
