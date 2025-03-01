@@ -1,13 +1,16 @@
 asyncapi: 2.6.0
+
 info:
   title: Game WebSocket API
   version: 1.0.0
   description: API for real-time game interactions over WebSocket.
+
 servers:
   game-server:
     url: ws://localhost:8080
     protocol: ws
     description: WebSocket server for game interactions.
+
 channels:
   /game/{matchId}:
     parameters:
@@ -29,8 +32,69 @@ channels:
       summary: Send game data to the server.
       message:
         $ref: "#/components/messages/GameData"
+
+  /queueing:
+    subscribe:
+      operationId: onMatchFound
+      summary: Subscribe to matchmaking notification.
+      message:
+        oneOf:
+          - $ref: "#/components/messages/MatchFound"
+
 components:
   messages:
+    MatchFound:
+      name: MatchFound
+      payload:
+        type: object
+        properties:
+          matchId:
+            type: string
+            format: uuid
+            example: "a418b2c9-bccd-49b7-a646-536061113ddf"
+          player1:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+                example: "39aef4b8-60c1-70f0-eca9-e2e5cbdf5e99"
+              rating:
+                type: number
+                format: float
+                example: 1200.0
+              newRatings:
+                type: array
+                items:
+                  type: number
+                  format: float
+                example: [1270.1, 1205.3, 1120.4]
+          player2:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              rating:
+                type: number
+                format: float
+              newRatings:
+                type: array
+                items:
+                  type: number
+                  format: float
+          gameMode:
+            type: string
+            example: "10min"
+          server:
+            type: string
+            format: ipv4
+            example: 13.211.190.175
+          createdAt:
+            type: string
+            format: date-time
+            example: "2025-02-20T04:25:37.975024301Z"
+
     GameData:
       name: GameData
       payload:
@@ -38,7 +102,7 @@ components:
         properties:
           type:
             type: string
-            example: "game_data"
+            example: "gameData"
           data:
             type: object
             properties:
@@ -59,7 +123,7 @@ components:
         properties:
           type:
             type: string
-            example: "game_state"
+            example: "gameState"
           game:
             type: object
             properties:
@@ -84,7 +148,7 @@ components:
         properties:
           type:
             type: string
-            example: "game_state"
+            example: "gameState"
           game:
             type: object
             properties:

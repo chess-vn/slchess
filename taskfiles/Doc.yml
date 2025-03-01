@@ -7,6 +7,8 @@ tasks:
     vars:
       detach:
         sh: echo $DETACH
+      pwd:
+        sh: pwd
     cmds:
       - |
         set +e
@@ -14,7 +16,7 @@ tasks:
         if [ $? -eq 0 ]; then
           docker start {{if not .detach}}-a{{end}} slchess-api
         else
-          docker run {{if .detach}}-d{{end}} -p 7101:8080 -e SWAGGER_JSON=/openapi.yaml -v ./docs/api/http/openapi.yaml:/openapi.yaml --name slchess-api swaggerapi/swagger-ui
+          docker run {{if .detach}}-d{{end}} -p 7101:8080 -e SWAGGER_JSON=/docs/api/http/openapi.yaml -v {{.pwd}}/docs/api/http:/docs/api/http --name slchess-api swaggerapi/swagger-ui
         fi
 
   wapi:
