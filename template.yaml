@@ -11,6 +11,9 @@ Parameters:
   ServerImageUri:
     Type: String
     Description: "URI of the Docker image for game server in ECR"
+  EngineImageUri:
+    Type: String
+    Description: "URI of the chess engine image for game analysis in ECR"
   SlchessDeploymentStage:
     Type: String
     Default: dev
@@ -149,6 +152,85 @@ Resources:
           PredefinedMetricType: ECSServiceAverageCPUUtilization
         ScaleInCooldown: 1800 # 30 minutes cooldown before scaling down
         ScaleOutCooldown: 60 # 1-minute cooldown before scaling up
+
+  ### AWS Batch ###
+  SlchessBatchComputeEnv:
+    Type: AWS::Batch::ComputeEnvironment
+    Properties:
+      Type: MANAGED
+      ComputeResources:
+        Type: SPOT
+        MinvCpus: 0
+        MaxvCpus: 16
+        DesiredvCpus: 2
+        InstanceTypes:
+          - optimal
+        AllocationStrategy: SPOT_CAPACITY_OPTIMIZED
+        Subnets:
+          - !Ref YourSubnet1
+          - !Ref YourSubnet2
+        SecurityGroupIds:
+          - !Ref YourSecurityGroup
+        SpotIamFleetRole: !Ref SpotFleetRole
+      State: ENABLED
+
+  SlchessBatchJobQueue:
+    Type: AWS::Batch::JobQueue
+    Properties:
+      ComputeEnvironmentOrder:
+        - Order: 1
+          ComputeEnvironment: !Ref ChessBatchComputeEnv
+      Priority: 1
+      State: ENABLED
+
+  SlchessBatchJobDefinition:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      Type: Container
+      ContainerProperties:
+        Image: !Ref EngineImageUri
+        Vcpus: 2
+        Memory: 4096
+        Command: ["./stockfish", "game.pgn"]
+        JobRoleArn: !Ref SlchessBatchJobRole
+      RetryStrategy:
+        Attempts: 3
+
+  SlchessBatchJobRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: BatchJobS3Access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:aws:s3:::your-chess-analysis-bucket"
+                  - !Sub "arn:aws:s3:::your-chess-analysis-bucket/*"
+        - PolicyName: BatchJobLogging
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
 
   ### Websocket API ###
   SlchessWebsocketApi:
