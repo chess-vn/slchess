@@ -21,9 +21,8 @@ const (
 	WHITE_SIDE Side = true
 	BLACK_SIDE Side = false
 
-	RESIGNAION GameControl = iota
-	DRAW_OFFER
-	AGREEMENT
+	RESIGN GameControl = iota
+	OFFER_DRAW
 	NONE
 
 	BLACK_OUT_OF_TIME = "BLACK_OUT_OF_TIME"
@@ -33,11 +32,29 @@ const (
 type game struct {
 	chess.Game
 	customOutcome chess.Outcome
+	drawOffers    []bool
 }
 
 func newGame() *game {
 	g := chess.NewGame(chess.UseNotation(chess.UCINotation{}))
-	return &game{Game: *g}
+	return &game{
+		Game:       *g,
+		drawOffers: []bool{false, false},
+	}
+}
+
+func (g *game) OfferDraw(side chess.Color) bool {
+	switch side {
+	case chess.White:
+		g.drawOffers[0] = true
+	case chess.Black:
+		g.drawOffers[1] = true
+	}
+	if g.drawOffers[0] && g.drawOffers[1] {
+		g.Draw(chess.DrawOffer)
+		return true
+	}
+	return false
 }
 
 func (g *game) outOfTime(side Side) {
