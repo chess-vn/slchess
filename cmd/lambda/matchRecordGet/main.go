@@ -32,7 +32,7 @@ func init() {
 
 func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	mustAuth(event.RequestContext.Authorizer)
-	matchId := event.PathParameters["matchId"]
+	matchId := event.PathParameters["id"]
 
 	matchRecord, err := getMatchRecord(ctx, matchId)
 	if err != nil {
