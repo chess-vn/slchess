@@ -146,7 +146,7 @@ func (s *server) handlePlayerDisconnect(match *Match, playerId string) {
 		// Else only set the timer for the disconnected player
 		logging.Info("player disconnected", zap.String("match_id", match.id), zap.String("player_id", player.Id))
 		if !match.isEnded() {
-			match.setTimer(60 * time.Second)
+			match.setTimer(match.config.DisconnectTimeout)
 		}
 	}
 }
@@ -198,11 +198,9 @@ func (s *server) handleWebSocketMessage(playerId string, match *Match, payload p
 		action := payload.Data["action"]
 		switch action {
 		case "resign":
-			match.processGameControl(playerId, RESIGNAION)
+			match.processGameControl(playerId, RESIGN)
 		case "offerDraw":
-			match.processGameControl(playerId, DRAW_OFFER)
-		case "agreement":
-			match.processGameControl(playerId, AGREEMENT)
+			match.processGameControl(playerId, OFFER_DRAW)
 		case "move":
 			match.processMove(playerId, payload.Data["move"])
 		default:

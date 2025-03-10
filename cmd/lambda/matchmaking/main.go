@@ -76,11 +76,11 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 		logging.Error("Failed to get user rating", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
 	}
-	if userRating.Rating < matchmakingReq.MinRating || userRating.Rating > matchmakingReq.MaxRating {
-		logging.Error("Invalid matchmaking ticket", zap.Error(err))
+	ticket := dtos.MatchmakingRequestToEntity(userRating, matchmakingReq)
+	if err := ticket.Validate(); err != nil {
+		logging.Error("Failed to matchmaking", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest}, nil
 	}
-	ticket := dtos.MatchmakingRequestToEntity(userId, matchmakingReq)
 
 	// Check if user already in a activeMatch
 	activeMatch, exist, err := checkForActiveMatch(ctx, userId)

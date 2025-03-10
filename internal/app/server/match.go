@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chess-vn/slchess/internal/domains/entities"
 	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/chess-vn/slchess/pkg/utils"
 	"github.com/notnil/chess"
@@ -28,8 +29,10 @@ type Match struct {
 }
 
 type MatchConfig struct {
-	MatchDuration time.Duration
-	CancelTimeout time.Duration
+	MatchDuration     time.Duration
+	ClockIncrement    time.Duration
+	CancelTimeout     time.Duration
+	DisconnectTimeout time.Duration
 }
 
 type matchResponse struct {
@@ -49,6 +52,10 @@ type errorResponse struct {
 	Error string `json:"error"`
 }
 
+type drawOffer struct {
+	Type string `json:"type"`
+}
+
 func (match *Match) start() {
 	for move := range match.moveCh {
 		player, exist := match.getPlayerWithId(move.playerId)
@@ -60,11 +67,13 @@ func (match *Match) start() {
 			continue
 		}
 		switch move.control {
-		case RESIGNAION:
+		case RESIGN:
 			match.game.Resign(player.color())
-		case DRAW_OFFER:
-		case AGREEMENT:
-			match.game.Draw(chess.DrawOffer)
+		case OFFER_DRAW:
+			draw := match.game.OfferDraw(player.color())
+			if !draw {
+				match.sendDrawOffer()
+			}
 		default:
 			if expectedId := match.getCurrentTurnPlayer().Id; player.Id != expectedId {
 				player.Conn.WriteJSON(errorResponse{
@@ -83,7 +92,7 @@ func (match *Match) start() {
 			}
 
 			// If making move, update clock
-			player.Clock -= time.Since(player.TurnStartedAt)
+			player.Clock = player.Clock - time.Since(player.TurnStartedAt) + match.config.ClockIncrement
 			// If clock runs out, end the game
 			if player.Clock <= 0 {
 				match.game.outOfTime(player.Side)
@@ -125,6 +134,19 @@ func (match *Match) start() {
 			)
 			match.end()
 		}
+	}
+}
+
+func (m *Match) sendDrawOffer() {
+	player := m.getNextTurnPlayer()
+	if player == nil || player.Conn == nil {
+		return
+	}
+	err := player.Conn.WriteJSON(drawOffer{
+		Type: "drawOffer",
+	})
+	if err != nil {
+		logging.Error("couldn't send draw offer to player: ", zap.String("player_id", player.Id))
 	}
 }
 
@@ -181,6 +203,13 @@ func (m *Match) getCurrentTurnPlayer() *player {
 		return m.players[0]
 	}
 	return m.players[1]
+}
+
+func (m *Match) getNextTurnPlayer() *player {
+	if m.game.Position().Turn() == chess.White {
+		return m.players[1]
+	}
+	return m.players[0]
 }
 
 func (m *Match) processMove(playerId, moveUci string) {
@@ -253,19 +282,17 @@ func (m *Match) skipTimer() {
 	logging.Info("clock skipped", zap.String("match_id", m.id))
 }
 
-func configForGameMode(gameMode string) MatchConfig {
-	switch gameMode {
-	case "10min":
-		return MatchConfig{
-			MatchDuration: 10 * time.Minute,
-			CancelTimeout: 30 * time.Second,
-		}
-	default:
-		return MatchConfig{
-			MatchDuration: 10 * time.Minute,
-			CancelTimeout: 30 * time.Second,
-		}
+func configForGameMode(gameMode string) (MatchConfig, error) {
+	gm, err := entities.ParseGameMode(gameMode)
+	if err != nil {
+		return MatchConfig{}, err
 	}
+	return MatchConfig{
+		MatchDuration:     gm.Time,
+		ClockIncrement:    gm.Increment,
+		CancelTimeout:     30 * time.Second,
+		DisconnectTimeout: 60 * time.Second,
+	}, nil
 }
 
 func (m *Match) getNewPlayerRatings() ([]float64, []float64, error) {
