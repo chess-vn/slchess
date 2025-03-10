@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chess-vn/slchess/internal/domains/entities"
 	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/chess-vn/slchess/pkg/utils"
 	"github.com/notnil/chess"
@@ -29,6 +30,7 @@ type Match struct {
 
 type MatchConfig struct {
 	MatchDuration     time.Duration
+	ClockIncrement    time.Duration
 	CancelTimeout     time.Duration
 	DisconnectTimeout time.Duration
 }
@@ -90,7 +92,7 @@ func (match *Match) start() {
 			}
 
 			// If making move, update clock
-			player.Clock -= time.Since(player.TurnStartedAt)
+			player.Clock = player.Clock - time.Since(player.TurnStartedAt) + match.config.ClockIncrement
 			// If clock runs out, end the game
 			if player.Clock <= 0 {
 				match.game.outOfTime(player.Side)
@@ -280,21 +282,17 @@ func (m *Match) skipTimer() {
 	logging.Info("clock skipped", zap.String("match_id", m.id))
 }
 
-func configForGameMode(gameMode string) MatchConfig {
-	switch gameMode {
-	case "10min":
-		return MatchConfig{
-			MatchDuration:     10 * time.Minute,
-			CancelTimeout:     30 * time.Second,
-			DisconnectTimeout: 60 * time.Second,
-		}
-	default:
-		return MatchConfig{
-			MatchDuration:     10 * time.Minute,
-			CancelTimeout:     30 * time.Second,
-			DisconnectTimeout: 60 * time.Second,
-		}
+func configForGameMode(gameMode string) (MatchConfig, error) {
+	gm, err := entities.ParseGameMode(gameMode)
+	if err != nil {
+		return MatchConfig{}, err
 	}
+	return MatchConfig{
+		MatchDuration:     gm.Time,
+		ClockIncrement:    gm.Increment,
+		CancelTimeout:     30 * time.Second,
+		DisconnectTimeout: 60 * time.Second,
+	}, nil
 }
 
 func (m *Match) getNewPlayerRatings() ([]float64, []float64, error) {

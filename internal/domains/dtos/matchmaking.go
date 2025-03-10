@@ -8,11 +8,12 @@ type MatchmakingRequest struct {
 	GameMode  string  `json:"gameMode"`
 }
 
-func MatchmakingRequestToEntity(userId string, req MatchmakingRequest) entities.MatchmakingTicket {
+func MatchmakingRequestToEntity(userRating entities.UserRating, req MatchmakingRequest) entities.MatchmakingTicket {
 	return entities.MatchmakingTicket{
-		UserId:    userId,
-		MinRating: req.MinRating,
-		MaxRating: req.MaxRating,
-		GameMode:  req.GameMode,
+		UserId:     userRating.UserId,
+		UserRating: userRating.Rating,
+		MinRating:  req.MinRating,
+		MaxRating:  req.MaxRating,
+		GameMode:   req.GameMode,
 	}
 }

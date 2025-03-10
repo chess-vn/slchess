@@ -189,7 +189,10 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 		var matchState entities.MatchState
 		attributevalue.UnmarshalMap(matchStateOutput.Item, &matchState)
 
-		config := configForGameMode(activeMatch.GameMode)
+		config, err := configForGameMode(activeMatch.GameMode)
+		if err != nil {
+			return nil, err
+		}
 		var clock1 time.Duration
 		var clock2 time.Duration
 
