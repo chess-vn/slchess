@@ -43,7 +43,7 @@ func init() {
 
 func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	userId := mustAuth(event.RequestContext.Authorizer)
-	matchId := event.PathParameters["matchId"]
+	matchId := event.PathParameters["id"]
 
 	checkAndStartServer(ctx)
 

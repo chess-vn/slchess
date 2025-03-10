@@ -494,7 +494,7 @@ Resources:
         ApiEvent:
           Type: Api
           Properties:
-            Path: /matchRecord/{matchId}
+            Path: /match/{id}
             Method: get
             RestApiId: !Ref SlchessHttpApi
 
@@ -594,7 +594,7 @@ Resources:
         ApiEvent:
           Type: Api
           Properties:
-            Path: /restoreMatch/{matchId}
+            Path: /match/{id}/restore
             Method: post
             RestApiId: !Ref SlchessHttpApi
 
@@ -764,7 +764,7 @@ Outputs:
 
   MatchRecordGetEndpointUrl:
     Description: "Endpoint URL for get a single match record"
-    Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/matchRecord/{matchId}"
+    Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/match/{id}"
     Export:
       Name: "MatchRecordGetEndpointUrl"
 
@@ -788,6 +788,6 @@ Outputs:
 
   RestoreMatchEndpointUrl:
     Description: "Endpoint URL for restoring a match"
-    Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/restoreMatch/{matchId}"
+    Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/match/{id}/restore"
     Export:
       Name: "RestoreMatchEndpointUrl"
