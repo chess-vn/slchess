@@ -54,13 +54,6 @@ Resources:
       Domain: slchess
       UserPoolId: !Ref SlchessUserPool
 
-  ### SNS Topic ###
-  SlchessSNSTopic:
-    Type: AWS::SNS::Topic
-    Properties:
-      TopicName: MatchmakingNotification
-      DisplayName: "Matchmaking Notifications"
-
   ### ECS ###
   SlchessServerCluster:
     Type: AWS::ECS::Cluster
@@ -407,8 +400,6 @@ Resources:
       Runtime: provided.al2023
       Timeout: 60
       Policies:
-        - SNSPublishMessagePolicy:
-            TopicName: !GetAtt SlchessSNSTopic.TopicName
         - DynamoDBCrudPolicy:
             TableName: Connections
         - DynamoDBCrudPolicy:
