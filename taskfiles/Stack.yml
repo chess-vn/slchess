@@ -53,7 +53,7 @@ tasks:
         - DisconnectFunction
         - QueueingFunction
         - PostUserConfirmationFunction
-        - GameStatePutFunction
+        - MatchStatePutFunction
         - EndGameFunction
         - MatchmakingFunction
         - MatchRecordGetFunction

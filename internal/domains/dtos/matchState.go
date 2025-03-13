@@ -1,10 +1,14 @@
 package dtos
 
 import (
+	_ "embed"
 	"time"
 
 	"github.com/chess-vn/slchess/internal/domains/entities"
 )
+
+//go:embed graphql/updateMatchState.graphql
+var updateMatchStateMutation string
 
 type MatchStateRequest struct {
 	MatchId   string               `json:"matchId"`
@@ -14,8 +18,22 @@ type MatchStateRequest struct {
 }
 
 type PlayerStateRequest struct {
-	Clock  string `dynamodbav:"Clock" json:"clock"`
-	Status string `dynamodbav:"Status" json:"status"`
+	Clock  string `json:"clock"`
+	Status string `json:"status"`
+}
+
+type MatchStateAppSyncRequest struct {
+	Query     string                 `json:"query"`
+	Variables map[string]interface{} `json:"variables"`
+}
+
+func NewMatchStateAppSyncRequest(req MatchStateRequest) MatchStateAppSyncRequest {
+	return MatchStateAppSyncRequest{
+		Query: updateMatchStateMutation,
+		Variables: map[string]interface{}{
+			"input": req,
+		},
+	}
 }
 
 func MatchStateRequestToEntity(req MatchStateRequest) entities.MatchState {

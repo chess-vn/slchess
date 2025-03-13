@@ -47,6 +47,7 @@ Resources:
       ExplicitAuthFlows:
         - ALLOW_USER_PASSWORD_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
 
   SlchessUserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
@@ -70,6 +71,7 @@ Resources:
       Cpu: "256"
       Memory: "512"
       ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt SlchessServerRole.Arn
       ContainerDefinitions:
         - Image: !Ref ServerImageUri
           Name: slchess-server
@@ -95,6 +97,47 @@ Resources:
           SecurityGroups:
             - sg-003fd8c2326289ec4
           AssignPublicIp: ENABLED
+
+  SlchessServerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SlchessServerRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "ecs-tasks.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: LambdaInvokePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt EndGameFunction.Arn
+        - PolicyName: AppSyncAccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - appsync:GraphQL
+                Resource:
+                  - !Sub "${SlchessAppSyncApi.Arn}/*"
+        - PolicyName: DynamoDBAccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                Resource:
+                  - !GetAtt ActiveMatches.Arn
+                  - !GetAtt MatchStates.Arn
 
   ECSTaskExecutionRole:
     Type: AWS::IAM::Role
@@ -142,6 +185,120 @@ Resources:
           PredefinedMetricType: ECSServiceAverageCPUUtilization
         ScaleInCooldown: 1800 # 30 minutes cooldown before scaling down
         ScaleOutCooldown: 60 # 1-minute cooldown before scaling up
+
+  ### AppSync ###
+  SlchessAppSyncApi:
+    Type: AWS::Serverless::GraphQLApi
+    Properties:
+      SchemaUri: ./internal/aws/appsync/schema.graphql
+      Auth:
+        Type: AMAZON_COGNITO_USER_POOLS
+        UserPool:
+          AwsRegion: !Ref AWS::Region
+          UserPoolId: !Ref SlchessUserPool
+          DefaultAction: ALLOW
+        Additional:
+          - Type: AWS_IAM
+
+  MatchStatesDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt SlchessAppSyncApi.ApiId
+      Name: MatchStatesDataSource
+      Type: AMAZON_DYNAMODB
+      DynamoDBConfig:
+        TableName: !Ref MatchStates
+        AwsRegion: !Ref AWS::Region
+      ServiceRoleArn: !GetAtt AppSyncRole.Arn
+
+  UpdateMatchStateLambdaDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt SlchessAppSyncApi.ApiId
+      Name: UpdateMatchStateLambdaDataSource
+      Type: AWS_LAMBDA
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt MatchStatePutFunction.Arn
+      ServiceRoleArn: !GetAtt AppSyncRole.Arn
+
+  UpdateMatchResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt SlchessAppSyncApi.ApiId
+      TypeName: Mutation
+      FieldName: updateMatchState
+      DataSourceName: !GetAtt UpdateMatchStateLambdaDataSource.Name
+
+  GetMatchStateResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt SlchessAppSyncApi.ApiId
+      TypeName: Query
+      FieldName: getMatchState
+      DataSourceName: !GetAtt MatchStatesDataSource.Name
+      RequestMappingTemplate: |
+        {
+          "version": "2018-05-29",
+          "operation": "GetItem",
+          "key": {
+            "MatchId": { "S": "$context.arguments.matchId" }
+          }
+        }
+      ResponseMappingTemplate: |
+        $util.toJson($context.result)
+
+  AppSyncRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: appsync.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: AppSyncLambdaInvokePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !GetAtt MatchStatePutFunction.Arn
+        - PolicyName: AppSyncDynamoDBAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Scan
+                Resource: !GetAtt MatchStates.Arn
+
+  AppSyncAccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: AppSyncAccessRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: "*"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: AppSyncGraphQLPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - appsync:GraphQL
+                Resource:
+                  - !Sub "${SlchessAppSyncApi.Arn}/*"
 
   ### Websocket API ###
   SlchessWebsocketApi:
@@ -386,20 +543,6 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: UserRatings
 
-  GameStatePutFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: go1.x
-    Properties:
-      FunctionName: slchess-GameStatePut
-      CodeUri: ./cmd/lambda/gameStatePut/
-      Handler: bootstrap
-      Runtime: provided.al2023
-      Timeout: 10
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: MatchStates
-
   MatchmakingFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -600,6 +743,20 @@ Resources:
             Method: post
             ApiId: !Ref SlchessHttpApi
 
+  MatchStatePutFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-MatchStatePut
+      CodeUri: ./cmd/lambda/matchStatePut/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Timeout: 10
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: MatchStates
+
   ### DynamoDB Tables ###
   Connections:
     Type: AWS::DynamoDB::Table
@@ -748,48 +905,42 @@ Resources:
       BillingMode: PAY_PER_REQUEST
 
 Outputs:
+  SlchessAppSyncGraphQLApiUrl:
+    Description: AppSync GraphQL API endpoint URL
+    Value: !GetAtt SlchessAppSyncApi.GraphQLUrl
+
+  SlchessAppSyncRealtimeApiUrl:
+    Description: AppSync API real-time endpoint URL
+    Value: !GetAtt SlchessAppSyncApi.RealtimeUrl
+
   SlchessWebsocketApiUrl:
-    Value: !Sub "wss://${SlchessWebsocketApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessWebsocketApiStage}"
     Description: WebSocket API URL
+    Value: !Sub "wss://${SlchessWebsocketApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessWebsocketApiStage}"
 
   MatchmakingEndpointUrl:
     Description: "Endpoint URL for matchmaking"
     Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/matchmaking"
-    Export:
-      Name: "MatchmakingEndpointUrl"
 
   UserGetEndpointUrl:
     Description: "Endpoint URL for get user information"
     Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/user"
-    Export:
-      Name: "UserGetEndpointUrl"
 
   MatchRecordGetEndpointUrl:
     Description: "Endpoint URL for get a single match record"
     Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/match/{id}"
-    Export:
-      Name: "MatchRecordGetEndpointUrl"
 
   MatchResultListEndpointUrl:
     Description: "Endpoint URL for get a list of match results"
     Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/matchResults?limit=5&startKey=<START-KEY>"
-    Export:
-      Name: "MatchResultListEndpointUrl"
 
   ActiveMatchListEndpointUrl:
     Description: "Endpoint URL for get a list of active matches"
     Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/activeMatches?limit=5&startKey=<START-KEY>"
-    Export:
-      Name: "ActiveMatchListEndpointUrl"
 
   UserRatingListEndpointUrl:
     Description: "Endpoint URL for get a list of user ratings"
     Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/userRatings?limit=5&startKey=<START-KEY>"
-    Export:
-      Name: "UserRatingListEndpointUrl"
 
   RestoreMatchEndpointUrl:
     Description: "Endpoint URL for restoring a match"
     Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/match/{id}/restore"
-    Export:
-      Name: "RestoreMatchEndpointUrl"

@@ -24,3 +24,9 @@ tasks:
     preconditions:
       - sh: "test -f ./configs/aws/apigateway.env"
         msg: "apigateway.env file not generated. Try running 'env:generate' task"
+
+  check-appsync-env:
+    internal: true
+    preconditions:
+      - sh: "test -f ./configs/aws/appsync.env"
+        msg: "appsync.env file not generated. Try running 'env:generate' task"
