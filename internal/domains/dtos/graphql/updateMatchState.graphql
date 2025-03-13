@@ -1,11 +1,11 @@
 mutation UpdateMatchState($input: UpdateMatchStateInput!) {
   updateMatchState(input: $input) {
-    matchId
-    players {
-      clock
-      status
+    MatchId
+    Players {
+      Clock
+      Status
     }
-    gameState
-    updatedAt
+    GameState
+    UpdatedAt
   }
 }
