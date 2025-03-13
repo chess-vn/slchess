@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/chess-vn/slchess/internal/aws/auth"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/internal/domains/entities"
 	"github.com/chess-vn/slchess/pkg/logging"
@@ -31,7 +32,7 @@ func init() {
 }
 
 func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	userId := mustAuth(event.RequestContext.Authorizer)
+	userId := auth.MustAuth(event.RequestContext.Authorizer)
 	targetId := event.PathParameters["id"]
 	if targetId == "" {
 		targetId = userId
@@ -104,22 +105,6 @@ func getUserRating(ctx context.Context, userId string) (entities.UserRating, err
 		return entities.UserRating{}, err
 	}
 	return userRating, nil
-}
-
-func mustAuth(authorizer map[string]interface{}) string {
-	v, exists := authorizer["claims"]
-	if !exists {
-		panic("no authorizer claims")
-	}
-	claims, ok := v.(map[string]interface{})
-	if !ok {
-		panic("claims must be of type map")
-	}
-	userId, ok := claims["sub"].(string)
-	if !ok {
-		panic("invalid sub")
-	}
-	return userId
 }
 
 func main() {

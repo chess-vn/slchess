@@ -22,6 +22,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
+	"github.com/chess-vn/slchess/internal/aws/auth"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/internal/domains/entities"
 	"github.com/chess-vn/slchess/pkg/logging"
@@ -57,7 +58,7 @@ func init() {
 
 // Handle matchmaking requests
 func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	userId := mustAuth(event.RequestContext.Authorizer)
+	userId := auth.MustAuth(event.RequestContext.Authorizer)
 
 	// Start game server beforehand if none available
 	if err := checkAndStartServer(ctx); err != nil {
@@ -117,7 +118,7 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 		<-time.After(5 * time.Second)
 	}
 	if err != nil {
-		logging.Error("Failed to retreive server ip", zap.Error(err))
+		logging.Error("Failed to retrieve server ip", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
 	}
 
@@ -153,22 +154,6 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 	}
 
 	return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
-}
-
-func mustAuth(authorizer map[string]interface{}) string {
-	v, exists := authorizer["claims"]
-	if !exists {
-		panic("no authorizer claims")
-	}
-	claims, ok := v.(map[string]interface{})
-	if !ok {
-		panic("claims must be of type map")
-	}
-	userId, ok := claims["sub"].(string)
-	if !ok {
-		panic("invalid sub")
-	}
-	return userId
 }
 
 // Matchmaking function using go-redis commands
@@ -352,7 +337,7 @@ func checkForActiveMatch(ctx context.Context, userId string) (entities.ActiveMat
 	}
 
 	var activeMatch entities.ActiveMatch
-	if err := attributevalue.UnmarshalMap(activeMatchOutput.Item, activeMatch); err != nil {
+	if err := attributevalue.UnmarshalMap(activeMatchOutput.Item, &activeMatch); err != nil {
 		return entities.ActiveMatch{}, false, err
 	}
 	return activeMatch, true, nil
