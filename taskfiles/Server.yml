@@ -30,7 +30,10 @@ tasks:
 
   local:
     desc: Run the game server locally
-    deps: [utils:check-base-env, utils:check-lambda-env]
+    deps:
+      - utils:check-base-env
+      - utils:check-lambda-env
+      - utils:check-appsync-env
     cmds:
       - go mod download
       - go run ./cmd/server

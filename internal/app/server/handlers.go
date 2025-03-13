@@ -1,15 +1,21 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
+	"net/http"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/lambda/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/gorilla/websocket"
@@ -19,11 +25,18 @@ import (
 
 // Handler for saving current game state.
 func (s *server) handleSaveGame(match *Match) {
-	cfg, err := config.LoadDefaultConfig(context.TODO())
+	ctx := context.Background()
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithSharedConfigProfile("local"))
 	if err != nil {
 		log.Fatalf("unable to load SDK config, %v", err)
 	}
-	lambdaClient := lambda.NewFromConfig(cfg)
+	stsClient := sts.NewFromConfig(cfg)
+	creds := stscreds.NewAssumeRoleProvider(stsClient, s.config.AppSyncAccessRoleArn)
+	assumedCfg, err := config.LoadDefaultConfig(ctx, config.WithCredentialsProvider(creds))
+	if err != nil {
+		log.Fatalf("unable to load SDK config, %v", err)
+	}
+	client := new(http.Client)
 
 	matchStateReq := dtos.MatchStateRequest{
 		MatchId: match.id,
@@ -40,21 +53,41 @@ func (s *server) handleSaveGame(match *Match) {
 		GameState: match.game.FEN(),
 		UpdatedAt: time.Now(),
 	}
-	payload, err := json.Marshal(matchStateReq)
+	matchStateAppSyncReq := dtos.NewMatchStateAppSyncRequest(matchStateReq)
+	payload, err := json.Marshal(matchStateAppSyncReq)
 	if err != nil {
-		log.Fatal(err)
+		logging.Error("Failed to save game", zap.Error(err))
+		return
 	}
 
-	// Invoke Lambda function
-	input := &lambda.InvokeInput{
-		FunctionName:   aws.String(s.config.GameStatePutFunctionName),
-		Payload:        payload,
-		InvocationType: types.InvocationTypeEvent,
+	req, err := http.NewRequest("POST", s.config.AppSyncHttpUrl, bytes.NewReader(payload))
+	if err != nil {
+		logging.Error("Failed to save game", zap.Error(err))
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Sign the request
+	signer := v4.NewSigner()
+	credentials, err := assumedCfg.Credentials.Retrieve(ctx)
+	if err != nil {
+		logging.Error("Failed to save game", zap.Error(err))
+		return
+	}
+	err = signer.SignHTTP(ctx, credentials, req, sha256Hash(payload), "appsync", s.config.AwsRegion, time.Now())
+	if err != nil {
+		logging.Error("Failed to save game", zap.Error(err))
+		return
 	}
 
-	_, err = lambdaClient.Invoke(context.TODO(), input)
+	response, err := client.Do(req)
 	if err != nil {
-		logging.Error("failed to invoke save game", zap.Error(err))
+		logging.Error("Failed to save game", zap.Error(err))
+		return
+	}
+	if response.StatusCode != http.StatusOK {
+		logging.Error("Failed to save game", zap.Error(fmt.Errorf("200 expected")))
+		return
 	}
 }
 

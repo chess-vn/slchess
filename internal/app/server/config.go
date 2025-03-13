@@ -11,8 +11,10 @@ type Config struct {
 	Port        string
 	IdleTimeout time.Duration
 
-	AwsRegion         string
-	CognitoUserPoolId string
+	AwsRegion            string
+	CognitoUserPoolId    string
+	AppSyncHttpUrl       string
+	AppSyncAccessRoleArn string
 
 	EndGameFunctionName      string
 	GameStatePutFunctionName string
@@ -35,6 +37,7 @@ func NewConfig() Config {
 		"./configs/aws/base.env",
 		"./configs/aws/cognito.env",
 		"./configs/aws/lambda.env",
+		"./configs/aws/appsync.env",
 	}
 
 	// Load all env files
@@ -51,6 +54,8 @@ func NewConfig() Config {
 	config.IdleTimeout = idleTimeout
 	config.AwsRegion = viper.GetString("AWS_REGION")
 	config.CognitoUserPoolId = viper.GetString("COGNITO_USER_POOL_ID")
+	config.AppSyncHttpUrl = viper.GetString("APPSYNC_HTTP_URL")
+	config.AppSyncAccessRoleArn = viper.GetString("APPSYNC_ACCESS_ROLE_ARN")
 	config.EndGameFunctionName = viper.GetString("END_GAME_FUNCTION_NAME")
 	config.GameStatePutFunctionName = viper.GetString("GAME_STATE_PUT_FUNCTION_NAME")
 

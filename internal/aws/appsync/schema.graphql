@@ -1,0 +1,38 @@
+type PlayerState @aws_cognito_user_pools @aws_iam {
+  Clock: String! @aws_cognito_user_pools @aws_iam
+  Status: String! @aws_cognito_user_pools @aws_iam
+}
+
+type MatchState @aws_cognito_user_pools @aws_iam {
+  MatchId: ID! @aws_cognito_user_pools @aws_iam
+  Players: [PlayerState!]! @aws_cognito_user_pools @aws_iam
+  GameState: String! @aws_cognito_user_pools @aws_iam
+  UpdatedAt: AWSDateTime! @aws_cognito_user_pools @aws_iam
+}
+
+input PlayerStateInput {
+  clock: String!
+  status: String!
+}
+
+input UpdateMatchStateInput {
+  matchId: ID!
+  players: [PlayerStateInput!]!
+  gameState: String!
+  updatedAt: String!
+}
+
+type Query {
+  getMatchState(matchId: ID!): MatchState @aws_cognito_user_pools @aws_iam
+}
+
+type Mutation {
+  updateMatchState(input: UpdateMatchStateInput!): MatchState
+    @aws_cognito_user_pools
+    @aws_iam
+}
+
+type Subscription {
+  onMatchStateUpdated(matchId: ID!): MatchState
+    @aws_subscribe(mutations: ["updateMatchState"])
+}

@@ -1,0 +1,11 @@
+mutation UpdateMatchState($input: UpdateMatchStateInput!) {
+  updateMatchState(input: $input) {
+    matchId
+    players {
+      clock
+      status
+    }
+    gameState
+    updatedAt
+  }
+}

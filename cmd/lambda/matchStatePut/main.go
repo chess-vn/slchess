@@ -21,9 +21,10 @@ func init() {
 	dynamoClient = dynamodb.NewFromConfig(cfg)
 }
 
-func handler(ctx context.Context, event json.RawMessage) {
+func handler(ctx context.Context, event map[string]interface{}) (map[string]interface{}, error) {
 	var matchStateReq dtos.MatchStateRequest
-	if err := json.Unmarshal(event, &matchStateReq); err != nil {
+	reqJson, _ := json.Marshal(event["arguments"].(map[string]interface{})["input"])
+	if err := json.Unmarshal(reqJson, &matchStateReq); err != nil {
 		logging.Fatal("Failed to save match state", zap.Error(err))
 	}
 
@@ -40,6 +41,22 @@ func handler(ctx context.Context, event json.RawMessage) {
 	if err != nil {
 		logging.Fatal("Failed to save match state", zap.Error(err))
 	}
+
+	return map[string]interface{}{
+		"MatchId": matchState.MatchId,
+		"Players": []map[string]interface{}{
+			{
+				"Clock":  matchState.Players[0].Clock,
+				"Status": matchState.Players[0].Status,
+			},
+			{
+				"Clock":  matchState.Players[1].Clock,
+				"Status": matchState.Players[1].Status,
+			},
+		},
+		"GameState": matchState.GameState,
+		"UpdatedAt": matchState.UpdatedAt,
+	}, nil
 }
 
 func main() {
