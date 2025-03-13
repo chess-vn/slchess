@@ -71,6 +71,7 @@ Resources:
       Cpu: "256"
       Memory: "512"
       ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt SlchessServerRole.Arn
       ContainerDefinitions:
         - Image: !Ref ServerImageUri
           Name: slchess-server
@@ -96,6 +97,47 @@ Resources:
           SecurityGroups:
             - sg-003fd8c2326289ec4
           AssignPublicIp: ENABLED
+
+  SlchessServerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SlchessServerRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "ecs-tasks.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: LambdaInvokePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt EndGameFunction.Arn
+        - PolicyName: AppSyncAccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - appsync:GraphQL
+                Resource:
+                  - !Sub "${SlchessAppSyncApi.Arn}/*"
+        - PolicyName: DynamoDBAccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                Resource:
+                  - !GetAtt ActiveMatches.Arn
+                  - !GetAtt MatchStates.Arn
 
   ECSTaskExecutionRole:
     Type: AWS::IAM::Role
@@ -863,48 +905,42 @@ Resources:
       BillingMode: PAY_PER_REQUEST
 
 Outputs:
+  SlchessAppSyncGraphQLApiUrl:
+    Description: AppSync GraphQL API endpoint URL
+    Value: !GetAtt SlchessAppSyncApi.GraphQLUrl
+
+  SlchessAppSyncRealtimeApiUrl:
+    Description: AppSync API real-time endpoint URL
+    Value: !GetAtt SlchessAppSyncApi.RealtimeUrl
+
   SlchessWebsocketApiUrl:
-    Value: !Sub "wss://${SlchessWebsocketApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessWebsocketApiStage}"
     Description: WebSocket API URL
+    Value: !Sub "wss://${SlchessWebsocketApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessWebsocketApiStage}"
 
   MatchmakingEndpointUrl:
     Description: "Endpoint URL for matchmaking"
     Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/matchmaking"
-    Export:
-      Name: "MatchmakingEndpointUrl"
 
   UserGetEndpointUrl:
     Description: "Endpoint URL for get user information"
     Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/user"
-    Export:
-      Name: "UserGetEndpointUrl"
 
   MatchRecordGetEndpointUrl:
     Description: "Endpoint URL for get a single match record"
     Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/match/{id}"
-    Export:
-      Name: "MatchRecordGetEndpointUrl"
 
   MatchResultListEndpointUrl:
     Description: "Endpoint URL for get a list of match results"
     Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/matchResults?limit=5&startKey=<START-KEY>"
-    Export:
-      Name: "MatchResultListEndpointUrl"
 
   ActiveMatchListEndpointUrl:
     Description: "Endpoint URL for get a list of active matches"
     Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/activeMatches?limit=5&startKey=<START-KEY>"
-    Export:
-      Name: "ActiveMatchListEndpointUrl"
 
   UserRatingListEndpointUrl:
     Description: "Endpoint URL for get a list of user ratings"
     Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/userRatings?limit=5&startKey=<START-KEY>"
-    Export:
-      Name: "UserRatingListEndpointUrl"
 
   RestoreMatchEndpointUrl:
     Description: "Endpoint URL for restoring a match"
     Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/match/{id}/restore"
-    Export:
-      Name: "RestoreMatchEndpointUrl"
