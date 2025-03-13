@@ -265,16 +265,27 @@ Resources:
 
   ### HTTP API ###
   SlchessHttpApi:
-    Type: AWS::Serverless::Api
+    Type: AWS::Serverless::HttpApi
     Properties:
       Name: SlchessHttpApi
       StageName: !Ref SlchessDeploymentStage
-      Cors: "'*'"
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowHeaders:
+          - Authorization
+        AllowMethods:
+          - GET
+          - POST
       Auth:
         Authorizers:
-          SlchessAuth:
-            UserPoolArn: !GetAtt SlchessUserPool.Arn
-        DefaultAuthorizer: SlchessAuth
+          OAuth2Authorizer:
+            JwtConfiguration:
+              issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${SlchessUserPool}
+              audience:
+                - !Ref SlchessUserPoolClient
+            IdentitySource: "$request.header.Authorization"
+        DefaultAuthorizer: OAuth2Authorizer
 
   ### Lambda Functions ###
   ConnectFunction:
@@ -441,11 +452,11 @@ Resources:
           DEPLOYMENT_STAGE: !Ref SlchessDeploymentStage
       Events:
         ApiEvent:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /matchmaking
             Method: post
-            RestApiId: !Ref SlchessHttpApi
+            ApiId: !Ref SlchessHttpApi
 
   UserGetFunction:
     Type: AWS::Serverless::Function
@@ -463,11 +474,11 @@ Resources:
             TableName: UserRatings
       Events:
         ApiEvent:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /user/{id}
             Method: get
-            RestApiId: !Ref SlchessHttpApi
+            ApiId: !Ref SlchessHttpApi
 
   MatchRecordGetFunction:
     Type: AWS::Serverless::Function
@@ -483,11 +494,11 @@ Resources:
             TableName: MatchRecords
       Events:
         ApiEvent:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /match/{id}
             Method: get
-            RestApiId: !Ref SlchessHttpApi
+            ApiId: !Ref SlchessHttpApi
 
   MatchResultListFunction:
     Type: AWS::Serverless::Function
@@ -503,11 +514,11 @@ Resources:
             TableName: MatchResults
       Events:
         ApiEvent:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /matchResults
             Method: get
-            RestApiId: !Ref SlchessHttpApi
+            ApiId: !Ref SlchessHttpApi
 
   ActiveMatchListFunction:
     Type: AWS::Serverless::Function
@@ -523,11 +534,11 @@ Resources:
             TableName: ActiveMatches
       Events:
         ApiEvent:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /activeMatches
             Method: get
-            RestApiId: !Ref SlchessHttpApi
+            ApiId: !Ref SlchessHttpApi
 
   UserRatingListFunction:
     Type: AWS::Serverless::Function
@@ -543,11 +554,11 @@ Resources:
             TableName: UserRatings
       Events:
         ApiEvent:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /userRatings
             Method: get
-            RestApiId: !Ref SlchessHttpApi
+            ApiId: !Ref SlchessHttpApi
 
   RestoreMatchFunction:
     Type: AWS::Serverless::Function
@@ -583,11 +594,11 @@ Resources:
           DEPLOYMENT_STAGE: !Ref SlchessDeploymentStage
       Events:
         ApiEvent:
-          Type: Api
+          Type: HttpApi
           Properties:
             Path: /match/{id}/restore
             Method: post
-            RestApiId: !Ref SlchessHttpApi
+            ApiId: !Ref SlchessHttpApi
 
   ### DynamoDB Tables ###
   Connections:

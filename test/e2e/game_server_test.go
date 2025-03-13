@@ -166,7 +166,7 @@ func getMatchmakingRequest() dtos.MatchmakingRequest {
 	return dtos.MatchmakingRequest{
 		MinRating: 1100,
 		MaxRating: 1300,
-		GameMode:  "10min",
+		GameMode:  "10+0",
 	}
 }
 

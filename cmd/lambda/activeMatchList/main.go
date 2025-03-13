@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/chess-vn/slchess/internal/aws/auth"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/internal/domains/entities"
 	"github.com/chess-vn/slchess/pkg/logging"
@@ -28,7 +29,7 @@ func init() {
 }
 
 func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	mustAuth(event.RequestContext.Authorizer)
+	auth.MustAuth(event.RequestContext.Authorizer)
 	gameMode, startKey, limit, err := extractParameters(event.QueryStringParameters)
 	if err != nil {
 		logging.Error("Failed to list active matches", zap.Error(err))
@@ -89,22 +90,6 @@ func fetchActiveMatchList(ctx context.Context, gameMode string, lastKey map[stri
 	}
 
 	return activeMatches, activeMatchesOutput.LastEvaluatedKey, nil
-}
-
-func mustAuth(authorizer map[string]interface{}) string {
-	v, exists := authorizer["claims"]
-	if !exists {
-		panic("no authorizer claims")
-	}
-	claims, ok := v.(map[string]interface{})
-	if !ok {
-		panic("claims must be of type map")
-	}
-	userId, ok := claims["sub"].(string)
-	if !ok {
-		panic("invalid sub")
-	}
-	return userId
 }
 
 func extractParameters(params map[string]string) (string, map[string]types.AttributeValue, int32, error) {

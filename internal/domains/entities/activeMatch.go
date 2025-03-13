@@ -8,7 +8,7 @@ type ActiveMatch struct {
 	Player1       Player    `dynamodbav:"Player1"`
 	Player2       Player    `dynamodbav:"Player2"`
 	GameMode      string    `dynamodbav:"GameMode"`
-	Server        string    `dynamodbav:"GameMode"`
+	Server        string    `dynamodbav:"Server"`
 	AverageRating float64   `dynamodbav:"AverageRating"`
 	CreatedAt     time.Time `dynamodbav:"CreatedAt"`
 }
