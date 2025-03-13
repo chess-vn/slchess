@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"time"
@@ -26,17 +27,22 @@ import (
 // Handler for saving current game state.
 func (s *server) handleSaveGame(match *Match) {
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithSharedConfigProfile("local"))
+	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
-		log.Fatalf("unable to load SDK config, %v", err)
+		logging.Fatal("Unable to load default config", zap.Error(err))
 	}
-	stsClient := sts.NewFromConfig(cfg)
-	creds := stscreds.NewAssumeRoleProvider(stsClient, s.config.AppSyncAccessRoleArn)
-	assumedCfg, err := config.LoadDefaultConfig(ctx, config.WithCredentialsProvider(creds))
+	assumedCfg, err := config.LoadDefaultConfig(
+		ctx,
+		config.WithCredentialsProvider(
+			stscreds.NewAssumeRoleProvider(
+				sts.NewFromConfig(cfg),
+				s.config.AppSyncAccessRoleArn,
+			),
+		),
+	)
 	if err != nil {
-		log.Fatalf("unable to load SDK config, %v", err)
+		logging.Fatal("Unable to assume config", zap.Error(err))
 	}
-	client := new(http.Client)
 
 	matchStateReq := dtos.MatchStateRequest{
 		MatchId: match.id,
@@ -80,14 +86,22 @@ func (s *server) handleSaveGame(match *Match) {
 		return
 	}
 
+	client := new(http.Client)
 	response, err := client.Do(req)
 	if err != nil {
 		logging.Error("Failed to save game", zap.Error(err))
 		return
 	}
 	if response.StatusCode != http.StatusOK {
-		logging.Error("Failed to save game", zap.Error(fmt.Errorf("200 expected")))
-		return
+		body, err := io.ReadAll(response.Body)
+		if err != nil {
+			logging.Error("Failed to read response body", zap.Error(err))
+			return
+		}
+		logging.Error("Failed to save game",
+			zap.String("body", string(body)),
+			zap.Error(fmt.Errorf("200 expected")),
+		)
 	}
 }
 
