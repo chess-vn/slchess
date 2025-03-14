@@ -35,7 +35,6 @@ input SendMessageInput {
   conversationId: ID!
   senderId: ID!
   content: String!
-  createdAt: AWSDateTime!
 }
 
 type Query {
@@ -53,9 +52,9 @@ type Mutation {
 }
 
 type Subscription {
-  onMatchStateUpdated(matchId: ID!): MatchState
+  onMatchStateUpdated(MatchId: ID!): MatchState
     @aws_subscribe(mutations: ["updateMatchState"])
 
-  onMessageSent(conversationId: ID!): Message
+  onMessageSent(ConversationId: ID!): Message
     @aws_subscribe(mutations: ["sendMessage"])
 }

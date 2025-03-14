@@ -285,13 +285,13 @@ Resources:
           "version": "2018-05-29",
           "operation": "PutItem",
           "key": {
-            "Id": { "S": "$context.arguments.input.Id" }
+            "Id": { "S": "$context.arguments.input.id" }
           },
           "attributeValues": {
             "ConversationId": { "S": "$context.arguments.input.conversationId" },
             "SenderId": { "S": "$context.arguments.input.senderId" },
             "Content": { "S": "$context.arguments.input.content" },
-            "CreatedAt": { "S": "$context.arguments.input.updatedAt" }
+            "CreatedAt": { "S": "$util.time.nowISO8601()" }
           }
         }
       ResponseMappingTemplate: |
@@ -953,21 +953,19 @@ Resources:
     Properties:
       TableName: Messages
       AttributeDefinitions:
-        - AttributeName: MatchId
+        - AttributeName: Id
           AttributeType: S
-        - AttributeName: SenderId
+        - AttributeName: ConversationId
           AttributeType: S
         - AttributeName: CreatedAt
           AttributeType: S
       KeySchema:
-        - AttributeName: MatchId
+        - AttributeName: Id
           KeyType: HASH
-        - AttributeName: CreatedAt
-          KeyType: RANGE
       GlobalSecondaryIndexes:
-        - IndexName: SenderIndex
+        - IndexName: ConversationIndex
           KeySchema:
-            - AttributeName: SenderId
+            - AttributeName: ConversationId
               KeyType: HASH
             - AttributeName: CreatedAt
               KeyType: RANGE
