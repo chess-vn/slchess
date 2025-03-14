@@ -10,6 +10,14 @@ type MatchState @aws_cognito_user_pools @aws_iam {
   UpdatedAt: AWSDateTime! @aws_cognito_user_pools @aws_iam
 }
 
+type Message @aws_cognito_user_pools @aws_iam {
+  Id: ID! @aws_cognito_user_pools @aws_iam
+  ConversationId: ID! @aws_cognito_user_pools @aws_iam
+  SenderId: ID! @aws_cognito_user_pools @aws_iam
+  Content: String! @aws_cognito_user_pools @aws_iam
+  CreatedAt: AWSDateTime! @aws_cognito_user_pools @aws_iam
+}
+
 input PlayerStateInput {
   clock: String!
   status: String!
@@ -22,6 +30,13 @@ input UpdateMatchStateInput {
   updatedAt: String!
 }
 
+input SendMessageInput {
+  id: ID!
+  conversationId: ID!
+  senderId: ID!
+  content: String!
+}
+
 type Query {
   getMatchState(matchId: ID!): MatchState @aws_cognito_user_pools @aws_iam
 }
@@ -30,9 +45,16 @@ type Mutation {
   updateMatchState(input: UpdateMatchStateInput!): MatchState
     @aws_cognito_user_pools
     @aws_iam
+
+  sendMessage(input: SendMessageInput!): Message
+    @aws_cognito_user_pools
+    @aws_iam
 }
 
 type Subscription {
-  onMatchStateUpdated(matchId: ID!): MatchState
+  onMatchStateUpdated(MatchId: ID!): MatchState
     @aws_subscribe(mutations: ["updateMatchState"])
+
+  onMessageSent(ConversationId: ID!): Message
+    @aws_subscribe(mutations: ["sendMessage"])
 }
