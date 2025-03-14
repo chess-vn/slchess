@@ -211,23 +211,49 @@ Resources:
         AwsRegion: !Ref AWS::Region
       ServiceRoleArn: !GetAtt AppSyncRole.Arn
 
-  UpdateMatchStateLambdaDataSource:
+  MessagesDataSource:
     Type: AWS::AppSync::DataSource
     Properties:
       ApiId: !GetAtt SlchessAppSyncApi.ApiId
-      Name: UpdateMatchStateLambdaDataSource
-      Type: AWS_LAMBDA
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt MatchStatePutFunction.Arn
+      Name: MessagessDataSource
+      Type: AMAZON_DYNAMODB
+      DynamoDBConfig:
+        TableName: !Ref Messages
+        AwsRegion: !Ref AWS::Region
       ServiceRoleArn: !GetAtt AppSyncRole.Arn
 
-  UpdateMatchResolver:
+  UpdateMatchStateResolver:
     Type: AWS::AppSync::Resolver
     Properties:
       ApiId: !GetAtt SlchessAppSyncApi.ApiId
       TypeName: Mutation
       FieldName: updateMatchState
-      DataSourceName: !GetAtt UpdateMatchStateLambdaDataSource.Name
+      DataSourceName: !GetAtt MatchStatesDataSource.Name
+      RequestMappingTemplate: |
+        {
+          "version": "2018-05-29",
+          "operation": "PutItem",
+          "key": {
+            "MatchId": { "S": "$context.arguments.input.matchId" }
+          },
+          "attributeValues": {
+            "GameState": { "S": "$context.arguments.input.gameState" },
+            "Players": { "L": [
+              #foreach($player in $context.arguments.input.players)
+                {
+                  "M": {
+                    "Clock": { "S": "$player.clock" },
+                    "Status": { "S": "$player.status" }
+                  }
+                }
+                #if($foreach.hasNext),#end
+              #end
+            ] },
+            "UpdatedAt": { "S": "$context.arguments.input.updatedAt" }
+          }
+        }
+      ResponseMappingTemplate: |
+        $util.toJson($context.result)
 
   GetMatchStateResolver:
     Type: AWS::AppSync::Resolver
@@ -247,6 +273,30 @@ Resources:
       ResponseMappingTemplate: |
         $util.toJson($context.result)
 
+  SendMessageResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt SlchessAppSyncApi.ApiId
+      TypeName: Mutation
+      FieldName: sendMessage
+      DataSourceName: !GetAtt MessagesDataSource.Name
+      RequestMappingTemplate: |
+        {
+          "version": "2018-05-29",
+          "operation": "PutItem",
+          "key": {
+            "Id": { "S": "$context.arguments.input.Id" }
+          },
+          "attributeValues": {
+            "ConversationId": { "S": "$context.arguments.input.conversationId" },
+            "SenderId": { "S": "$context.arguments.input.senderId" },
+            "Content": { "S": "$context.arguments.input.content" },
+            "CreatedAt": { "S": "$context.arguments.input.updatedAt" }
+          }
+        }
+      ResponseMappingTemplate: |
+        $util.toJson($context.result)
+
   AppSyncRole:
     Type: AWS::IAM::Role
     Properties:
@@ -258,14 +308,6 @@ Resources:
               Service: appsync.amazonaws.com
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: AppSyncLambdaInvokePolicy
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - lambda:InvokeFunction
-                Resource: !GetAtt MatchStatePutFunction.Arn
         - PolicyName: AppSyncDynamoDBAccess
           PolicyDocument:
             Version: "2012-10-17"
@@ -276,7 +318,9 @@ Resources:
                   - dynamodb:PutItem
                   - dynamodb:UpdateItem
                   - dynamodb:Scan
-                Resource: !GetAtt MatchStates.Arn
+                Resource:
+                  - !GetAtt MatchStates.Arn
+                  - !GetAtt Messages.Arn
 
   AppSyncAccessRole:
     Type: AWS::IAM::Role
@@ -902,6 +946,61 @@ Resources:
       TimeToLiveSpecification:
         AttributeName: TTL
         Enabled: true
+      BillingMode: PAY_PER_REQUEST
+
+  Messages:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Messages
+      AttributeDefinitions:
+        - AttributeName: MatchId
+          AttributeType: S
+        - AttributeName: SenderId
+          AttributeType: S
+        - AttributeName: CreatedAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: MatchId
+          KeyType: HASH
+        - AttributeName: CreatedAt
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: SenderIndex
+          KeySchema:
+            - AttributeName: SenderId
+              KeyType: HASH
+            - AttributeName: CreatedAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      BillingMode: PAY_PER_REQUEST
+
+  MatchConversations:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: MatchConverstaions
+      AttributeDefinitions:
+        - AttributeName: MatchId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: MatchId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  UserConversations:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: UserChats
+      AttributeDefinitions:
+        - AttributeName: UserId
+          AttributeType: S
+        - AttributeName: UpdatedAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: UserId
+          KeyType: HASH
+        - AttributeName: UpdatedAt
+          KeyType: RANGE
       BillingMode: PAY_PER_REQUEST
 
 Outputs:
