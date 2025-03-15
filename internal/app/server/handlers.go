@@ -44,9 +44,10 @@ func (s *server) handleSaveGame(match *Match) {
 		logging.Fatal("Unable to assume config", zap.Error(err))
 	}
 
+	lastMove := match.game.lastMove()
 	matchStateReq := dtos.MatchStateRequest{
 		MatchId: match.id,
-		Players: []dtos.PlayerStateRequest{
+		PlayerStates: []dtos.PlayerStateRequest{
 			{
 				Clock:  match.players[0].Clock.String(),
 				Status: match.players[0].Status.String(),
@@ -57,7 +58,12 @@ func (s *server) handleSaveGame(match *Match) {
 			},
 		},
 		GameState: match.game.FEN(),
-		UpdatedAt: time.Now(),
+		Move: dtos.MoveRequest{
+			PlayerId: lastMove.playerId,
+			Uci:      lastMove.uci,
+		},
+		Ply:       len(match.game.moves),
+		Timestamp: time.Now(),
 	}
 	matchStateAppSyncReq := dtos.NewMatchStateAppSyncRequest(matchStateReq)
 	payload, err := json.Marshal(matchStateAppSyncReq)
@@ -230,17 +236,7 @@ func (s *server) handleWebSocketMessage(playerId string, match *Match, payload p
 		logging.Error("match not loaded")
 		return
 	}
-	// Validate timestamp
-	if time.Since(payload.CreatedAt) < 0 {
-		logging.Info("invalid timestamp",
-			zap.String("created_at", payload.CreatedAt.String()),
-			zap.String("validate_time", time.Now().String()),
-		)
-		return
-	}
 	switch payload.Type {
-	case "chat":
-		_ = payload.Data["message"]
 	case "gameData":
 		action := payload.Data["action"]
 		switch action {

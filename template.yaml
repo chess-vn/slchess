@@ -238,18 +238,23 @@ Resources:
           },
           "attributeValues": {
             "GameState": { "S": "$context.arguments.input.gameState" },
-            "Players": { "L": [
-              #foreach($player in $context.arguments.input.players)
+            "PlayerStates": { "L": [
+              #foreach($playerState in $context.arguments.input.playerStates)
                 {
                   "M": {
-                    "Clock": { "S": "$player.clock" },
-                    "Status": { "S": "$player.status" }
+                    "Clock": { "S": "$playerState.clock" },
+                    "Status": { "S": "$playerState.status" }
                   }
                 }
                 #if($foreach.hasNext),#end
               #end
             ] },
-            "UpdatedAt": { "S": "$context.arguments.input.updatedAt" }
+            "Move": { "M": {
+              "PlayerId": { "S": "$context.arguments.input.move.playerId" },
+              "Uci": { "S": "$context.arguments.input.move.uci" },
+            } },
+            "Ply": { "N" : "$context.arguments.input.ply" },
+            "Timestamp": { "S": "$context.arguments.input.timestamp" }
           }
         }
       ResponseMappingTemplate: |
@@ -725,6 +730,26 @@ Resources:
             Method: get
             ApiId: !Ref SlchessHttpApi
 
+  MatchStateListFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-MatchStateList
+      CodeUri: ./cmd/lambda/matchStateList/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: MatchStates
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /match/{id}/states
+            Method: get
+            ApiId: !Ref SlchessHttpApi
+
   ActiveMatchListFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -936,12 +961,27 @@ Resources:
       BillingMode: PAY_PER_REQUEST
 
   MatchStates:
-    Type: AWS::Serverless::SimpleTable
+    Type: AWS::DynamoDB::Table
     Properties:
       TableName: MatchStates
-      PrimaryKey:
-        Name: MatchId
-        Type: String
+      AttributeDefinitions:
+        - AttributeName: MatchId
+          AttributeType: S
+        - AttributeName: Ply
+          AttributeType: N
+      KeySchema:
+        - AttributeName: MatchId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: MatchIndex
+          KeySchema:
+            - AttributeName: MatchId
+              KeyType: HASH
+            - AttributeName: Ply
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      BillingMode: PAY_PER_REQUEST
 
   MatchRecords:
     Type: AWS::DynamoDB::Table
@@ -1055,6 +1095,10 @@ Outputs:
   MatchResultListEndpointUrl:
     Description: "Endpoint URL for get a list of match results"
     Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/matchResults?limit=5&startKey=<START-KEY>"
+
+  MatchStateListEndpointUrl:
+    Description: "Endpoint URL for get a list of match results"
+    Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/match/{id}/states?limit=20&startKey=<START-KEY>"
 
   ActiveMatchListEndpointUrl:
     Description: "Endpoint URL for get a list of active matches"

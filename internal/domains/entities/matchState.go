@@ -7,9 +7,16 @@ type PlayerState struct {
 	Status string `dynamodbav:"Status"`
 }
 
+type Move struct {
+	PlayerId string `dynamodbav:"PlayerId"`
+	Uci      string `dynamodbav:"Uci"`
+}
+
 type MatchState struct {
-	MatchId   string        `dynamodbav:"MatchId"`
-	Players   []PlayerState `dynamodbav:"Players"`
-	GameState string        `dynamodbav:"GameState"`
-	UpdatedAt time.Time     `dynamodbav:"UpdatedAt"`
+	MatchId      string        `dynamodbav:"MatchId"`
+	PlayerStates []PlayerState `dynamodbav:"PlayerStates"`
+	GameState    string        `dynamodbav:"GameState"`
+	Move         Move          `dynamodbav:"Move"`
+	Ply          int           `dynamodbav:"Ply"`
+	Timestamp    time.Time     `dynamodbav:"Timestamp"`
 }

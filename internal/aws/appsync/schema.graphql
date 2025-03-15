@@ -3,11 +3,18 @@ type PlayerState @aws_cognito_user_pools @aws_iam {
   Status: String! @aws_cognito_user_pools @aws_iam
 }
 
+type Move @aws_cognito_user_pools @aws_iam {
+  PlayerId: ID! @aws_cognito_user_pools @aws_iam
+  Uci: String! @aws_cognito_user_pools @aws_iam
+}
+
 type MatchState @aws_cognito_user_pools @aws_iam {
   MatchId: ID! @aws_cognito_user_pools @aws_iam
-  Players: [PlayerState!]! @aws_cognito_user_pools @aws_iam
+  PlayerStates: [PlayerState!]! @aws_cognito_user_pools @aws_iam
   GameState: String! @aws_cognito_user_pools @aws_iam
-  UpdatedAt: AWSDateTime! @aws_cognito_user_pools @aws_iam
+  Move: Move! @aws_cognito_user_pools @aws_iam
+  Ply: Int! @aws_cognito_user_pools @aws_iam
+  Timestamp: AWSDateTime! @aws_cognito_user_pools @aws_iam
 }
 
 type Message @aws_cognito_user_pools @aws_iam {
@@ -23,11 +30,18 @@ input PlayerStateInput {
   status: String!
 }
 
+input MoveInput {
+  playerId: ID!
+  uci: String!
+}
+
 input UpdateMatchStateInput {
   matchId: ID!
-  players: [PlayerStateInput!]!
+  playerStates: [PlayerStateInput!]!
   gameState: String!
-  updatedAt: String!
+  move: MoveInput!
+  ply: Int!
+  timestamp: String!
 }
 
 input SendMessageInput {

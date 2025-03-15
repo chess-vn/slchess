@@ -44,18 +44,23 @@ func handler(ctx context.Context, event map[string]interface{}) (map[string]inte
 
 	return map[string]interface{}{
 		"MatchId": matchState.MatchId,
-		"Players": []map[string]interface{}{
+		"PlayerStates": []map[string]interface{}{
 			{
-				"Clock":  matchState.Players[0].Clock,
-				"Status": matchState.Players[0].Status,
+				"Clock":  matchState.PlayerStates[0].Clock,
+				"Status": matchState.PlayerStates[0].Status,
 			},
 			{
-				"Clock":  matchState.Players[1].Clock,
-				"Status": matchState.Players[1].Status,
+				"Clock":  matchState.PlayerStates[1].Clock,
+				"Status": matchState.PlayerStates[1].Status,
 			},
 		},
+		"Move": map[string]interface{}{
+			"PlayerId": matchState.Move.PlayerId,
+			"Uci":      matchState.Move.Uci,
+		},
 		"GameState": matchState.GameState,
-		"UpdatedAt": matchState.UpdatedAt,
+		"Ply":       matchState.Ply,
+		"Timestamp": matchState.Timestamp,
 	}, nil
 }
 
