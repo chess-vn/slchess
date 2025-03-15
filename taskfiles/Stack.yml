@@ -59,6 +59,8 @@ tasks:
         - MatchResultListFunction
         - ActiveMatchListFunction
         - UserRatingListFunction
+        - MatchRestoreFunction
+        - MatchSpectateFunction
     cmds:
       - sam build --region $AWS_REGION --config-file samconfig.yaml
       - for: { var: HANDLERS }

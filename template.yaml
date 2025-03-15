@@ -587,6 +587,20 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: UserRatings
 
+  MatchStatePutFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-MatchStatePut
+      CodeUri: ./cmd/lambda/matchStatePut/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Timeout: 10
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: MatchStates
+
   MatchmakingFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -610,6 +624,8 @@ Resources:
             TableName: UserRatings
         - DynamoDBCrudPolicy:
             TableName: MatchResults
+        - DynamoDBCrudPolicy:
+            TableName: SpectatorConversations
         - EcsRunTaskPolicy:
             TaskDefinition: !Ref SlchessServerDefinition
         - Statement:
@@ -747,13 +763,13 @@ Resources:
             Method: get
             ApiId: !Ref SlchessHttpApi
 
-  RestoreMatchFunction:
+  MatchRestoreFunction:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: go1.x
     Properties:
-      FunctionName: slchess-RestoreMatch
-      CodeUri: ./cmd/lambda/restoreMatch/
+      FunctionName: slchess-MatchRestore
+      CodeUri: ./cmd/lambda/matchRestore/
       Handler: bootstrap
       Runtime: provided.al2023
       Timeout: 60
@@ -787,19 +803,27 @@ Resources:
             Method: post
             ApiId: !Ref SlchessHttpApi
 
-  MatchStatePutFunction:
+  MatchSpectateFunction:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: go1.x
     Properties:
-      FunctionName: slchess-MatchStatePut
-      CodeUri: ./cmd/lambda/matchStatePut/
+      FunctionName: slchess-MatchSpectate
+      CodeUri: ./cmd/lambda/matchSpectate/
       Handler: bootstrap
       Runtime: provided.al2023
-      Timeout: 10
       Policies:
         - DynamoDBCrudPolicy:
             TableName: MatchStates
+        - DynamoDBCrudPolicy:
+            TableName: SpectatorConversations
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /match/{id}/spectate
+            Method: get
+            ApiId: !Ref SlchessHttpApi
 
   ### DynamoDB Tables ###
   Connections:
@@ -973,10 +997,10 @@ Resources:
             ProjectionType: ALL
       BillingMode: PAY_PER_REQUEST
 
-  MatchConversations:
+  SpectatorConversations:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: MatchConverstaions
+      TableName: SpectatorConversations
       AttributeDefinitions:
         - AttributeName: MatchId
           AttributeType: S
@@ -988,7 +1012,7 @@ Resources:
   UserConversations:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: UserChats
+      TableName: UserConversations
       AttributeDefinitions:
         - AttributeName: UserId
           AttributeType: S
