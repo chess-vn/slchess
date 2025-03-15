@@ -35,9 +35,8 @@ type server struct {
 }
 
 type payload struct {
-	Type      string            `json:"type"`
-	Data      map[string]string `json:"data"`
-	CreatedAt time.Time         `json:"createdAt"`
+	Type string            `json:"type"`
+	Data map[string]string `json:"data"`
 }
 
 func NewServer() *server {
@@ -202,8 +201,8 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 			clock2 = config.MatchDuration
 			logging.Info("match initialized")
 		} else {
-			clock1, _ = time.ParseDuration(matchState.Players[0].Clock)
-			clock2, _ = time.ParseDuration(matchState.Players[1].Clock)
+			clock1, _ = time.ParseDuration(matchState.PlayerStates[0].Clock)
+			clock2, _ = time.ParseDuration(matchState.PlayerStates[1].Clock)
 			logging.Info("match resumed")
 		}
 		player1 := newPlayer(

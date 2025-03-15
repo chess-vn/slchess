@@ -57,6 +57,7 @@ tasks:
         - MatchmakingFunction
         - MatchRecordGetFunction
         - MatchResultListFunction
+        - MatchStateListFunction
         - ActiveMatchListFunction
         - UserRatingListFunction
         - MatchRestoreFunction

@@ -29,39 +29,40 @@ func init() {
 }
 
 func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	userId := auth.MustAuth(event.RequestContext.Authorizer)
-	targetId, startKey, limit, err := extractScanParameters(userId, event.QueryStringParameters)
+	auth.MustAuth(event.RequestContext.Authorizer)
+	matchId := event.PathParameters["id"]
+	startKey, limit, err := extractScanParameters(event.QueryStringParameters)
 	if err != nil {
-		logging.Error("Failed to get match results", zap.Error(err))
+		logging.Error("Failed to get match states", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest}, nil
 	}
-	matchResults, lastEvaluatedKey, err := fetchMatchResults(ctx, targetId, startKey, limit)
+	matchStates, lastEvaluatedKey, err := fetchMatchStates(ctx, matchId, startKey, limit)
 	if err != nil {
-		logging.Error("Failed to get match results", zap.Error(err))
+		logging.Error("Failed to get match states", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
 	}
 
-	matchResultListResp := dtos.MatchResultListResponseFromEntities(matchResults)
+	matchStateListResp := dtos.MatchStateListResponseFromEntities(matchStates)
 	if lastEvaluatedKey != nil {
-		matchResultListResp.NextPageToken = dtos.NextMatchResultPageToken{
+		matchStateListResp.NextPageToken = dtos.NextMatchStatePageToken{
 			Timestamp: lastEvaluatedKey["Timestamp"].(*types.AttributeValueMemberS).Value,
 		}
 	}
 
-	matchResultListJson, err := json.Marshal(matchResultListResp)
+	matchStateListJson, err := json.Marshal(matchStateListResp)
 	if err != nil {
-		logging.Error("Failed to get match state", zap.Error(err))
+		logging.Error("Failed to get match states", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
 	}
-	return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(matchResultListJson)}, nil
+	return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(matchStateListJson)}, nil
 }
 
-func fetchMatchResults(ctx context.Context, userId string, lastKey map[string]types.AttributeValue, limit int32) ([]entities.MatchResult, map[string]types.AttributeValue, error) {
+func fetchMatchStates(ctx context.Context, matchId string, lastKey map[string]types.AttributeValue, limit int32) ([]entities.MatchState, map[string]types.AttributeValue, error) {
 	input := &dynamodb.QueryInput{
-		TableName:              aws.String("MatchResults"),
-		KeyConditionExpression: aws.String("UserId = :userId"),
+		TableName:              aws.String("MatchStates"),
+		KeyConditionExpression: aws.String("MatchId = :matchId"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":userId": &types.AttributeValueMemberS{Value: userId},
+			":matchId": &types.AttributeValueMemberS{Value: matchId},
 		},
 		ScanIndexForward: aws.Bool(false), // Sort by timestamp DESCENDING (most recent first)
 		Limit:            aws.Int32(limit),
@@ -69,47 +70,39 @@ func fetchMatchResults(ctx context.Context, userId string, lastKey map[string]ty
 	if lastKey != nil {
 		input.ExclusiveStartKey = lastKey
 	}
-	matchResultsOutput, err := dynamoClient.Query(ctx, input)
+	matchStatesOutput, err := dynamoClient.Query(ctx, input)
 	if err != nil {
 		return nil, nil, err
 	}
-	var matchResults []entities.MatchResult
-	if err := attributevalue.UnmarshalListOfMaps(matchResultsOutput.Items, &matchResults); err != nil {
+	var matchStates []entities.MatchState
+	if err := attributevalue.UnmarshalListOfMaps(matchStatesOutput.Items, &matchStates); err != nil {
 		return nil, nil, err
 	}
 
-	return matchResults, matchResultsOutput.LastEvaluatedKey, nil
+	return matchStates, matchStatesOutput.LastEvaluatedKey, nil
 }
 
-func extractScanParameters(userId string, params map[string]string) (string, map[string]types.AttributeValue, int32, error) {
-	var targetId string
-	if userIdStr, ok := params["userId"]; ok {
-		targetId = userId
-	} else {
-		targetId = userIdStr
-	}
-
+func extractScanParameters(params map[string]string) (map[string]types.AttributeValue, int32, error) {
 	var limit int32
 	if limitStr, ok := params["limit"]; ok {
 		limitInt64, err := strconv.ParseInt(limitStr, 10, 32)
 		if err != nil {
-			return "", nil, 0, fmt.Errorf("invalid limit: %v", err)
+			return nil, 0, fmt.Errorf("invalid limit: %v", err)
 		}
 		limit = int32(limitInt64)
 	} else {
-		limit = 10
+		limit = 20
 	}
 
 	// Check for startKey (optional)
 	var startKey map[string]types.AttributeValue
 	if startKeyStr, ok := params["startKey"]; ok {
 		startKey = map[string]types.AttributeValue{
-			"UserId":    &types.AttributeValueMemberS{Value: userId},
 			"Timestamp": &types.AttributeValueMemberS{Value: startKeyStr},
 		}
 	}
 
-	return targetId, startKey, int32(limit), nil
+	return startKey, int32(limit), nil
 }
 
 func main() {

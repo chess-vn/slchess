@@ -82,7 +82,7 @@ func (match *Match) start() {
 				})
 				continue
 			}
-			err := match.game.MoveStr(move.uci)
+			err := match.game.move(move)
 			if err != nil {
 				player.Conn.WriteJSON(errorResponse{
 					Type:  "error",

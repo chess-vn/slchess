@@ -33,6 +33,7 @@ type game struct {
 	chess.Game
 	customOutcome chess.Outcome
 	drawOffers    []bool
+	moves         []move
 }
 
 func newGame() *game {
@@ -40,6 +41,7 @@ func newGame() *game {
 	return &game{
 		Game:       *g,
 		drawOffers: []bool{false, false},
+		moves:      []move{},
 	}
 }
 
@@ -83,6 +85,21 @@ func (g *game) method() string {
 	default:
 		return g.Method().String()
 	}
+}
+
+func (g *game) lastMove() move {
+	if length := len(g.moves); length > 0 {
+		return g.moves[length-1]
+	}
+	return move{}
+}
+
+func (g *game) move(move move) error {
+	if err := g.MoveStr(move.uci); err != nil {
+		return err
+	}
+	g.moves = append(g.moves, move)
+	return nil
 }
 
 type move struct {
