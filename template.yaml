@@ -586,6 +586,8 @@ Resources:
             TableName: MatchResults
         - DynamoDBCrudPolicy:
             TableName: UserRatings
+        - DynamoDBCrudPolicy:
+            TableName: SpectatorConversations
 
   MatchStatePutFunction:
     Type: AWS::Serverless::Function
@@ -1065,3 +1067,7 @@ Outputs:
   RestoreMatchEndpointUrl:
     Description: "Endpoint URL for restoring a match"
     Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/match/{id}/restore"
+
+  SpectateMatchEndpointUrl:
+    Description: "Endpoint URL for spectating a match"
+    Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/match/{id}/spectate"
