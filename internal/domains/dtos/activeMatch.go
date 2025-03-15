@@ -7,12 +7,13 @@ import (
 )
 
 type ActiveMatchResponse struct {
-	MatchId   string         `json:"matchId"`
-	Player1   PlayerResponse `json:"player1"`
-	Player2   PlayerResponse `json:"player2"`
-	GameMode  string         `json:"gameMode"`
-	Server    string         `json:"server,omitempty"`
-	CreatedAt time.Time      `json:"createdAt"`
+	MatchId        string         `json:"matchId"`
+	ConversationId string         `json:"conversationId,omitempty"`
+	Player1        PlayerResponse `json:"player1"`
+	Player2        PlayerResponse `json:"player2"`
+	GameMode       string         `json:"gameMode"`
+	Server         string         `json:"server,omitempty"`
+	CreatedAt      time.Time      `json:"createdAt"`
 }
 
 type PlayerResponse struct {
@@ -32,7 +33,8 @@ type NextActiveMatchPageToken struct {
 
 func ActiveMatchResponseFromEntity(activeMatch entities.ActiveMatch) ActiveMatchResponse {
 	return ActiveMatchResponse{
-		MatchId: activeMatch.MatchId,
+		MatchId:        activeMatch.MatchId,
+		ConversationId: activeMatch.ConversationId,
 		Player1: PlayerResponse{
 			Id:         activeMatch.Player1.Id,
 			Rating:     activeMatch.Player1.Rating,

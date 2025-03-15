@@ -27,6 +27,18 @@ type MatchStateAppSyncRequest struct {
 	Variables map[string]interface{} `json:"variables"`
 }
 
+type PlayerStateResponse struct {
+	Clock  string `json:"clock"`
+	Status string `json:"status"`
+}
+
+type MatchStateResponse struct {
+	MatchId   string                `json:"matchId"`
+	Players   []PlayerStateResponse `json:"players"`
+	GameState string                `json:"gameState"`
+	UpdatedAt time.Time             `json:"updatedAt"`
+}
+
 func NewMatchStateAppSyncRequest(req MatchStateRequest) MatchStateAppSyncRequest {
 	return MatchStateAppSyncRequest{
 		Query: updateMatchStateMutation,
@@ -51,5 +63,23 @@ func MatchStateRequestToEntity(req MatchStateRequest) entities.MatchState {
 		},
 		GameState: req.GameState,
 		UpdatedAt: req.UpdatedAt,
+	}
+}
+
+func MatchStateResponseFromEntitiy(matchState entities.MatchState) MatchStateResponse {
+	return MatchStateResponse{
+		MatchId: matchState.MatchId,
+		Players: []PlayerStateResponse{
+			{
+				Clock:  matchState.Players[0].Clock,
+				Status: matchState.Players[0].Status,
+			},
+			{
+				Clock:  matchState.Players[1].Clock,
+				Status: matchState.Players[1].Status,
+			},
+		},
+		GameState: matchState.GameState,
+		UpdatedAt: matchState.UpdatedAt,
 	}
 }

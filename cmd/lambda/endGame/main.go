@@ -63,6 +63,16 @@ func handler(ctx context.Context, event json.RawMessage) {
 		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
 	}
 
+	_, err = dynamoClient.DeleteItem(ctx, &dynamodb.DeleteItemInput{
+		TableName: aws.String("SpectatorConversations"),
+		Key: map[string]types.AttributeValue{
+			"MatchId": &types.AttributeValueMemberS{Value: matchRecord.MatchId},
+		},
+	})
+	if err != nil {
+		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
+	}
+
 	av, err := attributevalue.MarshalMap(matchRecord)
 	if err != nil {
 		logging.Fatal("Failed to handle end game: %v", zap.Error(err))

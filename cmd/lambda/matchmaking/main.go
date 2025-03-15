@@ -90,8 +90,9 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
 	}
 	if exist {
-		data, _ := json.Marshal(activeMatch)
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(data)}, nil
+		matchResp := dtos.ActiveMatchResponseFromEntity(activeMatch)
+		matchRespJson, _ := json.Marshal(matchResp)
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(matchRespJson)}, nil
 	}
 
 	// Attempt matchmaking
@@ -202,11 +203,12 @@ func findOpponents(ctx context.Context, ticket entities.MatchmakingTicket) ([]st
 
 func createMatch(ctx context.Context, userRating entities.UserRating, opponentId, gameMode string, serverIp string) (entities.ActiveMatch, error) {
 	match := entities.ActiveMatch{
-		MatchId:      utils.GenerateUUID(),
-		PartitionKey: "ActiveMatches",
-		GameMode:     gameMode,
-		Server:       serverIp,
-		CreatedAt:    time.Now(),
+		MatchId:        utils.GenerateUUID(),
+		ConversationId: utils.GenerateUUID(),
+		PartitionKey:   "ActiveMatches",
+		GameMode:       gameMode,
+		Server:         serverIp,
+		CreatedAt:      time.Now(),
 	}
 
 	// Associate the players with created match to kind of mark them as matched
@@ -287,6 +289,7 @@ func createMatch(ctx context.Context, userRating entities.UserRating, opponentId
 	if err != nil {
 		return entities.ActiveMatch{}, err
 	}
+
 	// Match created, remove opponent ticket from the queue
 	_, err = dynamoClient.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String("MatchmakingTickets"),
@@ -297,6 +300,24 @@ func createMatch(ctx context.Context, userRating entities.UserRating, opponentId
 	if err != nil {
 		return entities.ActiveMatch{}, err
 	}
+
+	// Create a conversation for spectators
+	spectatorConversation := entities.SpectatorConversation{
+		MatchId:        match.MatchId,
+		ConversationId: utils.GenerateUUID(),
+	}
+	spectatorConversationAv, err := attributevalue.MarshalMap(spectatorConversation)
+	if err != nil {
+		log.Fatalf("Failed to create spectator conversation: %v", err)
+	}
+	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: aws.String("SpectatorConversations"),
+		Item:      spectatorConversationAv,
+	})
+	if err != nil {
+		return entities.ActiveMatch{}, err
+	}
+
 	return match, nil
 }
 
