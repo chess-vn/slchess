@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 
@@ -31,7 +30,6 @@ type server struct {
 	mu      sync.Mutex
 
 	cognitoPublicKeys map[string]*rsa.PublicKey
-	shutdownTimer     *time.Timer
 }
 
 type payload struct {
@@ -54,7 +52,6 @@ func NewServer() *server {
 		cognitoPublicKeys: make(map[string]*rsa.PublicKey),
 	}
 	srv.loadCognitoPublicKeys()
-	srv.resetShutdownTimer()
 	return srv
 }
 
@@ -74,8 +71,6 @@ func (s *server) Start() error {
 			return
 		}
 		defer conn.Close()
-
-		s.resetShutdownTimer()
 
 		matchId := r.PathValue("matchId")
 		match, err := s.loadMatch(matchId)
@@ -249,29 +244,4 @@ func (s *server) newMatch(matchId string, player1, player2 player, config MatchC
 
 func (s *server) removeMatch(matchId string) {
 	s.matches.Delete(matchId)
-}
-
-func (s *server) resetShutdownTimer() {
-	if s.shutdownTimer != nil {
-		s.shutdownTimer.Reset(s.config.IdleTimeout)
-		return
-	}
-	s.shutdownTimer = time.NewTimer(s.config.IdleTimeout)
-	go func() {
-		<-s.shutdownTimer.C
-		s.Shutdown()
-	}()
-	logging.Info("shutdowm timer set", zap.String("duration", s.config.IdleTimeout.String()))
-}
-
-func (s *server) Shutdown() {
-	logging.Info("server terminating")
-	s.matches.Range(func(key, value interface{}) bool {
-		match, ok := value.(*Match)
-		if ok {
-			match.end()
-		}
-		return true
-	})
-	os.Exit(0)
 }

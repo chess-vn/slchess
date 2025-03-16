@@ -166,7 +166,7 @@ Resources:
   ECSAutoScalingTarget:
     Type: AWS::ApplicationAutoScaling::ScalableTarget
     Properties:
-      MaxCapacity: 10
+      MaxCapacity: 2
       MinCapacity: 0
       ResourceId: !Sub service/${SlchessServerCluster}/${SlchessServerService.Name}
       RoleARN: !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService
@@ -180,11 +180,11 @@ Resources:
       PolicyType: TargetTrackingScaling
       ScalingTargetId: !Ref ECSAutoScalingTarget
       TargetTrackingScalingPolicyConfiguration:
-        TargetValue: 0.05 # Scale down when CPU usage is below 0.0005%
+        TargetValue: 70.0
         PredefinedMetricSpecification:
           PredefinedMetricType: ECSServiceAverageCPUUtilization
-        ScaleInCooldown: 1800 # 30 minutes cooldown before scaling down
-        ScaleOutCooldown: 60 # 1-minute cooldown before scaling up
+        ScaleInCooldown: 1800
+        ScaleOutCooldown: 60
 
   ### AppSync ###
   SlchessAppSyncApi:
@@ -821,7 +821,6 @@ Resources:
         Variables:
           ECS_CLUSTER_NAME: !Ref SlchessServerCluster
           ECS_SERVICE_NAME: !GetAtt SlchessServerService.Name
-          DEPLOYMENT_STAGE: !Ref SlchessDeploymentStage
       Events:
         ApiEvent:
           Type: HttpApi
