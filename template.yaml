@@ -1098,7 +1098,7 @@ Outputs:
 
   MatchStateListEndpointUrl:
     Description: "Endpoint URL for get a list of match results"
-    Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/match/{id}/states?limit=20&startKey=<START-KEY>"
+    Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/match/{id}/states?limit=20&startKey=<START-KEY>&order=asc"
 
   ActiveMatchListEndpointUrl:
     Description: "Endpoint URL for get a list of active matches"

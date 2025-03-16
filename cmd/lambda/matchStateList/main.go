@@ -23,6 +23,11 @@ import (
 
 var dynamoClient *dynamodb.Client
 
+const (
+	ASC  = true
+	DESC = false
+)
+
 func init() {
 	cfg, _ := config.LoadDefaultConfig(context.TODO())
 	dynamoClient = dynamodb.NewFromConfig(cfg)
@@ -31,12 +36,12 @@ func init() {
 func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	auth.MustAuth(event.RequestContext.Authorizer)
 	matchId := event.PathParameters["id"]
-	startKey, limit, err := extractScanParameters(event.QueryStringParameters)
+	startKey, limit, order, err := extractScanParameters(event.QueryStringParameters)
 	if err != nil {
 		logging.Error("Failed to get match states", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest}, nil
 	}
-	matchStates, lastEvaluatedKey, err := fetchMatchStates(ctx, matchId, startKey, limit)
+	matchStates, lastEvaluatedKey, err := fetchMatchStates(ctx, matchId, startKey, limit, order)
 	if err != nil {
 		logging.Error("Failed to get match states", zap.Error(err))
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
@@ -57,14 +62,14 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 	return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(matchStateListJson)}, nil
 }
 
-func fetchMatchStates(ctx context.Context, matchId string, lastKey map[string]types.AttributeValue, limit int32) ([]entities.MatchState, map[string]types.AttributeValue, error) {
+func fetchMatchStates(ctx context.Context, matchId string, lastKey map[string]types.AttributeValue, limit int32, order bool) ([]entities.MatchState, map[string]types.AttributeValue, error) {
 	input := &dynamodb.QueryInput{
 		TableName:              aws.String("MatchStates"),
 		KeyConditionExpression: aws.String("MatchId = :matchId"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":matchId": &types.AttributeValueMemberS{Value: matchId},
 		},
-		ScanIndexForward: aws.Bool(false), // Sort by timestamp DESCENDING (most recent first)
+		ScanIndexForward: aws.Bool(order), // Sort by timestamp DESCENDING (most recent first)
 		Limit:            aws.Int32(limit),
 	}
 	if lastKey != nil {
@@ -82,12 +87,12 @@ func fetchMatchStates(ctx context.Context, matchId string, lastKey map[string]ty
 	return matchStates, matchStatesOutput.LastEvaluatedKey, nil
 }
 
-func extractScanParameters(params map[string]string) (map[string]types.AttributeValue, int32, error) {
+func extractScanParameters(params map[string]string) (map[string]types.AttributeValue, int32, bool, error) {
 	var limit int32
 	if limitStr, ok := params["limit"]; ok {
 		limitInt64, err := strconv.ParseInt(limitStr, 10, 32)
 		if err != nil {
-			return nil, 0, fmt.Errorf("invalid limit: %v", err)
+			return nil, 0, false, fmt.Errorf("invalid limit: %v", err)
 		}
 		limit = int32(limitInt64)
 	} else {
@@ -102,7 +107,14 @@ func extractScanParameters(params map[string]string) (map[string]types.Attribute
 		}
 	}
 
-	return startKey, int32(limit), nil
+	var order bool
+	if orderStr, ok := params["order"]; ok {
+		if orderStr == "asc" {
+			order = ASC
+		}
+	}
+
+	return startKey, int32(limit), order, nil
 }
 
 func main() {
