@@ -852,6 +852,154 @@ Resources:
             Method: get
             ApiId: !Ref SlchessHttpApi
 
+  AvatarUploadFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-AvatarUpload
+      CodeUri: ./cmd/lambda/avatarUpload/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref Images
+      Environment:
+        Variables:
+          IMAGE_BUCKET_NAME: !Ref Images
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /avatar/upload
+            Method: post
+            ApiId: !Ref SlchessHttpApi
+
+  PostAvatarUploadFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-PostAvatarUpload
+      CodeUri: ./cmd/lambda/postAvatarUpload/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Timeout: 10
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref Images
+        - S3CrudPolicy:
+            BucketName: !Ref Avatars
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserProfiles
+      Environment:
+        Variables:
+          AVATAR_BUCKET_NAME: !Ref Avatars
+
+  ### S3 ###
+  Images:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: slchess-images
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - "*"
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+              - DELETE
+            AllowedHeaders:
+              - "*"
+
+  Avatars:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: slchess-avatars
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - "*"
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+              - DELETE
+            AllowedHeaders:
+              - "*"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: false
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: false
+
+  AvatarsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref Avatars
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: "s3:GetObject"
+            Resource: !Sub "${Avatars.Arn}/*"
+
+  S3InvokeLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref PostAvatarUploadFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !GetAtt Images.Arn
+
+  ApplyNotificationFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Path: /
+      Policies:
+        - PolicyName: S3BucketNotificationPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AllowBucketNotification
+                Effect: Allow
+                Action: s3:PutBucketNotification
+                Resource:
+                  - !Sub "arn:aws:s3:::${Images}"
+                  - !Sub "arn:aws:s3:::${Images}/*"
+
+  ApplyBucketNotificationFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-ApplyBucketNotification
+      CodeUri: ./cmd/lambda/applyBucketNotification/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Role: !GetAtt ApplyNotificationFunctionRole.Arn
+      Timeout: 240
+
+  ApplyAvatarUploadNotification:
+    Type: Custom::ApplyNotification
+    Properties:
+      ServiceToken: !GetAtt ApplyBucketNotificationFunction.Arn
+      S3Bucket: !Ref Images
+      FunctionARN: !GetAtt PostAvatarUploadFunction.Arn
+      PrefixValue: "avatars/"
+      NotificationId: S3ObjectCreatedEvent
+
   ### DynamoDB Tables ###
   Connections:
     Type: AWS::DynamoDB::Table

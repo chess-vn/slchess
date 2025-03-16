@@ -62,6 +62,8 @@ tasks:
         - UserRatingListFunction
         - MatchRestoreFunction
         - MatchSpectateFunction
+        - AvatarUploadFunction
+        - PostAvatarUploadFunction
     cmds:
       - sam build --region $AWS_REGION --config-file samconfig.yaml
       - for: { var: HANDLERS }
