@@ -23,7 +23,7 @@ var (
 	s3Client  *s3.Client
 	presigner *presign.Presigner
 
-	bucketName = os.Getenv("AVATAR_BUCKET_NAME")
+	bucketName = os.Getenv("IMAGE_BUCKET_NAME")
 )
 
 func init() {
