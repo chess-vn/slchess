@@ -852,6 +852,45 @@ Resources:
             Method: get
             ApiId: !Ref SlchessHttpApi
 
+  AvatarUploadFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-AvatarUpload
+      CodeUri: ./cmd/lambda/avatarUpload/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref Avatars
+        - DynamoDBCrudPolicy:
+            TableName: MatchRecords
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /avatar/upload
+            Method: post
+            ApiId: !Ref SlchessHttpApi
+
+  ### S3 ###
+  Avatars:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: slchess-avatars
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - "*"
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+              - DELETE
+            AllowedHeaders:
+              - "*"
+
   ### DynamoDB Tables ###
   Connections:
     Type: AWS::DynamoDB::Table
