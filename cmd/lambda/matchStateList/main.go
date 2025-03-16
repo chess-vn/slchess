@@ -17,8 +17,6 @@ import (
 	"github.com/chess-vn/slchess/internal/aws/auth"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/internal/domains/entities"
-	"github.com/chess-vn/slchess/pkg/logging"
-	"go.uber.org/zap"
 )
 
 var dynamoClient *dynamodb.Client
@@ -38,13 +36,13 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 	matchId := event.PathParameters["id"]
 	startKey, limit, order, err := extractScanParameters(event.QueryStringParameters)
 	if err != nil {
-		logging.Error("Failed to get match states", zap.Error(err))
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest},
+			fmt.Errorf("failed to extract parameters: %w", err)
 	}
 	matchStates, lastEvaluatedKey, err := fetchMatchStates(ctx, matchId, startKey, limit, order)
 	if err != nil {
-		logging.Error("Failed to get match states", zap.Error(err))
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to fetch match states: %w", err)
 	}
 
 	matchStateListResp := dtos.MatchStateListResponseFromEntities(matchStates)
@@ -56,8 +54,8 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 
 	matchStateListJson, err := json.Marshal(matchStateListResp)
 	if err != nil {
-		logging.Error("Failed to get match states", zap.Error(err))
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to marshal response: %w", err)
 	}
 	return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(matchStateListJson)}, nil
 }

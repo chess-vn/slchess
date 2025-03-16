@@ -17,8 +17,6 @@ import (
 	"github.com/chess-vn/slchess/internal/aws/auth"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/internal/domains/entities"
-	"github.com/chess-vn/slchess/pkg/logging"
-	"go.uber.org/zap"
 )
 
 var (
@@ -36,25 +34,26 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 	auth.MustAuth(event.RequestContext.Authorizer)
 	matchId := event.PathParameters["id"]
 
+	// TODO: change to fetchMatchStates and return 20 moves
 	matchState, err := getMatchState(ctx, matchId)
 	if err != nil {
 		if !errors.Is(err, ErrMatchStateNotFound) {
-			logging.Error("Failed to get match state", zap.Error(err))
-			return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+				fmt.Errorf("failed to get match state: %w", err)
 		}
 	}
 
 	spectatorConversation, err := getSpectatorConversation(ctx, matchId)
 	if err != nil {
-		logging.Error("Failed to get spectator conversation", zap.Error(err))
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to get spectator conversation: %w", err)
 	}
 
 	resp := dtos.NewMatchSpectateResponse(matchState, spectatorConversation.ConversationId)
 	respJson, err := json.Marshal(resp)
 	if err != nil {
-		logging.Error("Failed to get match state", zap.Error(err))
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to marshal response: %w", err)
 	}
 
 	return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(respJson)}, nil

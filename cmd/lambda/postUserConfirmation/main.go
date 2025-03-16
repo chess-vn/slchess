@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -11,8 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/chess-vn/slchess/internal/domains/entities"
-	"github.com/chess-vn/slchess/pkg/logging"
-	"go.uber.org/zap"
 )
 
 var dynamoClient *dynamodb.Client
@@ -35,14 +34,14 @@ func handler(ctx context.Context, event events.CognitoEventUserPoolsPostConfirma
 	}
 	userProfileAv, err := attributevalue.MarshalMap(userProfile)
 	if err != nil {
-		logging.Fatal("Failed to save user rating", zap.Error(err))
+		return event, fmt.Errorf("failed to marshal user profile map: %w", err)
 	}
 	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String("UserProfiles"),
 		Item:      userProfileAv,
 	})
 	if err != nil {
-		logging.Fatal("Failed to save user rating", zap.Error(err))
+		return event, fmt.Errorf("failed to put user profile: %w", err)
 	}
 
 	// Default user rating
@@ -54,14 +53,14 @@ func handler(ctx context.Context, event events.CognitoEventUserPoolsPostConfirma
 	}
 	userRatingAv, err := attributevalue.MarshalMap(userRating)
 	if err != nil {
-		logging.Fatal("Failed to save user rating", zap.Error(err))
+		return event, fmt.Errorf("failed to marshal user rating map: %w", err)
 	}
 	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String("UserRatings"),
 		Item:      userRatingAv,
 	})
 	if err != nil {
-		logging.Fatal("Failed to save user rating", zap.Error(err))
+		return event, fmt.Errorf("failed to put user rating: %w", err)
 	}
 
 	return event, nil

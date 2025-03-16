@@ -18,9 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/golang-jwt/jwt/v5"
-	"go.uber.org/zap"
 )
 
 var (
@@ -108,10 +106,8 @@ func handler(ctx context.Context, event events.APIGatewayWebsocketProxyRequest) 
 
 	validToken, err := validateJWT(token)
 	if err != nil || !validToken.Valid {
-		logging.Error("Failed to connect", zap.Error(err))
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusUnauthorized,
-		}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized},
+			fmt.Errorf("failed to validate token: %w", err)
 	}
 
 	userId := validToken.Claims.(jwt.MapClaims)["sub"].(string)
@@ -125,8 +121,8 @@ func handler(ctx context.Context, event events.APIGatewayWebsocketProxyRequest) 
 		},
 	})
 	if err != nil {
-		logging.Error("Failed to connect:", zap.Error(err))
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to put conntection: %w", err)
 	}
 
 	return events.APIGatewayProxyResponse{StatusCode: http.StatusOK}, nil

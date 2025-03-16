@@ -17,8 +17,6 @@ import (
 	"github.com/chess-vn/slchess/internal/aws/auth"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/internal/domains/entities"
-	"github.com/chess-vn/slchess/pkg/logging"
-	"go.uber.org/zap"
 )
 
 var dynamoClient *dynamodb.Client
@@ -32,13 +30,13 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 	auth.MustAuth(event.RequestContext.Authorizer)
 	startKey, limit, err := extractScanParameters(event.QueryStringParameters)
 	if err != nil {
-		logging.Error("Failed to list user ratings", zap.Error(err))
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest},
+			fmt.Errorf("failed to extract parameters: %w", err)
 	}
 	userRatings, lastEvaluatedKey, err := fetchUserRatingList(ctx, startKey, limit)
 	if err != nil {
-		logging.Error("Failed to list user ratings", zap.Error(err))
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to fetch user ratings: %w", err)
 	}
 
 	userRatingListResp := dtos.UserRatingListResponseFromEntities(userRatings)
@@ -50,8 +48,8 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 
 	userRatingListJson, err := json.Marshal(userRatingListResp)
 	if err != nil {
-		logging.Error("Failed to list user ratings", zap.Error(err))
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to marshal response: %w", err)
 	}
 	return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(userRatingListJson)}, nil
 }

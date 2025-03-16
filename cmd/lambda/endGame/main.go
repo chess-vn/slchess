@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/aws/aws-lambda-go/lambda"
@@ -13,8 +14,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/internal/domains/entities"
-	"github.com/chess-vn/slchess/pkg/logging"
-	"go.uber.org/zap"
 )
 
 var dynamoClient *dynamodb.Client
@@ -24,11 +23,11 @@ func init() {
 	dynamoClient = dynamodb.NewFromConfig(cfg)
 }
 
-func handler(ctx context.Context, event json.RawMessage) {
+func handler(ctx context.Context, event json.RawMessage) error {
 	// Get match data
 	var matchRecordReq dtos.MatchRecordRequest
 	if err := json.Unmarshal(event, &matchRecordReq); err != nil {
-		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
+		return fmt.Errorf("failed to unmarshal request: %w", err)
 	}
 
 	matchRecord := dtos.MatchRecordRequestToEntity(matchRecordReq)
@@ -40,7 +39,7 @@ func handler(ctx context.Context, event json.RawMessage) {
 		},
 	})
 	if err != nil {
-		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
+		return fmt.Errorf("failed to delete active match: %w", err)
 	}
 
 	_, err = dynamoClient.DeleteItem(ctx, &dynamodb.DeleteItemInput{
@@ -50,7 +49,7 @@ func handler(ctx context.Context, event json.RawMessage) {
 		},
 	})
 	if err != nil {
-		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
+		return fmt.Errorf("failed to delete user match: %w", err)
 	}
 
 	_, err = dynamoClient.DeleteItem(ctx, &dynamodb.DeleteItemInput{
@@ -60,7 +59,7 @@ func handler(ctx context.Context, event json.RawMessage) {
 		},
 	})
 	if err != nil {
-		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
+		return fmt.Errorf("failed to delete user match: %w", err)
 	}
 
 	_, err = dynamoClient.DeleteItem(ctx, &dynamodb.DeleteItemInput{
@@ -70,19 +69,19 @@ func handler(ctx context.Context, event json.RawMessage) {
 		},
 	})
 	if err != nil {
-		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
+		return fmt.Errorf("failed to delete spectator conversation: %w", err)
 	}
 
 	av, err := attributevalue.MarshalMap(matchRecord)
 	if err != nil {
-		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
+		return fmt.Errorf("failed to marshal match record map: %w", err)
 	}
 	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String("MatchRecords"),
 		Item:      av,
 	})
 	if err != nil {
-		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
+		return fmt.Errorf("failed to put match record: %w", err)
 	}
 
 	player1Rating := entities.UserRating{
@@ -92,14 +91,14 @@ func handler(ctx context.Context, event json.RawMessage) {
 	}
 	player1RatingAv, err := attributevalue.MarshalMap(player1Rating)
 	if err != nil {
-		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
+		return fmt.Errorf("failed to marshal user rating map: %w", err)
 	}
 	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String("UserRatings"),
 		Item:      player1RatingAv,
 	})
 	if err != nil {
-		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
+		return fmt.Errorf("failed to put user rating: %w", err)
 	}
 
 	player2Rating := entities.UserRating{
@@ -109,14 +108,14 @@ func handler(ctx context.Context, event json.RawMessage) {
 	}
 	player2RatingAv, err := attributevalue.MarshalMap(player2Rating)
 	if err != nil {
-		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
+		return fmt.Errorf("failed to marshal user rating map: %w", err)
 	}
 	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String("UserRatings"),
 		Item:      player2RatingAv,
 	})
 	if err != nil {
-		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
+		return fmt.Errorf("failed to put user rating: %w", err)
 	}
 
 	player1MatchResult := entities.MatchResult{
@@ -131,14 +130,14 @@ func handler(ctx context.Context, event json.RawMessage) {
 	attributevalue.MarshalMap(&player1MatchResult)
 	player1MatchResultAv, err := attributevalue.MarshalMap(player1MatchResult)
 	if err != nil {
-		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
+		return fmt.Errorf("failed to marshal match result map: %w", err)
 	}
 	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String("MatchResults"),
 		Item:      player1MatchResultAv,
 	})
 	if err != nil {
-		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
+		return fmt.Errorf("failed to put match result: %w", err)
 	}
 
 	player2MatchResult := entities.MatchResult{
@@ -153,15 +152,16 @@ func handler(ctx context.Context, event json.RawMessage) {
 	attributevalue.MarshalMap(&player2MatchResult)
 	player2MatchResultAv, err := attributevalue.MarshalMap(player2MatchResult)
 	if err != nil {
-		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
+		return fmt.Errorf("failed to marshal match result map: %w", err)
 	}
 	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String("MatchResults"),
 		Item:      player2MatchResultAv,
 	})
 	if err != nil {
-		logging.Fatal("Failed to handle end game: %v", zap.Error(err))
+		return fmt.Errorf("failed to put match result: %w", err)
 	}
+	return nil
 }
 
 func main() {

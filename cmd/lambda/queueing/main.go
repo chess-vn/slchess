@@ -50,28 +50,33 @@ func handler(ctx context.Context, event events.APIGatewayWebsocketProxyRequest) 
 		},
 	})
 	if err != nil || connectionOutput.Item == nil {
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized},
+			fmt.Errorf("failed to get connection: %w", err)
 	}
 	var connection entities.Connection
 	if err := attributevalue.UnmarshalMap(connectionOutput.Item, &connection); err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to unmarshal connection: %w", err)
 	}
 
 	activeMatch, exist, err := checkForActiveMatch(ctx, connection.UserId)
 	if err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: 500}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to check for active match: %w", err)
 	}
 	if exist {
 		activeMatchJson, err := json.Marshal(activeMatch)
 		if err != nil {
-			return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+				fmt.Errorf("failed to marshal response: %w", err)
 		}
 		_, err = apiGatewayClient.PostToConnection(ctx, &apigatewaymanagementapi.PostToConnectionInput{
 			ConnectionId: &connection.Id,
 			Data:         activeMatchJson,
 		})
 		if err != nil {
-			return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError, Body: "Failed to send message"}, nil
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+				fmt.Errorf("failed to post to connection: %w", err)
 		}
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusOK}, nil
 	}

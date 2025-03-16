@@ -17,8 +17,6 @@ import (
 	"github.com/chess-vn/slchess/internal/aws/auth"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/internal/domains/entities"
-	"github.com/chess-vn/slchess/pkg/logging"
-	"go.uber.org/zap"
 )
 
 var (
@@ -40,16 +38,16 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 	targetProfile, err := getUserProfile(ctx, targetId)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
-			logging.Error("Failed to get user profile", zap.Error(err))
-			return events.APIGatewayProxyResponse{StatusCode: http.StatusNotFound}, nil
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusNotFound},
+				fmt.Errorf("failed to get user profile: %w", err)
 		}
-		logging.Error("Failed to get user profile", zap.Error(err))
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to get user profile: %w", err)
 	}
 	targetRating, err := getUserRating(ctx, targetId)
 	if err != nil {
-		logging.Error("Failed to get user rating", zap.Error(err))
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to get user rating: %w", err)
 	}
 
 	// If users request their own information, return in full
@@ -60,8 +58,8 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 	user := dtos.UserResponseFromEntities(targetProfile, targetRating, getFull)
 	userJson, err := json.Marshal(user)
 	if err != nil {
-		logging.Error("Failed to get user", zap.Error(err))
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to marshal response: %w", err)
 	}
 	return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(userJson)}, nil
 }

@@ -22,7 +22,6 @@ import (
 	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/internal/domains/entities"
 	"github.com/chess-vn/slchess/pkg/logging"
-	"go.uber.org/zap"
 )
 
 var (
@@ -33,6 +32,8 @@ var (
 	clusterName     = os.Getenv("ECS_CLUSTER_NAME")
 	serviceName     = os.Getenv("ECS_SERVICE_NAME")
 	deploymentStage = os.Getenv("DEPLOYMENT_STAGE")
+
+	ErrUserNotInMatch = fmt.Errorf("user not in match")
 )
 
 func init() {
@@ -50,12 +51,12 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 
 	activeMatch, err := getActiveMatch(ctx, matchId)
 	if err != nil {
-		logging.Error("Failed to restore match", zap.Error(err))
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest},
+			fmt.Errorf("failed to get active match: %w", err)
 	}
 	if activeMatch.Player1.Id != userId && activeMatch.Player2.Id != userId {
-		logging.Error("Failed to restore match: user not in match")
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest},
+			fmt.Errorf("failed to restore match: %w", ErrUserNotInMatch)
 	}
 
 	var serverIp string
@@ -67,13 +68,17 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 		<-time.After(5 * time.Second)
 	}
 	if err != nil {
-		logging.Error("Failed to restore match", zap.Error(err))
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to get server ip: %w", err)
 	}
 	activeMatch.Server = serverIp
 
 	activeMatchResp := dtos.ActiveMatchResponseFromEntity(activeMatch)
-	activeMatchJson, _ := json.Marshal(activeMatchResp)
+	activeMatchJson, err := json.Marshal(activeMatchResp)
+	if err != nil {
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to marshal response: %w", err)
+	}
 
 	return events.APIGatewayProxyResponse{
 		StatusCode: http.StatusOK,

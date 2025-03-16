@@ -17,8 +17,6 @@ import (
 	"github.com/chess-vn/slchess/internal/aws/auth"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/internal/domains/entities"
-	"github.com/chess-vn/slchess/pkg/logging"
-	"go.uber.org/zap"
 )
 
 var (
@@ -38,18 +36,17 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 	matchRecord, err := getMatchRecord(ctx, matchId)
 	if err != nil {
 		if errors.Is(err, ErrMatchRecordNotFound) {
-			logging.Error("Failed to get match record", zap.Error(err))
 			return events.APIGatewayProxyResponse{StatusCode: http.StatusNotFound}, nil
 		}
-		logging.Error("Failed to get match record", zap.Error(err))
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to get match record: %w", err)
 	}
 
 	matchRecordResp := dtos.MatchRecordGetResponseFromEntity(matchRecord)
 	matchRecordJson, err := json.Marshal(matchRecordResp)
 	if err != nil {
-		logging.Error("Failed to get match record", zap.Error(err))
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to marshal response: %w", err)
 	}
 	return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(matchRecordJson)}, nil
 }

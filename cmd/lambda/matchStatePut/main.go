@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -10,8 +11,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
-	"github.com/chess-vn/slchess/pkg/logging"
-	"go.uber.org/zap"
 )
 
 var dynamoClient *dynamodb.Client
@@ -25,13 +24,13 @@ func handler(ctx context.Context, event map[string]interface{}) (map[string]inte
 	var matchStateReq dtos.MatchStateRequest
 	reqJson, _ := json.Marshal(event["arguments"].(map[string]interface{})["input"])
 	if err := json.Unmarshal(reqJson, &matchStateReq); err != nil {
-		logging.Fatal("Failed to save match state", zap.Error(err))
+		return nil, fmt.Errorf("failed to extract input: %w", err)
 	}
 
 	matchState := dtos.MatchStateRequestToEntity(matchStateReq)
 	av, err := attributevalue.MarshalMap(matchState)
 	if err != nil {
-		logging.Fatal("Failed to save match state", zap.Error(err))
+		return nil, fmt.Errorf("failed to marshal match state map: %w", err)
 	}
 
 	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
@@ -39,7 +38,7 @@ func handler(ctx context.Context, event map[string]interface{}) (map[string]inte
 		Item:      av,
 	})
 	if err != nil {
-		logging.Fatal("Failed to save match state", zap.Error(err))
+		return nil, fmt.Errorf("failed to put match state: %w", err)
 	}
 
 	return map[string]interface{}{

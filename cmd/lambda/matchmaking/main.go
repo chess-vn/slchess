@@ -27,7 +27,6 @@ import (
 	"github.com/chess-vn/slchess/internal/domains/entities"
 	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/chess-vn/slchess/pkg/utils"
-	"go.uber.org/zap"
 )
 
 var (
@@ -62,32 +61,32 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 
 	// Start game server beforehand if none available
 	if err := checkAndStartServer(ctx); err != nil {
-		logging.Error("Failed to start game server", zap.Error(err))
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to start game server: %w", err)
 	}
 
 	// Extract and validate matchmaking ticket
 	var matchmakingReq dtos.MatchmakingRequest
 	if err := json.Unmarshal([]byte(event.Body), &matchmakingReq); err != nil {
-		logging.Error("Failed to validate request", zap.Error(err))
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest},
+			fmt.Errorf("failed to validate request: %w", err)
 	}
 	userRating, err := getUserRating(ctx, userId)
 	if err != nil {
-		logging.Error("Failed to get user rating", zap.Error(err))
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to get user rating: %w", err)
 	}
 	ticket := dtos.MatchmakingRequestToEntity(userRating, matchmakingReq)
 	if err := ticket.Validate(); err != nil {
-		logging.Error("Failed to matchmaking", zap.Error(err))
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest},
+			fmt.Errorf("invalid ticket: %w", err)
 	}
 
 	// Check if user already in a activeMatch
 	activeMatch, exist, err := checkForActiveMatch(ctx, userId)
 	if err != nil {
-		logging.Error("Failed to check for active match", zap.Error(err))
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to check for active match: %w", err)
 	}
 	if exist {
 		matchResp := dtos.ActiveMatchResponseFromEntity(activeMatch)
@@ -96,16 +95,14 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 	}
 
 	// Attempt matchmaking
-	logging.Info("Attempt matchmaking", zap.Float64("minRating", ticket.MinRating), zap.Float64("maxRating", ticket.MaxRating))
 	opponentIds, err := findOpponents(ctx, ticket)
 	if err != nil {
-		logging.Error("Failed to find opponents", zap.Error(err))
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to find opponents: %w", err)
 	}
 
 	// If no match found, queue the player by caching the matchmaking ticket
 	if len(opponentIds) == 0 {
-		logging.Info("No match found. Start queuing")
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusAccepted, Body: "Queued"}, nil
 	}
 
@@ -119,36 +116,28 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 		<-time.After(5 * time.Second)
 	}
 	if err != nil {
-		logging.Error("Failed to retrieve server ip", zap.Error(err))
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to get server ip: %w", err)
 	}
 
 	// Try to create new match
 	for _, opponentId := range opponentIds {
 		match, err := createMatch(ctx, userRating, opponentId, ticket.GameMode, serverIp)
 		if err != nil {
-			logging.Error("Failed to create match",
-				zap.String("user", userId),
-				zap.String("opponent", opponentId),
-				zap.Error(err),
-			)
 			continue
 		}
-		logging.Info("Match found",
-			zap.String("matchId", match.MatchId),
-			zap.String("player1", match.Player1.Id),
-			zap.String("player2", match.Player2.Id),
-		)
 		matchResp := dtos.ActiveMatchResponseFromEntity(match)
-		matchRespJson, _ := json.Marshal(matchResp)
+		matchRespJson, err := json.Marshal(matchResp)
+		if err != nil {
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+				fmt.Errorf("failed to marshal response: %w", err)
+		}
 
 		// Notify the opponent about the match
 		err = notifyQueueingUser(ctx, opponentId, matchRespJson)
 		if err != nil {
-			logging.Error("Failed to notify queueing user",
-				zap.String("userId", opponentId),
-				zap.Error(err),
-			)
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+				fmt.Errorf("failed to notify queueing user: %w", err)
 		}
 
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(matchRespJson)}, nil
@@ -378,12 +367,12 @@ func notifyQueueingUser(ctx context.Context, userId string, matchJson []byte) er
 		Limit: aws.Int32(1),
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to query connection: %w", err)
 	}
 	if len(connectionOutput.Items) > 0 {
 		var connection entities.Connection
 		if err := attributevalue.UnmarshalMap(connectionOutput.Items[0], &connection); err != nil {
-			return err
+			return fmt.Errorf("failed to unmarshal connection map: %w", err)
 		}
 		apiEndpoint := fmt.Sprintf("https://%s.execute-api.%s.amazonaws.com/%s", websocketApiId, region, websocketApiStage)
 		apiGatewayClient := apigatewaymanagementapi.New(apigatewaymanagementapi.Options{
@@ -396,17 +385,14 @@ func notifyQueueingUser(ctx context.Context, userId string, matchJson []byte) er
 			Data:         matchJson,
 		})
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to post to connect: %w", err)
 		}
 		_, err = apiGatewayClient.DeleteConnection(ctx, &apigatewaymanagementapi.DeleteConnectionInput{
 			ConnectionId: aws.String(connection.Id),
 		})
 		if err != nil {
-			logging.Error("Failed to delete connection", zap.Error(err))
+			return fmt.Errorf("failed to delete connection: %w", err)
 		}
-		logging.Info("User notified", zap.String("userId", userId))
-	} else {
-		logging.Info("User not connected", zap.String("userId", userId))
 	}
 
 	return nil
