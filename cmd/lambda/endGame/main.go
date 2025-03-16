@@ -85,9 +85,10 @@ func handler(ctx context.Context, event json.RawMessage) error {
 	}
 
 	player1Rating := entities.UserRating{
-		UserId: matchRecordReq.Players[0].Id,
-		Rating: matchRecordReq.Players[0].NewRating,
-		RD:     matchRecordReq.Players[0].NewRD,
+		UserId:       matchRecordReq.Players[0].Id,
+		PartitionKey: "UserRatings",
+		Rating:       matchRecordReq.Players[0].NewRating,
+		RD:           matchRecordReq.Players[0].NewRD,
 	}
 	player1RatingAv, err := attributevalue.MarshalMap(player1Rating)
 	if err != nil {
@@ -102,9 +103,10 @@ func handler(ctx context.Context, event json.RawMessage) error {
 	}
 
 	player2Rating := entities.UserRating{
-		UserId: matchRecordReq.Players[1].Id,
-		Rating: matchRecordReq.Players[1].NewRating,
-		RD:     matchRecordReq.Players[1].NewRD,
+		UserId:       matchRecordReq.Players[1].Id,
+		PartitionKey: "UserRatings",
+		Rating:       matchRecordReq.Players[1].NewRating,
+		RD:           matchRecordReq.Players[1].NewRD,
 	}
 	player2RatingAv, err := attributevalue.MarshalMap(player2Rating)
 	if err != nil {

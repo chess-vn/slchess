@@ -55,9 +55,12 @@ func TestMain(m *testing.M) {
 }
 
 func TestGameServer(t *testing.T) {
-	matchId := testMatchmaking(t)
+	matchId, serverIp := testMatchmaking(t)
 
-	matchUrl := fmt.Sprintf("ws://localhost:7202/game/%s", matchId)
+	if os.Getenv("LOCAL") != "" {
+		serverIp = "localhost"
+	}
+	matchUrl := fmt.Sprintf("ws://%s:7202/game/%s", serverIp, matchId)
 	player1Header := http.Header{}
 	player1Header.Set("Authorization", cfg.User1IdToken)
 	player1Conn, _, err := websocket.DefaultDialer.Dial(matchUrl, player1Header)
@@ -127,7 +130,7 @@ func TestGameServer(t *testing.T) {
 	wg.Wait()
 }
 
-func testMatchmaking(t *testing.T) string {
+func testMatchmaking(t *testing.T) (string, string) {
 	client := http.Client{}
 	matchmakingReq := getMatchmakingRequest()
 	matchmakingReqJson, err := json.Marshal(matchmakingReq)
@@ -159,7 +162,7 @@ func testMatchmaking(t *testing.T) string {
 	err = json.Unmarshal(body, &activeMatchResp)
 	require.NoError(t, err)
 
-	return activeMatchResp.MatchId
+	return activeMatchResp.MatchId, activeMatchResp.Server
 }
 
 func getMatchmakingRequest() dtos.MatchmakingRequest {

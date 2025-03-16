@@ -16,6 +16,13 @@ Parameters:
     Default: dev
 
 Resources:
+  ### CloudWatch LogGroups ###
+  ServerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/slchess-server
+      RetentionInDays: 7
+
   ### Cognito User Pool ###
   SlchessUserPool:
     Type: AWS::Cognito::UserPool
@@ -79,6 +86,12 @@ Resources:
           PortMappings:
             - ContainerPort: 7202
               Protocol: tcp
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ServerLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
 
   SlchessServerService:
     Type: AWS::ECS::Service

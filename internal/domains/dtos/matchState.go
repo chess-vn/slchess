@@ -25,8 +25,8 @@ type PlayerStateRequest struct {
 }
 
 type MoveRequest struct {
-	PlayerId string
-	Uci      string
+	PlayerId string `json:"playerId"`
+	Uci      string `json:"uci"`
 }
 
 type MatchStateAppSyncRequest struct {
