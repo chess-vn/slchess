@@ -167,21 +167,24 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 		}
 		return nil, ErrFailedToLoadMatch
 	} else {
-		matchStateOutput, err := dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
-			TableName: aws.String("MatchStates"),
-			Key: map[string]types.AttributeValue{
-				"MatchId": &types.AttributeValueMemberS{
-					Value: matchId,
-				},
+		input := &dynamodb.QueryInput{
+			TableName:              aws.String("MatchStates"),
+			IndexName:              aws.String("MatchIndex"),
+			KeyConditionExpression: aws.String("MatchId = :matchId"),
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":matchId": &types.AttributeValueMemberS{Value: matchId},
 			},
-			ConsistentRead: aws.Bool(true),
-		})
+			ScanIndexForward: aws.Bool(false), // Sort by timestamp DESCENDING (most recent first)
+			Limit:            aws.Int32(1),
+		}
+		matchStatesOutput, err := dynamoClient.Query(ctx, input)
 		if err != nil {
 			return nil, err
 		}
-
-		var matchState entities.MatchState
-		attributevalue.UnmarshalMap(matchStateOutput.Item, &matchState)
+		var matchStates []entities.MatchState
+		if err := attributevalue.UnmarshalListOfMaps(matchStatesOutput.Items, &matchStates); err != nil {
+			return nil, err
+		}
 
 		config, err := configForGameMode(activeMatch.GameMode)
 		if err != nil {
@@ -191,13 +194,13 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 		var clock2 time.Duration
 
 		// Initialize match if there is no match state data
-		if matchStateOutput.Item == nil {
+		if len(matchStates) == 0 {
 			clock1 = config.MatchDuration
 			clock2 = config.MatchDuration
 			logging.Info("match initialized")
 		} else {
-			clock1, _ = time.ParseDuration(matchState.PlayerStates[0].Clock)
-			clock2, _ = time.ParseDuration(matchState.PlayerStates[1].Clock)
+			clock1, _ = time.ParseDuration(matchStates[0].PlayerStates[0].Clock)
+			clock2, _ = time.ParseDuration(matchStates[0].PlayerStates[1].Clock)
 			logging.Info("match resumed")
 		}
 		player1 := newPlayer(

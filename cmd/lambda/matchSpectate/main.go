@@ -34,8 +34,7 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 	auth.MustAuth(event.RequestContext.Authorizer)
 	matchId := event.PathParameters["id"]
 
-	// TODO: change to fetchMatchStates and return 20 moves
-	matchState, err := getMatchState(ctx, matchId)
+	matchStates, lastEvaluatedKey, err := fetchMatchStates(ctx, matchId, nil, 20, false)
 	if err != nil {
 		if !errors.Is(err, ErrMatchStateNotFound) {
 			return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
@@ -49,7 +48,12 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 			fmt.Errorf("failed to get spectator conversation: %w", err)
 	}
 
-	resp := dtos.NewMatchSpectateResponse(matchState, spectatorConversation.ConversationId)
+	resp := dtos.NewMatchSpectateResponse(matchStates, spectatorConversation.ConversationId)
+	if lastEvaluatedKey != nil {
+		resp.MatchStates.NextPageToken = dtos.NextMatchStatePageToken{
+			Timestamp: lastEvaluatedKey["Timestamp"].(*types.AttributeValueMemberS).Value,
+		}
+	}
 	respJson, err := json.Marshal(resp)
 	if err != nil {
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
@@ -59,26 +63,30 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 	return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(respJson)}, nil
 }
 
-func getMatchState(ctx context.Context, matchId string) (entities.MatchState, error) {
-	matchRecordOutput, err := dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String("MatchStates"),
-		Key: map[string]types.AttributeValue{
-			"MatchId": &types.AttributeValueMemberS{
-				Value: matchId,
-			},
+func fetchMatchStates(ctx context.Context, matchId string, lastKey map[string]types.AttributeValue, limit int32, order bool) ([]entities.MatchState, map[string]types.AttributeValue, error) {
+	input := &dynamodb.QueryInput{
+		TableName:              aws.String("MatchStates"),
+		IndexName:              aws.String("MatchIndex"),
+		KeyConditionExpression: aws.String("MatchId = :matchId"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":matchId": &types.AttributeValueMemberS{Value: matchId},
 		},
-	})
+		ScanIndexForward: aws.Bool(order), // Sort by timestamp DESCENDING (most recent first)
+		Limit:            aws.Int32(limit),
+	}
+	if lastKey != nil {
+		input.ExclusiveStartKey = lastKey
+	}
+	matchStatesOutput, err := dynamoClient.Query(ctx, input)
 	if err != nil {
-		return entities.MatchState{}, err
+		return nil, nil, err
 	}
-	if matchRecordOutput.Item == nil {
-		return entities.MatchState{}, ErrMatchStateNotFound
+	var matchStates []entities.MatchState
+	if err := attributevalue.UnmarshalListOfMaps(matchStatesOutput.Items, &matchStates); err != nil {
+		return nil, nil, err
 	}
-	var matchState entities.MatchState
-	if err := attributevalue.UnmarshalMap(matchRecordOutput.Item, &matchState); err != nil {
-		return entities.MatchState{}, err
-	}
-	return matchState, nil
+
+	return matchStates, matchStatesOutput.LastEvaluatedKey, nil
 }
 
 func getSpectatorConversation(ctx context.Context, matchId string) (entities.SpectatorConversation, error) {

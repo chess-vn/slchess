@@ -1125,12 +1125,14 @@ Resources:
     Properties:
       TableName: MatchStates
       AttributeDefinitions:
+        - AttributeName: Id
+          AttributeType: S
         - AttributeName: MatchId
           AttributeType: S
         - AttributeName: Ply
           AttributeType: N
       KeySchema:
-        - AttributeName: MatchId
+        - AttributeName: Id
           KeyType: HASH
       GlobalSecondaryIndexes:
         - IndexName: MatchIndex

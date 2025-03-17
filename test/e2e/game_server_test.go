@@ -56,6 +56,7 @@ func TestMain(m *testing.M) {
 
 func TestGameServer(t *testing.T) {
 	matchId, serverIp := testMatchmaking(t)
+	<-time.After(10 * time.Second)
 
 	if os.Getenv("LOCAL") != "" {
 		serverIp = "localhost"
@@ -146,6 +147,14 @@ func testMatchmaking(t *testing.T) (string, string) {
 	user2MatchmakingRequest.Header.Add("Authorization", cfg.User2IdToken)
 	resp, err := client.Do(user2MatchmakingRequest)
 	require.NoError(t, err)
+	if resp.StatusCode == http.StatusOK {
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		var activeMatchResp dtos.ActiveMatchResponse
+		err = json.Unmarshal(body, &activeMatchResp)
+		require.NoError(t, err)
+		return activeMatchResp.MatchId, activeMatchResp.Server
+	}
 	require.Equal(t, http.StatusAccepted, resp.StatusCode)
 
 	user1MatchmakingRequest, err := http.NewRequest(http.MethodPost, matchmakingUrl.String(), bytes.NewBuffer(matchmakingReqJson))

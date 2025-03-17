@@ -19,6 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/pkg/logging"
+	"github.com/chess-vn/slchess/pkg/utils"
 	"github.com/gorilla/websocket"
 	"github.com/notnil/chess"
 	"go.uber.org/zap"
@@ -46,6 +47,7 @@ func (s *server) handleSaveGame(match *Match) {
 
 	lastMove := match.game.lastMove()
 	matchStateReq := dtos.MatchStateRequest{
+		Id:      utils.GenerateUUID(),
 		MatchId: match.id,
 		PlayerStates: []dtos.PlayerStateRequest{
 			{

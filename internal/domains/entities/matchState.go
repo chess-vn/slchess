@@ -13,6 +13,7 @@ type Move struct {
 }
 
 type MatchState struct {
+	Id           string        `dynamodbav:"Id"`
 	MatchId      string        `dynamodbav:"MatchId"`
 	PlayerStates []PlayerState `dynamodbav:"PlayerStates"`
 	GameState    string        `dynamodbav:"GameState"`
