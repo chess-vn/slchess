@@ -3,129 +3,72 @@ package main
 import (
 	"context"
 	"crypto/rsa"
-	"encoding/base64"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"math/big"
 	"net/http"
 	"os"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/chess-vn/slchess/internal/aws/auth"
+	"github.com/chess-vn/slchess/internal/aws/storage"
+	"github.com/chess-vn/slchess/internal/domains/entities"
 	"github.com/golang-jwt/jwt/v5"
 )
 
 var (
-	dynamoClient      *dynamodb.Client
+	storageClient     *storage.Client
 	cognitoPublicKeys map[string]*rsa.PublicKey
 )
 
 func init() {
-	cfg, _ := config.LoadDefaultConfig(context.TODO())
-	dynamoClient = dynamodb.NewFromConfig(cfg)
-	loadCognitoPublicKeys()
-}
-
-// Struct for Cognito's JWKS JSON response
-type jwk struct {
-	Kid string `json:"kid"`
-	N   string `json:"n"`
-	E   string `json:"e"`
-}
-
-type jwks struct {
-	Keys []jwk `json:"keys"`
-}
-
-// Load Cognito public keys
-func loadCognitoPublicKeys() {
-	userPoolId := os.Getenv("COGNITO_USER_POOL_ID")
-	region := os.Getenv("AWS_REGION")
-	url := fmt.Sprintf("https://cognito-idp.%s.amazonaws.com/%s/.well-known/jwks.json", region, userPoolId)
-
-	resp, err := http.Get(url)
+	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
-		fmt.Println("Error fetching Cognito public keys:", err)
-		return
+		panic("couldn't load config")
 	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	var jwks jwks
-	json.Unmarshal(body, &jwks)
-
-	cognitoPublicKeys = make(map[string]*rsa.PublicKey)
-	for _, key := range jwks.Keys {
-		// Decode Base64URL (without padding) `n` and `e`
-		nBytes, _ := decodeBase64URL(key.N)
-		eBytes, _ := decodeBase64URL(key.E)
-
-		// Convert to big.Int and integer
-		n := new(big.Int).SetBytes(nBytes)
-		e := int(new(big.Int).SetBytes(eBytes).Int64())
-
-		// Construct RSA Public Key
-		cognitoPublicKeys[key.Kid] = &rsa.PublicKey{N: n, E: e}
-		fmt.Println(key)
-	}
-}
-
-// Decode Base64URL without padding
-func decodeBase64URL(s string) ([]byte, error) {
-	return base64.RawURLEncoding.DecodeString(s)
-}
-
-// Validate JWT
-func validateJWT(tokenString string) (*jwt.Token, error) {
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		kid, ok := token.Header["kid"].(string)
-		if !ok {
-			return nil, errors.New("invalid token: missing kid")
-		}
-		if key, found := cognitoPublicKeys[kid]; found {
-			return key, nil
-		}
-		return nil, errors.New("invalid token: unknown kid")
-	}, jwt.WithIssuer(fmt.Sprintf("https://cognito-idp.%s.amazonaws.com/%s", os.Getenv("AWS_REGION"), os.Getenv("COGNITO_USER_POOL_ID"))))
+	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg))
+	tokenSigningKeyUrl := fmt.Sprintf(
+		"https://cognito-idp.%s.amazonaws.com/%s/.well-known/jwks.json",
+		os.Getenv("AWS_REGION"),
+		os.Getenv("COGNITO_USER_POOL_ID"),
+	)
+	cognitoPublicKeys, err = auth.LoadCognitoPublicKeys(tokenSigningKeyUrl)
 	if err != nil {
-		return nil, err
+		panic("coulnd't load cognito public keys")
 	}
-	return token, nil
 }
 
 // Handle WebSocket connection with authentication
-func handler(ctx context.Context, event events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
-	connectionId := event.RequestContext.ConnectionID
+func handler(
+	ctx context.Context,
+	event events.APIGatewayWebsocketProxyRequest,
+) (
+	events.APIGatewayProxyResponse,
+	error,
+) {
 	token := event.Headers["Authorization"]
-
-	validToken, err := validateJWT(token)
+	validToken, err := auth.ValidateJwt(token, cognitoPublicKeys)
 	if err != nil || !validToken.Valid {
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized},
-			fmt.Errorf("failed to validate token: %w", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusUnauthorized,
+		}, fmt.Errorf("failed to validate token: %w", err)
 	}
-
-	userId := validToken.Claims.(jwt.MapClaims)["sub"].(string)
 
 	// Store connection in DynamoDB
-	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String("Connections"),
-		Item: map[string]types.AttributeValue{
-			"Id":     &types.AttributeValueMemberS{Value: connectionId},
-			"UserId": &types.AttributeValueMemberS{Value: userId},
-		},
-	})
-	if err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
-			fmt.Errorf("failed to put conntection: %w", err)
+	connection := entities.Connection{
+		Id:     event.RequestContext.ConnectionID,
+		UserId: validToken.Claims.(jwt.MapClaims)["sub"].(string),
+	}
+	if err = storageClient.PutConnection(ctx, connection); err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("failed to put conntection: %w", err)
 	}
 
-	return events.APIGatewayProxyResponse{StatusCode: http.StatusOK}, nil
+	return events.APIGatewayProxyResponse{
+		StatusCode: http.StatusOK,
+	}, nil
 }
 
 func main() {

@@ -121,7 +121,16 @@ type player struct {
 	TurnStartedAt time.Time
 }
 
-func newPlayer(conn *websocket.Conn, playerId string, side Side, clock time.Duration, rating float64, rd float64, newRatings []float64, newRDs []float64) player {
+func newPlayer(
+	conn *websocket.Conn,
+	playerId string,
+	side Side,
+	clock time.Duration,
+	rating float64,
+	rd float64,
+	newRatings []float64,
+	newRDs []float64,
+) player {
 	player := player{
 		Id:         playerId,
 		Rating:     rating,

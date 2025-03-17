@@ -14,6 +14,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/chess-vn/slchess/internal/aws/auth"
+	awsAuth "github.com/chess-vn/slchess/internal/aws/auth"
 	"github.com/chess-vn/slchess/internal/domains/entities"
 	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/golang-jwt/jwt/v5"
@@ -39,6 +41,15 @@ type payload struct {
 
 func NewServer() *server {
 	config := NewConfig()
+	tokenSigningKeyUrl := fmt.Sprintf(
+		"https://cognito-idp.%s.amazonaws.com/%s/.well-known/jwks.json",
+		config.AwsRegion,
+		config.CognitoUserPoolId,
+	)
+	cognitoPublicKeys, err := awsAuth.LoadCognitoPublicKeys(tokenSigningKeyUrl)
+	if err != nil {
+		panic(err)
+	}
 	srv := &server{
 		address: "0.0.0.0:" + config.Port,
 		upgrader: websocket.Upgrader{
@@ -49,9 +60,8 @@ func NewServer() *server {
 			},
 		},
 		config:            config,
-		cognitoPublicKeys: make(map[string]*rsa.PublicKey),
+		cognitoPublicKeys: cognitoPublicKeys,
 	}
-	srv.loadCognitoPublicKeys()
 	return srv
 }
 
@@ -67,7 +77,10 @@ func (s *server) Start() error {
 
 		conn, err := s.upgrader.Upgrade(w, r, nil)
 		if err != nil {
-			logging.Error("failed to upgrade connection", zap.String("error", err.Error()))
+			logging.Error(
+				"failed to upgrade connection",
+				zap.String("error", err.Error()),
+			)
 			return
 		}
 		defer conn.Close()
@@ -83,14 +96,12 @@ func (s *server) Start() error {
 		for {
 			_, message, err := conn.ReadMessage()
 			if err != nil {
-				if websocket.IsUnexpectedCloseError(err, websocket.CloseMessage, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-					logging.Info("unexpected close error", zap.String("remote_address", conn.RemoteAddr().String()))
-				} else if websocket.IsCloseError(err, websocket.CloseMessage, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-					logging.Info("connection closed", zap.String("remote_address", conn.RemoteAddr().String()))
-				} else {
-					logging.Info("ws message read error", zap.String("remote_address", conn.RemoteAddr().String()), zap.Error(err))
-				}
 				s.handlePlayerDisconnect(match, playerId)
+				logging.Info(
+					"connection closed",
+					zap.String("remote_address", conn.RemoteAddr().String()),
+					zap.Error(err),
+				)
 				break
 			}
 
@@ -111,7 +122,7 @@ func (s *server) auth(r *http.Request) (string, error) {
 	if token == "" {
 		return "", fmt.Errorf("no authorization")
 	}
-	validToken, err := s.validateJWT(token)
+	validToken, err := auth.ValidateJwt(token, s.cognitoPublicKeys)
 	if err != nil || !validToken.Valid {
 		return "", fmt.Errorf("invalid token: %w", err)
 	}
@@ -130,9 +141,11 @@ func (s *server) auth(r *http.Request) (string, error) {
 	return userId, nil
 }
 
-// loadMatch method    loads match with corresponding matchId.
-// If no such match exists, create a new match.
-// This is used to start the match only when white side player send in the first valid move.
+/*
+loadMatch method    loads match with corresponding matchId.
+If no such match exists, create a new match.
+This is used to start the match only when white side player send in the first valid move.
+*/
 func (s *server) loadMatch(matchId string) (*Match, error) {
 	ctx := context.Background()
 	cfg, _ := config.LoadDefaultConfig(ctx)
@@ -182,7 +195,8 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 			return nil, err
 		}
 		var matchStates []entities.MatchState
-		if err := attributevalue.UnmarshalListOfMaps(matchStatesOutput.Items, &matchStates); err != nil {
+		attributevalue.UnmarshalListOfMaps(matchStatesOutput.Items, &matchStates)
+		if err != nil {
 			return nil, err
 		}
 
@@ -229,7 +243,12 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 	}
 }
 
-func (s *server) newMatch(matchId string, player1, player2 player, config MatchConfig) *Match {
+func (s *server) newMatch(
+	matchId string,
+	player1,
+	player2 player,
+	config MatchConfig,
+) *Match {
 	match := &Match{
 		id:              matchId,
 		game:            newGame(),

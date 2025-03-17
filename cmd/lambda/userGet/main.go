@@ -9,45 +9,55 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/chess-vn/slchess/internal/aws/auth"
+	"github.com/chess-vn/slchess/internal/aws/storage"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
-	"github.com/chess-vn/slchess/internal/domains/entities"
 )
 
-var (
-	dynamoClient    *dynamodb.Client
-	ErrUserNotFound = fmt.Errorf("user not found")
-)
+var storageClient *storage.Client
 
 func init() {
 	cfg, _ := config.LoadDefaultConfig(context.TODO())
-	dynamoClient = dynamodb.NewFromConfig(cfg)
+	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg))
 }
 
-func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func handler(
+	ctx context.Context,
+	event events.APIGatewayProxyRequest,
+) (
+	events.APIGatewayProxyResponse,
+	error,
+) {
 	userId := auth.MustAuth(event.RequestContext.Authorizer)
 	targetId := event.PathParameters["id"]
 	if targetId == "" {
 		targetId = userId
 	}
-	targetProfile, err := getUserProfile(ctx, targetId)
+
+	targetProfile, err := storageClient.GetUserProfile(ctx, targetId)
 	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
-			return events.APIGatewayProxyResponse{StatusCode: http.StatusNotFound},
-				fmt.Errorf("failed to get user profile: %w", err)
+		if errors.Is(err, storage.ErrUserProfileNotFound) {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusNotFound,
+			}, fmt.Errorf("failed to get user profile: %w", err)
 		}
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
-			fmt.Errorf("failed to get user profile: %w", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("failed to get user profile: %w", err)
 	}
-	targetRating, err := getUserRating(ctx, targetId)
+
+	targetRating, err := storageClient.GetUserRating(ctx, targetId)
 	if err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
-			fmt.Errorf("failed to get user rating: %w", err)
+		if errors.Is(err, storage.ErrUserRatingNotFound) {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusNotFound,
+			}, fmt.Errorf("failed to get user rating: %w", err)
+		}
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("failed to get user rating: %w", err)
 	}
 
 	// If users request their own information, return in full
@@ -58,51 +68,14 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 	user := dtos.UserResponseFromEntities(targetProfile, targetRating, getFull)
 	userJson, err := json.Marshal(user)
 	if err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
-			fmt.Errorf("failed to marshal response: %w", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("failed to marshal response: %w", err)
 	}
-	return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(userJson)}, nil
-}
-
-func getUserProfile(ctx context.Context, userId string) (entities.UserProfile, error) {
-	userProfileOutput, err := dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String("UserProfiles"),
-		Key: map[string]types.AttributeValue{
-			"UserId": &types.AttributeValueMemberS{
-				Value: userId,
-			},
-		},
-	})
-	if err != nil {
-		return entities.UserProfile{}, err
-	}
-	if userProfileOutput.Item == nil {
-		return entities.UserProfile{}, ErrUserNotFound
-	}
-	var userProfile entities.UserProfile
-	if err := attributevalue.UnmarshalMap(userProfileOutput.Item, &userProfile); err != nil {
-		return entities.UserProfile{}, err
-	}
-	return userProfile, nil
-}
-
-func getUserRating(ctx context.Context, userId string) (entities.UserRating, error) {
-	userRatingOutput, err := dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String("UserRatings"),
-		Key: map[string]types.AttributeValue{
-			"UserId": &types.AttributeValueMemberS{
-				Value: userId,
-			},
-		},
-	})
-	if err != nil {
-		return entities.UserRating{}, err
-	}
-	var userRating entities.UserRating
-	if err := attributevalue.UnmarshalMap(userRatingOutput.Item, &userRating); err != nil {
-		return entities.UserRating{}, err
-	}
-	return userRating, nil
+	return events.APIGatewayProxyResponse{
+		StatusCode: http.StatusOK,
+		Body:       string(userJson),
+	}, nil
 }
 
 func main() {

@@ -74,7 +74,11 @@ func (s *server) handleSaveGame(match *Match) {
 		return
 	}
 
-	req, err := http.NewRequest("POST", s.config.AppSyncHttpUrl, bytes.NewReader(payload))
+	req, err := http.NewRequest(
+		"POST",
+		s.config.AppSyncHttpUrl,
+		bytes.NewReader(payload),
+	)
 	if err != nil {
 		logging.Error("Failed to save game", zap.Error(err))
 		return
@@ -88,7 +92,15 @@ func (s *server) handleSaveGame(match *Match) {
 		logging.Error("Failed to save game", zap.Error(err))
 		return
 	}
-	err = signer.SignHTTP(ctx, credentials, req, sha256Hash(payload), "appsync", s.config.AwsRegion, time.Now())
+	err = signer.SignHTTP(
+		ctx,
+		credentials,
+		req,
+		sha256Hash(payload),
+		"appsync",
+		s.config.AwsRegion,
+		time.Now(),
+	)
 	if err != nil {
 		logging.Error("Failed to save game", zap.Error(err))
 		return
@@ -200,14 +212,22 @@ func (s *server) handlePlayerDisconnect(match *Match, playerId string) {
 		match.end()
 	} else {
 		// Else only set the timer for the disconnected player
-		logging.Info("player disconnected", zap.String("match_id", match.id), zap.String("player_id", player.Id))
+		logging.Info(
+			"player disconnected",
+			zap.String("match_id", match.id),
+			zap.String("player_id", player.Id),
+		)
 		if !match.isEnded() {
 			match.setTimer(match.config.DisconnectTimeout)
 		}
 	}
 }
 
-func (s *server) handlePlayerJoin(conn *websocket.Conn, match *Match, playerId string) {
+func (s *server) handlePlayerJoin(
+	conn *websocket.Conn,
+	match *Match,
+	playerId string,
+) {
 	if match == nil {
 		return
 	}
@@ -234,7 +254,11 @@ func (s *server) handlePlayerJoin(conn *websocket.Conn, match *Match, playerId s
 }
 
 // Handler for when user sends a message
-func (s *server) handleWebSocketMessage(playerId string, match *Match, payload payload) {
+func (s *server) handleWebSocketMessage(
+	playerId string,
+	match *Match,
+	payload payload,
+) {
 	if match == nil {
 		logging.Error("match not loaded")
 		return
@@ -253,7 +277,8 @@ func (s *server) handleWebSocketMessage(playerId string, match *Match, payload p
 			logging.Info("invalid game action:", zap.String("action", payload.Type))
 			return
 		}
-		logging.Info("game data",
+		logging.Info(
+			"game data",
 			zap.String("match_id", match.id),
 			zap.String("action", action),
 		)

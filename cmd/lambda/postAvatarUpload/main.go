@@ -14,8 +14,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/chess-vn/slchess/internal/aws/storage"
 	"github.com/disintegration/imaging"
 )
 
@@ -28,9 +28,9 @@ const (
 )
 
 var (
-	cfg          aws.Config
-	s3Client     *s3.Client
-	dynamoClient *dynamodb.Client
+	cfg           aws.Config
+	s3Client      *s3.Client
+	storageClient *storage.Client
 
 	avatarBucketName = os.Getenv("AVATAR_BUCKET_NAME")
 	sizes            = []size{SMALL, MEDIUM, LARGE}
@@ -39,7 +39,7 @@ var (
 func init() {
 	cfg, _ = config.LoadDefaultConfig(context.TODO())
 	s3Client = s3.NewFromConfig(cfg)
-	dynamoClient = dynamodb.NewFromConfig(cfg)
+	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg))
 }
 
 func handle(ctx context.Context, s3Event events.S3Event) error {
@@ -78,17 +78,19 @@ func handle(ctx context.Context, s3Event events.S3Event) error {
 		}
 
 		// Update user profile in DynamoDB
-		avatarUrl := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", avatarBucketName, cfg.Region, userId)
-		_, err = dynamoClient.UpdateItem(ctx, &dynamodb.UpdateItemInput{
-			TableName: aws.String("UserProfiles"),
-			Key: map[string]types.AttributeValue{
-				"UserId": &types.AttributeValueMemberS{Value: userId},
+		avatarUrl := fmt.Sprintf(
+			"https://%s.s3.%s.amazonaws.com/%s",
+			avatarBucketName,
+			cfg.Region,
+			userId,
+		)
+		err = storageClient.UpdateUserProfile(
+			ctx,
+			userId,
+			storage.UserProfileUpdateOptions{
+				Avatar: aws.String(avatarUrl),
 			},
-			UpdateExpression: aws.String("SET Avatar = :url"),
-			ExpressionAttributeValues: map[string]types.AttributeValue{
-				":url": &types.AttributeValueMemberS{Value: avatarUrl},
-			},
-		})
+		)
 		if err != nil {
 			return fmt.Errorf("failed to update user profile: %v", err)
 		}
@@ -106,7 +108,13 @@ func handle(ctx context.Context, s3Event events.S3Event) error {
 	return nil
 }
 
-func PutImage(ctx context.Context, img *image.NRGBA, size size, bucket string, userId string) error {
+func PutImage(
+	ctx context.Context,
+	img *image.NRGBA,
+	size size,
+	bucket string,
+	userId string,
+) error {
 	// Encode as JPEG
 	var buf bytes.Buffer
 	err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 80})

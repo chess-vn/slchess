@@ -16,8 +16,7 @@ type Config struct {
 	AppSyncHttpUrl       string
 	AppSyncAccessRoleArn string
 
-	EndGameFunctionName      string
-	GameStatePutFunctionName string
+	EndGameFunctionName string
 }
 
 func NewConfig() Config {
@@ -57,7 +56,6 @@ func NewConfig() Config {
 	config.AppSyncHttpUrl = viper.GetString("APPSYNC_HTTP_URL")
 	config.AppSyncAccessRoleArn = viper.GetString("APPSYNC_ACCESS_ROLE_ARN")
 	config.EndGameFunctionName = viper.GetString("END_GAME_FUNCTION_NAME")
-	config.GameStatePutFunctionName = viper.GetString("GAME_STATE_PUT_FUNCTION_NAME")
 
 	return config
 }
