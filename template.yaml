@@ -148,9 +148,11 @@ Resources:
               - Effect: Allow
                 Action:
                   - dynamodb:GetItem
+                  - dynamodb:Query
                 Resource:
                   - !GetAtt ActiveMatches.Arn
                   - !GetAtt MatchStates.Arn
+                  - !Sub ${MatchStates.Arn}/index/MatchIndex
 
   ECSTaskExecutionRole:
     Type: AWS::IAM::Role
@@ -247,9 +249,10 @@ Resources:
           "version": "2018-05-29",
           "operation": "PutItem",
           "key": {
-            "MatchId": { "S": "$context.arguments.input.matchId" }
+            "Id": { "S": "$context.arguments.input.id" }
           },
           "attributeValues": {
+            "MatchId": { "S": "$context.arguments.input.matchId" },
             "GameState": { "S": "$context.arguments.input.gameState" },
             "PlayerStates": { "L": [
               #foreach($playerState in $context.arguments.input.playerStates)

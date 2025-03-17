@@ -100,6 +100,7 @@ func (s *server) handleSaveGame(match *Match) {
 		logging.Error("Failed to save game", zap.Error(err))
 		return
 	}
+
 	if response.StatusCode != http.StatusOK {
 		body, err := io.ReadAll(response.Body)
 		if err != nil {

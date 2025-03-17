@@ -9,6 +9,7 @@ type Move @aws_cognito_user_pools @aws_iam {
 }
 
 type MatchState @aws_cognito_user_pools @aws_iam {
+  Id: ID! @aws_cognito_user_pools @aws_iam
   MatchId: ID! @aws_cognito_user_pools @aws_iam
   PlayerStates: [PlayerState!]! @aws_cognito_user_pools @aws_iam
   GameState: String! @aws_cognito_user_pools @aws_iam
@@ -36,6 +37,7 @@ input MoveInput {
 }
 
 input UpdateMatchStateInput {
+  id: ID!
   matchId: ID!
   playerStates: [PlayerStateInput!]!
   gameState: String!

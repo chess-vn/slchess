@@ -72,6 +72,21 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 	}
 	activeMatch.Server = serverIp
 
+	_, err = dynamoClient.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String("ActiveMatches"),
+		Key: map[string]types.AttributeValue{
+			"MatchId": &types.AttributeValueMemberS{Value: matchId},
+		},
+		UpdateExpression: aws.String("SET Server = :server"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":server": &types.AttributeValueMemberS{Value: serverIp},
+		},
+	})
+	if err != nil {
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to update active match: %w", err)
+	}
+
 	activeMatchResp := dtos.ActiveMatchResponseFromEntity(activeMatch)
 	activeMatchJson, err := json.Marshal(activeMatchResp)
 	if err != nil {
