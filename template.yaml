@@ -16,6 +16,13 @@ Parameters:
     Default: dev
 
 Resources:
+  ### CloudWatch LogGroups ###
+  ServerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/slchess-server
+      RetentionInDays: 7
+
   ### Cognito User Pool ###
   SlchessUserPool:
     Type: AWS::Cognito::UserPool
@@ -79,6 +86,12 @@ Resources:
           PortMappings:
             - ContainerPort: 7202
               Protocol: tcp
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ServerLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
 
   SlchessServerService:
     Type: AWS::ECS::Service
@@ -135,9 +148,11 @@ Resources:
               - Effect: Allow
                 Action:
                   - dynamodb:GetItem
+                  - dynamodb:Query
                 Resource:
                   - !GetAtt ActiveMatches.Arn
                   - !GetAtt MatchStates.Arn
+                  - !Sub ${MatchStates.Arn}/index/MatchIndex
 
   ECSTaskExecutionRole:
     Type: AWS::IAM::Role
@@ -166,7 +181,7 @@ Resources:
   ECSAutoScalingTarget:
     Type: AWS::ApplicationAutoScaling::ScalableTarget
     Properties:
-      MaxCapacity: 10
+      MaxCapacity: 2
       MinCapacity: 0
       ResourceId: !Sub service/${SlchessServerCluster}/${SlchessServerService.Name}
       RoleARN: !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService
@@ -180,11 +195,11 @@ Resources:
       PolicyType: TargetTrackingScaling
       ScalingTargetId: !Ref ECSAutoScalingTarget
       TargetTrackingScalingPolicyConfiguration:
-        TargetValue: 0.05 # Scale down when CPU usage is below 0.0005%
+        TargetValue: 70.0
         PredefinedMetricSpecification:
           PredefinedMetricType: ECSServiceAverageCPUUtilization
-        ScaleInCooldown: 1800 # 30 minutes cooldown before scaling down
-        ScaleOutCooldown: 60 # 1-minute cooldown before scaling up
+        ScaleInCooldown: 1800
+        ScaleOutCooldown: 60
 
   ### AppSync ###
   SlchessAppSyncApi:
@@ -234,9 +249,10 @@ Resources:
           "version": "2018-05-29",
           "operation": "PutItem",
           "key": {
-            "MatchId": { "S": "$context.arguments.input.matchId" }
+            "Id": { "S": "$context.arguments.input.id" }
           },
           "attributeValues": {
+            "MatchId": { "S": "$context.arguments.input.matchId" },
             "GameState": { "S": "$context.arguments.input.gameState" },
             "PlayerStates": { "L": [
               #foreach($playerState in $context.arguments.input.playerStates)
@@ -821,7 +837,6 @@ Resources:
         Variables:
           ECS_CLUSTER_NAME: !Ref SlchessServerCluster
           ECS_SERVICE_NAME: !GetAtt SlchessServerService.Name
-          DEPLOYMENT_STAGE: !Ref SlchessDeploymentStage
       Events:
         ApiEvent:
           Type: HttpApi
@@ -1113,12 +1128,14 @@ Resources:
     Properties:
       TableName: MatchStates
       AttributeDefinitions:
+        - AttributeName: Id
+          AttributeType: S
         - AttributeName: MatchId
           AttributeType: S
         - AttributeName: Ply
           AttributeType: N
       KeySchema:
-        - AttributeName: MatchId
+        - AttributeName: Id
           KeyType: HASH
       GlobalSecondaryIndexes:
         - IndexName: MatchIndex

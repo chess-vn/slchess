@@ -399,9 +399,6 @@ func notifyQueueingUser(ctx context.Context, userId string, matchJson []byte) er
 }
 
 func getServerIp(ctx context.Context, clusterName, serviceName string) (string, error) {
-	if deploymentStage == "dev" {
-		return "SERVER_IP", nil
-	}
 	// List tasks in the cluster
 	listTasksOutput, err := ecsClient.ListTasks(ctx, &ecs.ListTasksInput{
 		Cluster:       &clusterName,
@@ -452,9 +449,6 @@ func getServerIp(ctx context.Context, clusterName, serviceName string) (string, 
 }
 
 func checkAndStartServer(ctx context.Context) error {
-	if deploymentStage == "dev" {
-		return nil
-	}
 	// Check running task count
 	listTasksOutput, err := ecsClient.ListTasks(ctx, &ecs.ListTasksInput{
 		Cluster:       aws.String(clusterName),

@@ -55,9 +55,13 @@ func TestMain(m *testing.M) {
 }
 
 func TestGameServer(t *testing.T) {
-	matchId := testMatchmaking(t)
+	matchId, serverIp := testMatchmaking(t)
+	<-time.After(10 * time.Second)
 
-	matchUrl := fmt.Sprintf("ws://localhost:7202/game/%s", matchId)
+	if os.Getenv("LOCAL") != "" {
+		serverIp = "localhost"
+	}
+	matchUrl := fmt.Sprintf("ws://%s:7202/game/%s", serverIp, matchId)
 	player1Header := http.Header{}
 	player1Header.Set("Authorization", cfg.User1IdToken)
 	player1Conn, _, err := websocket.DefaultDialer.Dial(matchUrl, player1Header)
@@ -127,7 +131,7 @@ func TestGameServer(t *testing.T) {
 	wg.Wait()
 }
 
-func testMatchmaking(t *testing.T) string {
+func testMatchmaking(t *testing.T) (string, string) {
 	client := http.Client{}
 	matchmakingReq := getMatchmakingRequest()
 	matchmakingReqJson, err := json.Marshal(matchmakingReq)
@@ -143,6 +147,14 @@ func testMatchmaking(t *testing.T) string {
 	user2MatchmakingRequest.Header.Add("Authorization", cfg.User2IdToken)
 	resp, err := client.Do(user2MatchmakingRequest)
 	require.NoError(t, err)
+	if resp.StatusCode == http.StatusOK {
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		var activeMatchResp dtos.ActiveMatchResponse
+		err = json.Unmarshal(body, &activeMatchResp)
+		require.NoError(t, err)
+		return activeMatchResp.MatchId, activeMatchResp.Server
+	}
 	require.Equal(t, http.StatusAccepted, resp.StatusCode)
 
 	user1MatchmakingRequest, err := http.NewRequest(http.MethodPost, matchmakingUrl.String(), bytes.NewBuffer(matchmakingReqJson))
@@ -159,7 +171,7 @@ func testMatchmaking(t *testing.T) string {
 	err = json.Unmarshal(body, &activeMatchResp)
 	require.NoError(t, err)
 
-	return activeMatchResp.MatchId
+	return activeMatchResp.MatchId, activeMatchResp.Server
 }
 
 func getMatchmakingRequest() dtos.MatchmakingRequest {

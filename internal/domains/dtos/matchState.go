@@ -11,6 +11,7 @@ import (
 var updateMatchStateMutation string
 
 type MatchStateRequest struct {
+	Id           string               `json:"id"`
 	MatchId      string               `json:"matchId"`
 	PlayerStates []PlayerStateRequest `json:"playerStates"`
 	GameState    string               `json:"gameState"`
@@ -25,8 +26,8 @@ type PlayerStateRequest struct {
 }
 
 type MoveRequest struct {
-	PlayerId string
-	Uci      string
+	PlayerId string `json:"playerId"`
+	Uci      string `json:"uci"`
 }
 
 type MatchStateAppSyncRequest struct {
@@ -45,6 +46,7 @@ type MoveResponse struct {
 }
 
 type MatchStateResponse struct {
+	Id           string                `json:"id"`
 	MatchId      string                `json:"matchId"`
 	PlayerStates []PlayerStateResponse `json:"playerStates"`
 	GameState    string                `json:"gameState"`
@@ -73,6 +75,7 @@ func NewMatchStateAppSyncRequest(req MatchStateRequest) MatchStateAppSyncRequest
 
 func MatchStateRequestToEntity(req MatchStateRequest) entities.MatchState {
 	return entities.MatchState{
+		Id:      req.Id,
 		MatchId: req.MatchId,
 		PlayerStates: []entities.PlayerState{
 			{
@@ -96,6 +99,7 @@ func MatchStateRequestToEntity(req MatchStateRequest) entities.MatchState {
 
 func MatchStateResponseFromEntitiy(matchState entities.MatchState) MatchStateResponse {
 	return MatchStateResponse{
+		Id:      matchState.Id,
 		MatchId: matchState.MatchId,
 		PlayerStates: []PlayerStateResponse{
 			{

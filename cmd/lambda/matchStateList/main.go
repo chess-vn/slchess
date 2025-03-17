@@ -63,6 +63,7 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 func fetchMatchStates(ctx context.Context, matchId string, lastKey map[string]types.AttributeValue, limit int32, order bool) ([]entities.MatchState, map[string]types.AttributeValue, error) {
 	input := &dynamodb.QueryInput{
 		TableName:              aws.String("MatchStates"),
+		IndexName:              aws.String("MatchIndex"),
 		KeyConditionExpression: aws.String("MatchId = :matchId"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":matchId": &types.AttributeValueMemberS{Value: matchId},

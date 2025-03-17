@@ -29,9 +29,8 @@ var (
 	ecsClient    *ecs.Client
 	ec2Client    *ec2.Client
 
-	clusterName     = os.Getenv("ECS_CLUSTER_NAME")
-	serviceName     = os.Getenv("ECS_SERVICE_NAME")
-	deploymentStage = os.Getenv("DEPLOYMENT_STAGE")
+	clusterName = os.Getenv("ECS_CLUSTER_NAME")
+	serviceName = os.Getenv("ECS_SERVICE_NAME")
 
 	ErrUserNotInMatch = fmt.Errorf("user not in match")
 )
@@ -73,6 +72,21 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 	}
 	activeMatch.Server = serverIp
 
+	_, err = dynamoClient.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String("ActiveMatches"),
+		Key: map[string]types.AttributeValue{
+			"MatchId": &types.AttributeValueMemberS{Value: matchId},
+		},
+		UpdateExpression: aws.String("SET Server = :server"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":server": &types.AttributeValueMemberS{Value: serverIp},
+		},
+	})
+	if err != nil {
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to update active match: %w", err)
+	}
+
 	activeMatchResp := dtos.ActiveMatchResponseFromEntity(activeMatch)
 	activeMatchJson, err := json.Marshal(activeMatchResp)
 	if err != nil {
@@ -106,9 +120,6 @@ func getActiveMatch(ctx context.Context, matchId string) (entities.ActiveMatch, 
 }
 
 func checkAndGetNewServerIp(ctx context.Context, clusterName, serviceName, targetPublicIp string) (string, error) {
-	if deploymentStage == "dev" {
-		return "SERVER_IP", nil
-	}
 	// List tasks in the cluster
 	listTasksOutput, err := ecsClient.ListTasks(ctx, &ecs.ListTasksInput{
 		Cluster:       &clusterName,
@@ -164,9 +175,6 @@ func checkAndGetNewServerIp(ctx context.Context, clusterName, serviceName, targe
 }
 
 func checkAndStartServer(ctx context.Context) error {
-	if deploymentStage == "dev" {
-		return nil
-	}
 	// Check running task count
 	listTasksOutput, err := ecsClient.ListTasks(ctx, &ecs.ListTasksInput{
 		Cluster:       aws.String(clusterName),

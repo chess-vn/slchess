@@ -42,6 +42,7 @@ func handler(ctx context.Context, event map[string]interface{}) (map[string]inte
 	}
 
 	return map[string]interface{}{
+		"Id":      matchState.Id,
 		"MatchId": matchState.MatchId,
 		"PlayerStates": []map[string]interface{}{
 			{
