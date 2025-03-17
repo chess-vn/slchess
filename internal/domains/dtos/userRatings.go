@@ -9,8 +9,8 @@ type UserRatingResponse struct {
 }
 
 type UserRatingListResponse struct {
-	Items         []UserRatingResponse    `json:"items"`
-	NextPageToken NextUserRatingPageToken `json:"nextPageToken"`
+	Items         []UserRatingResponse     `json:"items"`
+	NextPageToken *NextUserRatingPageToken `json:"nextPageToken"`
 }
 
 type NextUserRatingPageToken struct {

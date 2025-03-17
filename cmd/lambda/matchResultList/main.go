@@ -41,7 +41,7 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 
 	matchResultListResp := dtos.MatchResultListResponseFromEntities(matchResults)
 	if lastEvaluatedKey != nil {
-		matchResultListResp.NextPageToken = dtos.NextMatchResultPageToken{
+		matchResultListResp.NextPageToken = &dtos.NextMatchResultPageToken{
 			Timestamp: lastEvaluatedKey["Timestamp"].(*types.AttributeValueMemberS).Value,
 		}
 	}
@@ -61,11 +61,9 @@ func fetchMatchResults(ctx context.Context, userId string, lastKey map[string]ty
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":userId": &types.AttributeValueMemberS{Value: userId},
 		},
-		ScanIndexForward: aws.Bool(false), // Sort by timestamp DESCENDING (most recent first)
-		Limit:            aws.Int32(limit),
-	}
-	if lastKey != nil {
-		input.ExclusiveStartKey = lastKey
+		ExclusiveStartKey: lastKey,
+		ScanIndexForward:  aws.Bool(false), // Sort by timestamp DESCENDING (most recent first)
+		Limit:             aws.Int32(limit),
 	}
 	matchResultsOutput, err := dynamoClient.Query(ctx, input)
 	if err != nil {
@@ -82,9 +80,9 @@ func fetchMatchResults(ctx context.Context, userId string, lastKey map[string]ty
 func extractScanParameters(userId string, params map[string]string) (string, map[string]types.AttributeValue, int32, error) {
 	var targetId string
 	if userIdStr, ok := params["userId"]; ok {
-		targetId = userId
-	} else {
 		targetId = userIdStr
+	} else {
+		targetId = userId
 	}
 
 	var limit int32
@@ -101,9 +99,13 @@ func extractScanParameters(userId string, params map[string]string) (string, map
 	// Check for startKey (optional)
 	var startKey map[string]types.AttributeValue
 	if startKeyStr, ok := params["startKey"]; ok {
+		var nextPageToken dtos.NextMatchResultPageToken
+		if err := json.Unmarshal([]byte(startKeyStr), &nextPageToken); err != nil {
+			return "", nil, 0, err
+		}
 		startKey = map[string]types.AttributeValue{
 			"UserId":    &types.AttributeValueMemberS{Value: userId},
-			"Timestamp": &types.AttributeValueMemberS{Value: startKeyStr},
+			"Timestamp": &types.AttributeValueMemberS{Value: nextPageToken.Timestamp},
 		}
 	}
 

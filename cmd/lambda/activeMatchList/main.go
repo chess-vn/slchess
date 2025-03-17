@@ -41,7 +41,7 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 
 	activeMatchListResp := dtos.ActiveMatchListResponseFromEntities(activeMatches)
 	if lastEvaluatedKey != nil {
-		activeMatchListResp.NextPageToken = dtos.NextActiveMatchPageToken{
+		activeMatchListResp.NextPageToken = &dtos.NextActiveMatchPageToken{
 			CreatedAt: lastEvaluatedKey["CreatedAt"].(*types.AttributeValueMemberS).Value,
 		}
 	}
@@ -67,16 +67,14 @@ func fetchActiveMatchList(ctx context.Context, gameMode string, lastKey map[stri
 			":pk":     &types.AttributeValueMemberS{Value: "ActiveMatches"},
 			":rating": &types.AttributeValueMemberN{Value: "1600.0"},
 		},
-		ScanIndexForward: aws.Bool(false),
-		Limit:            aws.Int32(limit),
+		ExclusiveStartKey: lastKey,
+		ScanIndexForward:  aws.Bool(false),
+		Limit:             aws.Int32(limit),
 	}
 	if gameMode != "" {
 		input.FilterExpression = aws.String("#gameMode = :gameMode")
 		input.ExpressionAttributeNames["#gameMode"] = "GameMode"
 		input.ExpressionAttributeValues[":gameMode"] = &types.AttributeValueMemberS{Value: gameMode}
-	}
-	if lastKey != nil {
-		input.ExclusiveStartKey = lastKey
 	}
 	activeMatchesOutput, err := dynamoClient.Query(ctx, input)
 	if err != nil {
@@ -106,8 +104,12 @@ func extractParameters(params map[string]string) (string, map[string]types.Attri
 	// Check for startKey (optional)
 	var startKey map[string]types.AttributeValue
 	if startKeyStr, ok := params["startKey"]; ok {
+		var nextPageToken dtos.NextActiveMatchPageToken
+		if err := json.Unmarshal([]byte(startKeyStr), &nextPageToken); err != nil {
+			return "", nil, 0, err
+		}
 		startKey = map[string]types.AttributeValue{
-			"CreatedAt": &types.AttributeValueMemberS{Value: startKeyStr},
+			"CreatedAt": &types.AttributeValueMemberS{Value: nextPageToken.CreatedAt},
 		}
 	}
 

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -32,7 +33,8 @@ var (
 	clusterName = os.Getenv("ECS_CLUSTER_NAME")
 	serviceName = os.Getenv("ECS_SERVICE_NAME")
 
-	ErrUserNotInMatch = fmt.Errorf("user not in match")
+	ErrActiveMatchNotFound = fmt.Errorf("active match not found")
+	ErrUserNotInMatch      = fmt.Errorf("user not in match")
 )
 
 func init() {
@@ -50,6 +52,9 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 
 	activeMatch, err := getActiveMatch(ctx, matchId)
 	if err != nil {
+		if errors.Is(err, ErrActiveMatchNotFound) {
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusNotFound}, nil
+		}
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest},
 			fmt.Errorf("failed to get active match: %w", err)
 	}
@@ -110,6 +115,9 @@ func getActiveMatch(ctx context.Context, matchId string) (entities.ActiveMatch, 
 	})
 	if err != nil {
 		return entities.ActiveMatch{}, err
+	}
+	if activeMatchOutput.Item == nil {
+		return entities.ActiveMatch{}, ErrActiveMatchNotFound
 	}
 
 	var activeMatch entities.ActiveMatch

@@ -34,7 +34,7 @@ func init() {
 func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	auth.MustAuth(event.RequestContext.Authorizer)
 	matchId := event.PathParameters["id"]
-	startKey, limit, order, err := extractScanParameters(event.QueryStringParameters)
+	startKey, limit, order, err := extractScanParameters(matchId, event.QueryStringParameters)
 	if err != nil {
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest},
 			fmt.Errorf("failed to extract parameters: %w", err)
@@ -44,11 +44,13 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
 			fmt.Errorf("failed to fetch match states: %w", err)
 	}
+	fmt.Println(lastEvaluatedKey)
 
 	matchStateListResp := dtos.MatchStateListResponseFromEntities(matchStates)
 	if lastEvaluatedKey != nil {
-		matchStateListResp.NextPageToken = dtos.NextMatchStatePageToken{
-			Timestamp: lastEvaluatedKey["Timestamp"].(*types.AttributeValueMemberS).Value,
+		matchStateListResp.NextPageToken = &dtos.NextMatchStatePageToken{
+			Id:  lastEvaluatedKey["Id"].(*types.AttributeValueMemberS).Value,
+			Ply: lastEvaluatedKey["Ply"].(*types.AttributeValueMemberN).Value,
 		}
 	}
 
@@ -68,11 +70,9 @@ func fetchMatchStates(ctx context.Context, matchId string, lastKey map[string]ty
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":matchId": &types.AttributeValueMemberS{Value: matchId},
 		},
-		ScanIndexForward: aws.Bool(order), // Sort by timestamp DESCENDING (most recent first)
-		Limit:            aws.Int32(limit),
-	}
-	if lastKey != nil {
-		input.ExclusiveStartKey = lastKey
+		ExclusiveStartKey: lastKey,
+		ScanIndexForward:  aws.Bool(order), // Sort by timestamp DESCENDING (most recent first)
+		Limit:             aws.Int32(limit),
 	}
 	matchStatesOutput, err := dynamoClient.Query(ctx, input)
 	if err != nil {
@@ -86,7 +86,7 @@ func fetchMatchStates(ctx context.Context, matchId string, lastKey map[string]ty
 	return matchStates, matchStatesOutput.LastEvaluatedKey, nil
 }
 
-func extractScanParameters(params map[string]string) (map[string]types.AttributeValue, int32, bool, error) {
+func extractScanParameters(matchId string, params map[string]string) (map[string]types.AttributeValue, int32, bool, error) {
 	var limit int32
 	if limitStr, ok := params["limit"]; ok {
 		limitInt64, err := strconv.ParseInt(limitStr, 10, 32)
@@ -101,8 +101,14 @@ func extractScanParameters(params map[string]string) (map[string]types.Attribute
 	// Check for startKey (optional)
 	var startKey map[string]types.AttributeValue
 	if startKeyStr, ok := params["startKey"]; ok {
+		var nextPageToken dtos.NextMatchStatePageToken
+		if err := json.Unmarshal([]byte(startKeyStr), &nextPageToken); err != nil {
+			return nil, 0, false, err
+		}
 		startKey = map[string]types.AttributeValue{
-			"Timestamp": &types.AttributeValueMemberS{Value: startKeyStr},
+			"Id":      &types.AttributeValueMemberS{Value: nextPageToken.Id},
+			"MatchId": &types.AttributeValueMemberS{Value: matchId},
+			"Ply":     &types.AttributeValueMemberN{Value: nextPageToken.Ply},
 		}
 	}
 

@@ -41,7 +41,7 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 
 	userRatingListResp := dtos.UserRatingListResponseFromEntities(userRatings)
 	if lastEvaluatedKey != nil {
-		userRatingListResp.NextPageToken = dtos.NextUserRatingPageToken{
+		userRatingListResp.NextPageToken = &dtos.NextUserRatingPageToken{
 			Rating: lastEvaluatedKey["Rating"].(*types.AttributeValueMemberS).Value,
 		}
 	}
@@ -65,11 +65,9 @@ func fetchUserRatingList(ctx context.Context, lastKey map[string]types.Attribute
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":pk": &types.AttributeValueMemberS{Value: "UserRatings"},
 		},
-		ScanIndexForward: aws.Bool(false),
-		Limit:            aws.Int32(limit),
-	}
-	if lastKey != nil {
-		input.ExclusiveStartKey = lastKey
+		ExclusiveStartKey: lastKey,
+		ScanIndexForward:  aws.Bool(false),
+		Limit:             aws.Int32(limit),
 	}
 	userRatingsOutput, err := dynamoClient.Query(ctx, input)
 	if err != nil {
@@ -97,8 +95,12 @@ func extractScanParameters(params map[string]string) (map[string]types.Attribute
 	// Check for startKey (optional)
 	var startKey map[string]types.AttributeValue
 	if startKeyStr, ok := params["startKey"]; ok {
+		var nextPageToken dtos.NextUserRatingPageToken
+		if err := json.Unmarshal([]byte(startKeyStr), &nextPageToken); err != nil {
+			return nil, 0, err
+		}
 		startKey = map[string]types.AttributeValue{
-			"Rating": &types.AttributeValueMemberS{Value: startKeyStr},
+			"Rating": &types.AttributeValueMemberS{Value: nextPageToken.Rating},
 		}
 	}
 

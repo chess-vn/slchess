@@ -34,6 +34,15 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 	auth.MustAuth(event.RequestContext.Authorizer)
 	matchId := event.PathParameters["id"]
 
+	spectatorConversation, err := getSpectatorConversation(ctx, matchId)
+	if err != nil {
+		if errors.Is(err, ErrSpectatorConversationNotFound) {
+			return events.APIGatewayProxyResponse{StatusCode: http.StatusNotFound}, nil
+		}
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
+			fmt.Errorf("failed to get spectator conversation: %w", err)
+	}
+
 	matchStates, lastEvaluatedKey, err := fetchMatchStates(ctx, matchId, nil, 20, false)
 	if err != nil {
 		if !errors.Is(err, ErrMatchStateNotFound) {
@@ -42,16 +51,11 @@ func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.A
 		}
 	}
 
-	spectatorConversation, err := getSpectatorConversation(ctx, matchId)
-	if err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
-			fmt.Errorf("failed to get spectator conversation: %w", err)
-	}
-
 	resp := dtos.NewMatchSpectateResponse(matchStates, spectatorConversation.ConversationId)
 	if lastEvaluatedKey != nil {
-		resp.MatchStates.NextPageToken = dtos.NextMatchStatePageToken{
-			Timestamp: lastEvaluatedKey["Timestamp"].(*types.AttributeValueMemberS).Value,
+		resp.MatchStates.NextPageToken = &dtos.NextMatchStatePageToken{
+			Id:  lastEvaluatedKey["Id"].(*types.AttributeValueMemberS).Value,
+			Ply: lastEvaluatedKey["Ply"].(*types.AttributeValueMemberN).Value,
 		}
 	}
 	respJson, err := json.Marshal(resp)
@@ -71,11 +75,9 @@ func fetchMatchStates(ctx context.Context, matchId string, lastKey map[string]ty
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":matchId": &types.AttributeValueMemberS{Value: matchId},
 		},
-		ScanIndexForward: aws.Bool(order), // Sort by timestamp DESCENDING (most recent first)
-		Limit:            aws.Int32(limit),
-	}
-	if lastKey != nil {
-		input.ExclusiveStartKey = lastKey
+		ExclusiveStartKey: lastKey,
+		ScanIndexForward:  aws.Bool(order), // Sort by timestamp DESCENDING (most recent first)
+		Limit:             aws.Int32(limit),
 	}
 	matchStatesOutput, err := dynamoClient.Query(ctx, input)
 	if err != nil {

@@ -23,8 +23,8 @@ type PlayerResponse struct {
 }
 
 type ActiveMatchListResponse struct {
-	Items         []ActiveMatchResponse    `json:"items"`
-	NextPageToken NextActiveMatchPageToken `json:"nextPageToken"`
+	Items         []ActiveMatchResponse     `json:"items"`
+	NextPageToken *NextActiveMatchPageToken `json:"nextPageToken"`
 }
 
 type NextActiveMatchPageToken struct {
