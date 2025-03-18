@@ -38,7 +38,7 @@ func handler(
 			StatusCode: http.StatusBadRequest,
 		}, fmt.Errorf("failed to extract paramters: %w", err)
 	}
-	activeMatches, lastEvalKey, err := storageClient.FetchActiveMatchList(
+	activeMatches, lastEvalKey, err := storageClient.FetchActiveMatches(
 		ctx,
 		gameMode,
 		startKey,

@@ -62,7 +62,27 @@ Resources:
           "key": {
             "Id": { "S": "$context.arguments.input.id" }
           },
-          "attributeValues": $util.dynamodb.toMapValuesJson($context.arguments.input)
+          "attributeValues": {
+            "MatchId": { "S": "$context.arguments.input.matchId" },
+            "GameState": { "S": "$context.arguments.input.gameState" },
+            "PlayerStates": { "L": [
+              #foreach($playerState in $context.arguments.input.playerStates)
+                {
+                  "M": {
+                    "Clock": { "S": "$playerState.clock" },
+                    "Status": { "S": "$playerState.status" }
+                  }
+                }
+                #if($foreach.hasNext),#end
+              #end
+            ] },
+            "Move": { "M": {
+              "PlayerId": { "S": "$context.arguments.input.move.playerId" },
+              "Uci": { "S": "$context.arguments.input.move.uci" },
+            } },
+            "Ply": { "N" : "$context.arguments.input.ply" },
+            "Timestamp": { "S": "$context.arguments.input.timestamp" }
+          }
         }
       ResponseMappingTemplate: "$util.toJson($context.result)"
 
@@ -97,7 +117,12 @@ Resources:
           "key": {
             "Id": { "S": "$context.arguments.input.id" }
           },
-          "attributeValues": $util.dynamodb.toMapValuesJson($context.arguments.input)
+          "attributeValues": {
+            "ConversationId": { "S": "$context.arguments.input.conversationId" },
+            "SenderId": { "S": "$context.arguments.input.senderId" },
+            "Content": { "S": "$context.arguments.input.content" },
+            "CreatedAt": { "S": "$util.time.nowISO8601()" }
+          }
         }
       ResponseMappingTemplate: "$util.toJson($context.result)"
 

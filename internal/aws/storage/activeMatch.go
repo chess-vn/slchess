@@ -48,7 +48,7 @@ func (client *Client) GetActiveMatch(
 	return activeMatch, nil
 }
 
-func (client *Client) FetchActiveMatchList(
+func (client *Client) FetchActiveMatches(
 	ctx context.Context,
 	gameMode string,
 	lastKey map[string]types.AttributeValue,
