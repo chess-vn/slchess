@@ -9,106 +9,82 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/chess-vn/slchess/internal/aws/auth"
+	"github.com/chess-vn/slchess/internal/aws/storage"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
-	"github.com/chess-vn/slchess/internal/domains/entities"
 )
 
-var (
-	dynamoClient                     *dynamodb.Client
-	ErrMatchStateNotFound            = fmt.Errorf("match state not found")
-	ErrSpectatorConversationNotFound = fmt.Errorf("spectator conversation not found")
-)
+var storageClient *storage.Client
 
 func init() {
 	cfg, _ := config.LoadDefaultConfig(context.TODO())
-	dynamoClient = dynamodb.NewFromConfig(cfg)
+	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg))
 }
 
-func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func handler(
+	ctx context.Context,
+	event events.APIGatewayProxyRequest,
+) (
+	events.APIGatewayProxyResponse,
+	error,
+) {
 	auth.MustAuth(event.RequestContext.Authorizer)
 	matchId := event.PathParameters["id"]
 
-	matchStates, lastEvaluatedKey, err := fetchMatchStates(ctx, matchId, nil, 20, false)
+	spectatorConversation, err := storageClient.GetSpectatorConversation(
+		ctx,
+		matchId,
+	)
 	if err != nil {
-		if !errors.Is(err, ErrMatchStateNotFound) {
-			return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
-				fmt.Errorf("failed to get match state: %w", err)
+		if errors.Is(err, storage.ErrSpectatorConversationNotFound) {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusNotFound,
+			}, nil
+		}
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("failed to get spectator conversation: %w", err)
+	}
+
+	matchStates, lastEvaluatedKey, err := storageClient.FetchMatchStates(
+		ctx,
+		matchId,
+		nil,
+		20,
+		false,
+	)
+	if err != nil {
+		if !errors.Is(err, storage.ErrMatchStateNotFound) {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusInternalServerError,
+			}, fmt.Errorf("failed to get match state: %w", err)
 		}
 	}
 
-	spectatorConversation, err := getSpectatorConversation(ctx, matchId)
-	if err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
-			fmt.Errorf("failed to get spectator conversation: %w", err)
-	}
-
-	resp := dtos.NewMatchSpectateResponse(matchStates, spectatorConversation.ConversationId)
+	resp := dtos.NewMatchSpectateResponse(
+		matchStates,
+		spectatorConversation.ConversationId,
+	)
 	if lastEvaluatedKey != nil {
-		resp.MatchStates.NextPageToken = dtos.NextMatchStatePageToken{
-			Timestamp: lastEvaluatedKey["Timestamp"].(*types.AttributeValueMemberS).Value,
+		resp.MatchStates.NextPageToken = &dtos.NextMatchStatePageToken{
+			Id:  lastEvaluatedKey["Id"].(*types.AttributeValueMemberS).Value,
+			Ply: lastEvaluatedKey["Ply"].(*types.AttributeValueMemberN).Value,
 		}
 	}
 	respJson, err := json.Marshal(resp)
 	if err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
-			fmt.Errorf("failed to marshal response: %w", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("failed to marshal response: %w", err)
 	}
 
-	return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(respJson)}, nil
-}
-
-func fetchMatchStates(ctx context.Context, matchId string, lastKey map[string]types.AttributeValue, limit int32, order bool) ([]entities.MatchState, map[string]types.AttributeValue, error) {
-	input := &dynamodb.QueryInput{
-		TableName:              aws.String("MatchStates"),
-		IndexName:              aws.String("MatchIndex"),
-		KeyConditionExpression: aws.String("MatchId = :matchId"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":matchId": &types.AttributeValueMemberS{Value: matchId},
-		},
-		ScanIndexForward: aws.Bool(order), // Sort by timestamp DESCENDING (most recent first)
-		Limit:            aws.Int32(limit),
-	}
-	if lastKey != nil {
-		input.ExclusiveStartKey = lastKey
-	}
-	matchStatesOutput, err := dynamoClient.Query(ctx, input)
-	if err != nil {
-		return nil, nil, err
-	}
-	var matchStates []entities.MatchState
-	if err := attributevalue.UnmarshalListOfMaps(matchStatesOutput.Items, &matchStates); err != nil {
-		return nil, nil, err
-	}
-
-	return matchStates, matchStatesOutput.LastEvaluatedKey, nil
-}
-
-func getSpectatorConversation(ctx context.Context, matchId string) (entities.SpectatorConversation, error) {
-	spectatorConversationOutput, err := dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String("SpectatorConversations"),
-		Key: map[string]types.AttributeValue{
-			"MatchId": &types.AttributeValueMemberS{
-				Value: matchId,
-			},
-		},
-	})
-	if err != nil {
-		return entities.SpectatorConversation{}, err
-	}
-	if spectatorConversationOutput.Item == nil {
-		return entities.SpectatorConversation{}, ErrSpectatorConversationNotFound
-	}
-	var spectatorConversation entities.SpectatorConversation
-	if err := attributevalue.UnmarshalMap(spectatorConversationOutput.Item, &spectatorConversation); err != nil {
-		return entities.SpectatorConversation{}, err
-	}
-	return spectatorConversation, nil
+	return events.APIGatewayProxyResponse{
+		StatusCode: http.StatusOK,
+		Body:       string(respJson),
+	}, nil
 }
 
 func main() {

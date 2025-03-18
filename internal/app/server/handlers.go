@@ -13,10 +13,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/lambda/types"
-	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/chess-vn/slchess/pkg/utils"
@@ -28,23 +26,6 @@ import (
 // Handler for saving current game state.
 func (s *server) handleSaveGame(match *Match) {
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx)
-	if err != nil {
-		logging.Fatal("Unable to load default config", zap.Error(err))
-	}
-	assumedCfg, err := config.LoadDefaultConfig(
-		ctx,
-		config.WithCredentialsProvider(
-			stscreds.NewAssumeRoleProvider(
-				sts.NewFromConfig(cfg),
-				s.config.AppSyncAccessRoleArn,
-			),
-		),
-	)
-	if err != nil {
-		logging.Fatal("Unable to assume config", zap.Error(err))
-	}
-
 	lastMove := match.game.lastMove()
 	matchStateReq := dtos.MatchStateRequest{
 		Id:      utils.GenerateUUID(),
@@ -74,7 +55,11 @@ func (s *server) handleSaveGame(match *Match) {
 		return
 	}
 
-	req, err := http.NewRequest("POST", s.config.AppSyncHttpUrl, bytes.NewReader(payload))
+	req, err := http.NewRequest(
+		"POST",
+		s.config.AppSyncHttpUrl,
+		bytes.NewReader(payload),
+	)
 	if err != nil {
 		logging.Error("Failed to save game", zap.Error(err))
 		return
@@ -83,12 +68,20 @@ func (s *server) handleSaveGame(match *Match) {
 
 	// Sign the request
 	signer := v4.NewSigner()
-	credentials, err := assumedCfg.Credentials.Retrieve(ctx)
+	credentials, err := s.config.AwsCfg.Credentials.Retrieve(ctx)
 	if err != nil {
 		logging.Error("Failed to save game", zap.Error(err))
 		return
 	}
-	err = signer.SignHTTP(ctx, credentials, req, sha256Hash(payload), "appsync", s.config.AwsRegion, time.Now())
+	err = signer.SignHTTP(
+		ctx,
+		credentials,
+		req,
+		sha256Hash(payload),
+		"appsync",
+		s.config.AwsRegion,
+		time.Now(),
+	)
 	if err != nil {
 		logging.Error("Failed to save game", zap.Error(err))
 		return
@@ -119,7 +112,8 @@ func (s *server) handleEndGame(match *Match) {
 	if match == nil {
 		return
 	}
-	cfg, err := config.LoadDefaultConfig(context.Background())
+	ctx := context.TODO()
+	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		logging.Fatal("unable to load SDK config", zap.Error(err))
 	}
@@ -166,12 +160,12 @@ func (s *server) handleEndGame(match *Match) {
 
 	// Invoke Lambda function
 	input := &lambda.InvokeInput{
-		FunctionName:   aws.String(s.config.EndGameFunctionName),
+		FunctionName:   aws.String(s.config.EndGameFunctionArn),
 		Payload:        payload,
 		InvocationType: types.InvocationTypeEvent,
 	}
 
-	_, err = lambdaClient.Invoke(context.TODO(), input)
+	_, err = lambdaClient.Invoke(ctx, input)
 	if err != nil {
 		logging.Fatal("failed to invoke end game", zap.Error(err))
 	}
@@ -200,14 +194,22 @@ func (s *server) handlePlayerDisconnect(match *Match, playerId string) {
 		match.end()
 	} else {
 		// Else only set the timer for the disconnected player
-		logging.Info("player disconnected", zap.String("match_id", match.id), zap.String("player_id", player.Id))
+		logging.Info(
+			"player disconnected",
+			zap.String("match_id", match.id),
+			zap.String("player_id", player.Id),
+		)
 		if !match.isEnded() {
 			match.setTimer(match.config.DisconnectTimeout)
 		}
 	}
 }
 
-func (s *server) handlePlayerJoin(conn *websocket.Conn, match *Match, playerId string) {
+func (s *server) handlePlayerJoin(
+	conn *websocket.Conn,
+	match *Match,
+	playerId string,
+) {
 	if match == nil {
 		return
 	}
@@ -234,7 +236,11 @@ func (s *server) handlePlayerJoin(conn *websocket.Conn, match *Match, playerId s
 }
 
 // Handler for when user sends a message
-func (s *server) handleWebSocketMessage(playerId string, match *Match, payload payload) {
+func (s *server) handleWebSocketMessage(
+	playerId string,
+	match *Match,
+	payload payload,
+) {
 	if match == nil {
 		logging.Error("match not loaded")
 		return
@@ -253,7 +259,8 @@ func (s *server) handleWebSocketMessage(playerId string, match *Match, payload p
 			logging.Info("invalid game action:", zap.String("action", payload.Type))
 			return
 		}
-		logging.Info("game data",
+		logging.Info(
+			"game data",
 			zap.String("match_id", match.id),
 			zap.String("action", action),
 		)

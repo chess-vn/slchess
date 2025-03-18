@@ -9,88 +9,73 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/chess-vn/slchess/internal/aws/auth"
+	"github.com/chess-vn/slchess/internal/aws/storage"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
-	"github.com/chess-vn/slchess/internal/domains/entities"
 )
 
-var dynamoClient *dynamodb.Client
+var storageClient *storage.Client
 
 func init() {
 	cfg, _ := config.LoadDefaultConfig(context.TODO())
-	dynamoClient = dynamodb.NewFromConfig(cfg)
+	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg))
 }
 
-func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func handler(
+	ctx context.Context,
+	event events.APIGatewayProxyRequest,
+) (
+	events.APIGatewayProxyResponse,
+	error,
+) {
 	auth.MustAuth(event.RequestContext.Authorizer)
 	gameMode, startKey, limit, err := extractParameters(event.QueryStringParameters)
 	if err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest},
-			fmt.Errorf("failed to extract paramters: %w", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("failed to extract paramters: %w", err)
 	}
-	activeMatches, lastEvaluatedKey, err := fetchActiveMatchList(ctx, gameMode, startKey, limit)
+	activeMatches, lastEvalKey, err := storageClient.FetchActiveMatches(
+		ctx,
+		gameMode,
+		startKey,
+		limit,
+	)
 	if err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
-			fmt.Errorf("failed to fetch active matches: %w", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("failed to fetch active matches: %w", err)
 	}
 
-	activeMatchListResp := dtos.ActiveMatchListResponseFromEntities(activeMatches)
-	if lastEvaluatedKey != nil {
-		activeMatchListResp.NextPageToken = dtos.NextActiveMatchPageToken{
-			CreatedAt: lastEvaluatedKey["CreatedAt"].(*types.AttributeValueMemberS).Value,
+	resp := dtos.ActiveMatchListResponseFromEntities(activeMatches)
+	if lastEvalKey != nil {
+		resp.NextPageToken = &dtos.NextActiveMatchPageToken{
+			CreatedAt: lastEvalKey["CreatedAt"].(*types.AttributeValueMemberS).Value,
 		}
 	}
 
-	matchResultListJson, err := json.Marshal(activeMatchListResp)
+	respJson, err := json.Marshal(resp)
 	if err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
-			fmt.Errorf("failed to marshal response: %w", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("failed to marshal response: %w", err)
 	}
-	return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(matchResultListJson)}, nil
+
+	return events.APIGatewayProxyResponse{
+		StatusCode: http.StatusOK,
+		Body:       string(respJson),
+	}, nil
 }
 
-func fetchActiveMatchList(ctx context.Context, gameMode string, lastKey map[string]types.AttributeValue, limit int32) ([]entities.ActiveMatch, map[string]types.AttributeValue, error) {
-	input := &dynamodb.QueryInput{
-		TableName:              aws.String("ActiveMatches"),
-		IndexName:              aws.String("AverageRatingIndex"),
-		KeyConditionExpression: aws.String("#pk = :pk AND #rating >= :rating"),
-		ExpressionAttributeNames: map[string]string{
-			"#pk":     "PartitionKey",
-			"#rating": "AverageRating",
-		},
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk":     &types.AttributeValueMemberS{Value: "ActiveMatches"},
-			":rating": &types.AttributeValueMemberN{Value: "1600.0"},
-		},
-		ScanIndexForward: aws.Bool(false),
-		Limit:            aws.Int32(limit),
-	}
-	if gameMode != "" {
-		input.FilterExpression = aws.String("#gameMode = :gameMode")
-		input.ExpressionAttributeNames["#gameMode"] = "GameMode"
-		input.ExpressionAttributeValues[":gameMode"] = &types.AttributeValueMemberS{Value: gameMode}
-	}
-	if lastKey != nil {
-		input.ExclusiveStartKey = lastKey
-	}
-	activeMatchesOutput, err := dynamoClient.Query(ctx, input)
-	if err != nil {
-		return nil, nil, err
-	}
-	var activeMatches []entities.ActiveMatch
-	if err := attributevalue.UnmarshalListOfMaps(activeMatchesOutput.Items, &activeMatches); err != nil {
-		return nil, nil, err
-	}
-
-	return activeMatches, activeMatchesOutput.LastEvaluatedKey, nil
-}
-
-func extractParameters(params map[string]string) (string, map[string]types.AttributeValue, int32, error) {
+func extractParameters(params map[string]string) (
+	string,
+	map[string]types.AttributeValue,
+	int32,
+	error,
+) {
 	gameMode := params["gameMode"]
 
 	limitStr, ok := params["limit"]
@@ -106,8 +91,17 @@ func extractParameters(params map[string]string) (string, map[string]types.Attri
 	// Check for startKey (optional)
 	var startKey map[string]types.AttributeValue
 	if startKeyStr, ok := params["startKey"]; ok {
+		var nextPageToken dtos.NextActiveMatchPageToken
+		if err := json.Unmarshal(
+			[]byte(startKeyStr),
+			&nextPageToken,
+		); err != nil {
+			return "", nil, 0, err
+		}
 		startKey = map[string]types.AttributeValue{
-			"CreatedAt": &types.AttributeValueMemberS{Value: startKeyStr},
+			"CreatedAt": &types.AttributeValueMemberS{
+				Value: nextPageToken.CreatedAt,
+			},
 		}
 	}
 

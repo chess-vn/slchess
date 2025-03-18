@@ -1,10 +1,18 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/chess-vn/slchess/pkg/logging"
+	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
 )
 
 type Config struct {
@@ -15,14 +23,13 @@ type Config struct {
 	CognitoUserPoolId    string
 	AppSyncHttpUrl       string
 	AppSyncAccessRoleArn string
+	EndGameFunctionArn   string
 
-	EndGameFunctionName      string
-	GameStatePutFunctionName string
+	AwsCfg aws.Config
 }
 
 func NewConfig() Config {
-	var config Config
-
+	var cfg Config
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath("./configs/server")
@@ -38,40 +45,69 @@ func NewConfig() Config {
 		"./configs/aws/cognito.env",
 		"./configs/aws/lambda.env",
 		"./configs/aws/appsync.env",
+		"./configs/aws/dynamodb.env",
 	}
 
-	// Load all env files
+	// Load into environment
+	godotenv.Load(envFiles...)
+
+	// Load into config struct
 	err = loadEnvFiles(envFiles)
 	if err != nil {
-		panic(fmt.Errorf("fatal error config file: %s", err))
+		logging.Fatal("fatal error config file", zap.Error(err))
 	}
 
-	config.Port = viper.GetString("Server.Port")
+	cfg.Port = viper.GetString("Server.Port")
 	idleTimeout, err := time.ParseDuration(viper.GetString("Server.IdleTimeout"))
 	if err != nil {
-		panic(fmt.Errorf("fatal error config file: %s", err))
+		logging.Fatal("fatal error config file", zap.Error(err))
 	}
-	config.IdleTimeout = idleTimeout
-	config.AwsRegion = viper.GetString("AWS_REGION")
-	config.CognitoUserPoolId = viper.GetString("COGNITO_USER_POOL_ID")
-	config.AppSyncHttpUrl = viper.GetString("APPSYNC_HTTP_URL")
-	config.AppSyncAccessRoleArn = viper.GetString("APPSYNC_ACCESS_ROLE_ARN")
-	config.EndGameFunctionName = viper.GetString("END_GAME_FUNCTION_NAME")
-	config.GameStatePutFunctionName = viper.GetString("GAME_STATE_PUT_FUNCTION_NAME")
+	cfg.IdleTimeout = idleTimeout
+	cfg.AwsRegion = viper.GetString("AWS_REGION")
+	cfg.CognitoUserPoolId = viper.GetString("COGNITO_USER_POOL_ID")
+	cfg.AppSyncHttpUrl = viper.GetString("APPSYNC_HTTP_URL")
+	cfg.AppSyncAccessRoleArn = viper.GetString("APPSYNC_ACCESS_ROLE_ARN")
+	cfg.EndGameFunctionArn = viper.GetString("END_GAME_FUNCTION_ARN")
 
-	return config
+	if err := cfg.loadAwsConfig(); err != nil {
+		logging.Fatal("failed to load aws config: %w", zap.Error(err))
+	}
+
+	return cfg
 }
 
 func loadEnvFiles(filenames []string) error {
 	for _, file := range filenames {
-		viper.SetConfigFile(file) // Set specific file
+		viper.SetConfigFile(file)
 		viper.SetConfigType("env")
-		viper.AutomaticEnv() // Allow override by OS environment variables
+		viper.AutomaticEnv()
 
 		err := viper.MergeInConfig()
 		if err != nil {
 			return err
 		}
 	}
+	return nil
+}
+
+func (c *Config) loadAwsConfig() error {
+	ctx := context.Background()
+	defaultAwsCfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("unable to load default config: %w", err)
+	}
+	assumedCfg, err := config.LoadDefaultConfig(
+		ctx,
+		config.WithCredentialsProvider(
+			stscreds.NewAssumeRoleProvider(
+				sts.NewFromConfig(defaultAwsCfg),
+				c.AppSyncAccessRoleArn,
+			),
+		),
+	)
+	if err != nil {
+		return fmt.Errorf("unable to assume config: %w", err)
+	}
+	c.AwsCfg = assumedCfg
 	return nil
 }

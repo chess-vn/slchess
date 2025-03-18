@@ -2,12 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"math"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/chess-vn/slchess/internal/domains/entities"
 )
 
@@ -25,7 +22,14 @@ func expectedScore(r1, r2, rd2 float64) float64 {
 }
 
 // Update rating and deviation
-func calculateNewRating(userRating entities.UserRating, opponentRatings []entities.UserRating, results []float64) (float64, float64) {
+func calculateNewRating(
+	userRating entities.UserRating,
+	opponentRatings []entities.UserRating,
+	results []float64,
+) (
+	float64,
+	float64,
+) {
 	if len(opponentRatings) != len(results) {
 		panic("Mismatch between opponents and results")
 	}
@@ -45,27 +49,24 @@ func calculateNewRating(userRating entities.UserRating, opponentRatings []entiti
 	return newRating, newRD
 }
 
-func calculateNewRatings(ctx context.Context, userRating, opponentRating entities.UserRating) ([]float64, []float64, error) {
+func calculateNewRatings(
+	ctx context.Context,
+	userRating,
+	opponentRating entities.UserRating,
+) (
+	[]float64,
+	[]float64,
+	error,
+) {
 	if deploymentStage == "dev" {
 		return []float64{userRating.Rating, userRating.Rating, userRating.Rating},
 			[]float64{userRating.RD, userRating.RD, userRating.RD},
 			nil
 	}
-	matchResultOutputs, err := dynamoClient.Query(ctx, &dynamodb.QueryInput{
-		TableName:              aws.String("MatchResults"),
-		KeyConditionExpression: aws.String("UserId = :userId"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":userId": &types.AttributeValueMemberS{Value: userRating.UserId},
-		},
-		ScanIndexForward: aws.Bool(false), // Sort by timestamp DESCENDING (most recent first)
-		Limit:            aws.Int32(2),
-	})
+
+	matchResults, _, err := storageClient.FetchMatchResults(ctx, userRating.UserId, nil, 5)
 	if err != nil {
-		return nil, nil, err
-	}
-	var matchResults []entities.MatchResult
-	if err := attributevalue.UnmarshalListOfMaps(matchResultOutputs.Items, &matchResults); err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to fetch match results: %w", err)
 	}
 
 	opponentRatings := make([]entities.UserRating, 0, len(matchResults))
@@ -87,7 +88,11 @@ func calculateNewRatings(ctx context.Context, userRating, opponentRating entitie
 	possibleResults := []float64{1.0, 0.5, 0.0}
 	for i, result := range possibleResults {
 		results[len(matchResults)] = result
-		newRatings[i], newRDs[i] = calculateNewRating(userRating, opponentRatings, results)
+		newRatings[i], newRDs[i] = calculateNewRating(
+			userRating,
+			opponentRatings,
+			results,
+		)
 	}
 
 	return newRatings, newRDs, nil

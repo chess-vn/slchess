@@ -33,23 +33,34 @@ func init() {
 	presigner = presign.NewPresigner(presignClient)
 }
 
-func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func handler(
+	ctx context.Context,
+	event events.APIGatewayProxyRequest,
+) (
+	events.APIGatewayProxyResponse,
+	error,
+) {
 	userId := auth.MustAuth(event.RequestContext.Authorizer)
 	uploadKey := userId
 	presignedPutRequest, err := presigner.PutObject(ctx, bucketName, uploadKey, 60)
 	if err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
-			fmt.Errorf("failed to presign put object request: %w", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("failed to presign put object request: %w", err)
 	}
 	resp := response{
 		Url: presignedPutRequest.URL,
 	}
 	respJson, err := json.Marshal(resp)
 	if err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
-			fmt.Errorf("failed to marshal response: %w", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("failed to marshal response: %w", err)
 	}
-	return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(respJson)}, nil
+	return events.APIGatewayProxyResponse{
+		StatusCode: http.StatusOK,
+		Body:       string(respJson),
+	}, nil
 }
 
 func main() {

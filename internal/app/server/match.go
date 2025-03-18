@@ -77,8 +77,13 @@ func (match *Match) start() {
 		default:
 			if expectedId := match.getCurrentTurnPlayer().Id; player.Id != expectedId {
 				player.Conn.WriteJSON(errorResponse{
-					Type:  "error",
-					Error: fmt.Sprintf("%s: want %s - got %s", ErrStatusWrongTurn, expectedId, player.Id),
+					Type: "error",
+					Error: fmt.Sprintf(
+						"%s: want %s - got %s",
+						ErrStatusWrongTurn,
+						expectedId,
+						player.Id,
+					),
 				})
 				continue
 			}
@@ -92,7 +97,8 @@ func (match *Match) start() {
 			}
 
 			// If making move, update clock
-			player.Clock = player.Clock - time.Since(player.TurnStartedAt) + match.config.ClockIncrement
+			timeTaken := time.Since(player.TurnStartedAt)
+			player.Clock = player.Clock - timeTaken + match.config.ClockIncrement
 			// If clock runs out, end the game
 			if player.Clock <= 0 {
 				match.game.outOfTime(player.Side)
@@ -102,7 +108,8 @@ func (match *Match) start() {
 				currentTurnPlayer := match.getCurrentTurnPlayer()
 				currentTurnPlayer.TurnStartedAt = time.Now()
 				match.setTimer(currentTurnPlayer.Clock)
-				logging.Info("new turn",
+				logging.Info(
+					"new turn",
 					zap.String("player_id", currentTurnPlayer.Id),
 					zap.String("clock_w", match.players[0].Clock.String()),
 					zap.String("clock_b", match.players[1].Clock.String()),
@@ -114,7 +121,10 @@ func (match *Match) start() {
 			Outcome: match.game.outcome().String(),
 			Method:  match.game.method(),
 			Fen:     match.game.FEN(),
-			Clocks:  []string{match.players[0].Clock.String(), match.players[1].Clock.String()},
+			Clocks: []string{
+				match.players[0].Clock.String(),
+				match.players[1].Clock.String(),
+			},
 		})
 
 		// Save game state
@@ -128,7 +138,8 @@ func (match *Match) start() {
 
 		// Check if game ended
 		if match.game.Outcome() != chess.NoOutcome {
-			logging.Info("Game end by outcome",
+			logging.Info(
+				"Game end by outcome",
 				zap.String("outcome", match.game.Outcome().String()),
 				zap.String("method", match.game.method()),
 			)
@@ -146,7 +157,10 @@ func (m *Match) sendDrawOffer() {
 		Type: "drawOffer",
 	})
 	if err != nil {
-		logging.Error("couldn't send draw offer to player: ", zap.String("player_id", player.Id))
+		logging.Error(
+			"couldn't send draw offer to player: ",
+			zap.String("player_id", player.Id),
+		)
 	}
 }
 
@@ -160,7 +174,10 @@ func (m *Match) notifyPlayers(resp gameStateResponse) {
 			GameState: resp,
 		})
 		if err != nil {
-			logging.Error("couldn't notify player: ", zap.String("player_id", player.Id))
+			logging.Error(
+				"couldn't notify player: ",
+				zap.String("player_id", player.Id),
+			)
 		}
 	}
 }
@@ -172,18 +189,27 @@ func (m *Match) syncPlayer(player *player) {
 			Outcome: m.game.outcome().String(),
 			Method:  m.game.method(),
 			Fen:     m.game.FEN(),
-			Clocks:  []string{m.players[0].Clock.String(), m.players[1].Clock.String()},
+			Clocks: []string{
+				m.players[0].Clock.String(),
+				m.players[1].Clock.String(),
+			},
 		},
 	})
 	if err != nil {
-		logging.Error("couldn't sync player: ", zap.String("player_id", player.Id))
+		logging.Error(
+			"couldn't sync player: ",
+			zap.String("player_id", player.Id),
+		)
 	}
 }
 
 func (m *Match) syncPlayerWithId(id string) {
 	player, exist := m.getPlayerWithId(id)
 	if !exist {
-		logging.Error("couldn't sync player: ", zap.String("player_id", player.Id))
+		logging.Error(
+			"couldn't sync player: ",
+			zap.String("player_id", player.Id),
+		)
 		return
 	}
 	m.syncPlayer(player)
@@ -261,7 +287,11 @@ func (m *Match) isEnded() bool {
 func (m *Match) setTimer(d time.Duration) {
 	if m.timer != nil {
 		m.timer.Reset(d)
-		logging.Info("clock reset", zap.String("match_id", m.id), zap.String("duration", d.String()))
+		logging.Info(
+			"clock reset",
+			zap.String("match_id", m.id),
+			zap.String("duration", d.String()),
+		)
 		return
 	}
 	m.timer = time.NewTimer(d)
@@ -269,7 +299,11 @@ func (m *Match) setTimer(d time.Duration) {
 		<-m.timer.C
 		m.end()
 	}()
-	logging.Info("clock set", zap.String("match_id", m.id), zap.String("duration", d.String()))
+	logging.Info(
+		"clock set",
+		zap.String("match_id", m.id),
+		zap.String("duration", d.String()),
+	)
 }
 
 // skipTimer method    skips timer by set timer to 0 duration timeout

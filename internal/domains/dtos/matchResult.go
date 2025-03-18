@@ -3,8 +3,8 @@ package dtos
 import "github.com/chess-vn/slchess/internal/domains/entities"
 
 type MatchResultListResponse struct {
-	Items         []MatchResultResponse    `json:"items"`
-	NextPageToken NextMatchResultPageToken `json:"nextPageToken"`
+	Items         []MatchResultResponse     `json:"items"`
+	NextPageToken *NextMatchResultPageToken `json:"nextPageToken"`
 }
 
 type MatchResultResponse struct {

@@ -5,37 +5,33 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
-	"sort"
-	"strconv"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewaymanagementapi"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/chess-vn/slchess/internal/aws/auth"
+	"github.com/chess-vn/slchess/internal/aws/compute"
+	"github.com/chess-vn/slchess/internal/aws/storage"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/internal/domains/entities"
-	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/chess-vn/slchess/pkg/utils"
 )
 
 var (
-	dynamoClient *dynamodb.Client
-	ecsClient    *ecs.Client
-	ec2Client    *ec2.Client
+	storageClient    *storage.Client
+	computeClient    *compute.Client
+	apigatewayClient *apigatewaymanagementapi.Client
 
-	clusterName       = os.Getenv("ECS_CLUSTER_NAME")
-	serviceName       = os.Getenv("ECS_SERVICE_NAME")
+	clusterName       = os.Getenv("SERVER_CLUSTER_NAME")
+	serviceName       = os.Getenv("SERVER_SERVICE_NAME")
 	region            = os.Getenv("AWS_REGION")
 	websocketApiId    = os.Getenv("WEBSOCKET_API_ID")
 	websocketApiStage = os.Getenv("WEBSOCKET_API_STAGE")
@@ -45,130 +41,165 @@ var (
 	ErrInvalidGameMode    = errors.New("invalid game mode")
 	ErrServerNotAvailable = errors.New("server not available")
 
-	timeLayout = "2006-01-02 15:04:05.999999999 -0700 MST"
+	timeLayout  = "2006-01-02 15:04:05.999999999 -0700 MST"
+	apiEndpoint = fmt.Sprintf("https://%s.execute-api.%s.amazonaws.com/%s", websocketApiId, region, websocketApiStage)
 )
 
 func init() {
 	cfg, _ := config.LoadDefaultConfig(context.TODO())
-	dynamoClient = dynamodb.NewFromConfig(cfg)
-	ecsClient = ecs.NewFromConfig(cfg)
-	ec2Client = ec2.NewFromConfig(cfg)
+	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg))
+	computeClient = compute.NewClient(
+		ecs.NewFromConfig(cfg),
+		ec2.NewFromConfig(cfg),
+	)
+	apigatewayClient = apigatewaymanagementapi.New(apigatewaymanagementapi.Options{
+		BaseEndpoint: aws.String(apiEndpoint),
+		Region:       region,
+		Credentials:  cfg.Credentials,
+	})
 }
 
-// Handle matchmaking requests
-func handler(ctx context.Context, event events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func handler(
+	ctx context.Context,
+	event events.APIGatewayProxyRequest,
+) (
+	events.APIGatewayProxyResponse,
+	error,
+) {
 	userId := auth.MustAuth(event.RequestContext.Authorizer)
 
 	// Start game server beforehand if none available
-	if err := checkAndStartServer(ctx); err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
-			fmt.Errorf("failed to start game server: %w", err)
+	err := computeClient.CheckAndStartServer(ctx, clusterName, serviceName)
+	if err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("failed to start game server: %w", err)
 	}
 
 	// Extract and validate matchmaking ticket
 	var matchmakingReq dtos.MatchmakingRequest
-	if err := json.Unmarshal([]byte(event.Body), &matchmakingReq); err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest},
-			fmt.Errorf("failed to validate request: %w", err)
-	}
-	userRating, err := getUserRating(ctx, userId)
+	err = json.Unmarshal([]byte(event.Body), &matchmakingReq)
 	if err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
-			fmt.Errorf("failed to get user rating: %w", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("failed to validate request: %w", err)
+	}
+	userRating, err := storageClient.GetUserRating(ctx, userId)
+	if err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("failed to get user rating: %w", err)
 	}
 	ticket := dtos.MatchmakingRequestToEntity(userRating, matchmakingReq)
 	if err := ticket.Validate(); err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest},
-			fmt.Errorf("invalid ticket: %w", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("invalid ticket: %w", err)
 	}
 
 	// Check if user already in a activeMatch
-	activeMatch, exist, err := checkForActiveMatch(ctx, userId)
+	activeMatch, err := storageClient.CheckForActiveMatch(ctx, userId)
 	if err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
-			fmt.Errorf("failed to check for active match: %w", err)
-	}
-	if exist {
+		if !errors.Is(err, storage.ErrUserMatchNotFound) &&
+			!errors.Is(err, storage.ErrActiveMatchNotFound) {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusInternalServerError,
+			}, fmt.Errorf("failed to check for active match: %w", err)
+		}
+	} else {
 		matchResp := dtos.ActiveMatchResponseFromEntity(activeMatch)
 		matchRespJson, _ := json.Marshal(matchResp)
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(matchRespJson)}, nil
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusOK,
+			Body:       string(matchRespJson),
+		}, nil
 	}
 
 	// Attempt matchmaking
 	opponentIds, err := findOpponents(ctx, ticket)
 	if err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
-			fmt.Errorf("failed to find opponents: %w", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("failed to find opponents: %w", err)
 	}
 
 	// If no match found, queue the player by caching the matchmaking ticket
 	if len(opponentIds) == 0 {
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusAccepted, Body: "Queued"}, nil
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusAccepted,
+			Body:       "Queued",
+		}, nil
 	}
 
 	// Retrieve ip address of an available server
 	var serverIp string
 	for range 5 {
-		serverIp, err = getServerIp(ctx, clusterName, serviceName)
+		serverIp, err = computeClient.GetServerIp(ctx, clusterName, serviceName)
 		if err == nil {
 			break
 		}
 		<-time.After(5 * time.Second)
 	}
 	if err != nil {
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
-			fmt.Errorf("failed to get server ip: %w", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("failed to get server ip: %w", err)
 	}
 
 	// Try to create new match
 	for _, opponentId := range opponentIds {
-		match, err := createMatch(ctx, userRating, opponentId, ticket.GameMode, serverIp)
+		match, err := createMatch(
+			ctx,
+			userRating,
+			opponentId,
+			ticket.GameMode,
+			serverIp,
+		)
 		if err != nil {
 			continue
 		}
 		matchResp := dtos.ActiveMatchResponseFromEntity(match)
 		matchRespJson, err := json.Marshal(matchResp)
 		if err != nil {
-			return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
-				fmt.Errorf("failed to marshal response: %w", err)
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusInternalServerError,
+			}, fmt.Errorf("failed to marshal response: %w", err)
 		}
 
 		// Notify the opponent about the match
 		err = notifyQueueingUser(ctx, opponentId, matchRespJson)
 		if err != nil {
-			return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError},
-				fmt.Errorf("failed to notify queueing user: %w", err)
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusInternalServerError,
+			}, fmt.Errorf("failed to notify queueing user: %w", err)
 		}
 
-		return events.APIGatewayProxyResponse{StatusCode: http.StatusOK, Body: string(matchRespJson)}, nil
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusOK,
+			Body:       string(matchRespJson),
+		}, nil
 	}
 
-	return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
+	return events.APIGatewayProxyResponse{
+		StatusCode: http.StatusInternalServerError,
+	}, nil
 }
 
 // Matchmaking function using go-redis commands
-func findOpponents(ctx context.Context, ticket entities.MatchmakingTicket) ([]string, error) {
-	output, err := dynamoClient.Scan(ctx, &dynamodb.ScanInput{
-		TableName:        aws.String("MatchmakingTickets"),
-		FilterExpression: aws.String("MinRating >= :minRating AND MaxRating <= :maxRating AND GameMode = :gameMode"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":minRating": &types.AttributeValueMemberN{Value: strconv.Itoa(int(ticket.MinRating))},
-			":maxRating": &types.AttributeValueMemberN{Value: strconv.Itoa(int(ticket.MaxRating))},
-			":gameMode":  &types.AttributeValueMemberS{Value: ticket.GameMode},
-		},
-	})
+func findOpponents(
+	ctx context.Context,
+	ticket entities.MatchmakingTicket,
+) (
+	[]string,
+	error,
+) {
+	tickets, err := storageClient.ScanMatchmakingTickets(ctx, ticket)
 	if err != nil {
-		return nil, err
-	}
-
-	var tickets []entities.MatchmakingTicket
-	err = attributevalue.UnmarshalListOfMaps(output.Items, &tickets)
-	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to scan matchmaking tickets: %w", err)
 	}
 
 	var opponentIds []string
-	if output.Count > 0 {
+	if len(tickets) > 0 {
 		for _, opTicket := range tickets {
 			if opTicket.UserId == ticket.UserId {
 				continue
@@ -177,20 +208,22 @@ func findOpponents(ctx context.Context, ticket entities.MatchmakingTicket) ([]st
 		}
 	} else {
 		// No match found, add the user ticket to the queue
-		ticketAv, _ := attributevalue.MarshalMap(ticket)
-		_, err := dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
-			TableName: aws.String("MatchmakingTickets"),
-			Item:      ticketAv,
-		})
-		if err != nil {
-			return nil, err
-		}
+		storageClient.PutMatchmakingTickets(ctx, ticket)
 	}
 
 	return opponentIds, nil
 }
 
-func createMatch(ctx context.Context, userRating entities.UserRating, opponentId, gameMode string, serverIp string) (entities.ActiveMatch, error) {
+func createMatch(
+	ctx context.Context,
+	userRating entities.UserRating,
+	opponentId,
+	gameMode string,
+	serverIp string,
+) (
+	entities.ActiveMatch,
+	error,
+) {
 	match := entities.ActiveMatch{
 		MatchId:        utils.GenerateUUID(),
 		ConversationId: utils.GenerateUUID(),
@@ -201,59 +234,53 @@ func createMatch(ctx context.Context, userRating entities.UserRating, opponentId
 	}
 
 	// Associate the players with created match to kind of mark them as matched
-	_, err := dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName:           aws.String("UserMatches"),
-		ConditionExpression: aws.String("attribute_not_exists(UserId)"),
-		Item: map[string]types.AttributeValue{
-			"UserId":  &types.AttributeValueMemberS{Value: opponentId},
-			"MatchId": &types.AttributeValueMemberS{Value: match.MatchId},
-		},
+	err := storageClient.PutUserMatch(ctx, entities.UserMatch{
+		UserId:  opponentId,
+		MatchId: match.MatchId,
 	})
 	if err != nil {
-		var condCheckFailed *types.ConditionalCheckFailedException
-		if errors.As(err, &condCheckFailed) {
-			return entities.ActiveMatch{}, fmt.Errorf("user already in a match: %s", opponentId)
-		}
 		return entities.ActiveMatch{}, err
 	}
 
-	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName:           aws.String("UserMatches"),
-		ConditionExpression: aws.String("attribute_not_exists(UserId)"),
-		Item: map[string]types.AttributeValue{
-			"UserId":  &types.AttributeValueMemberS{Value: userRating.UserId},
-			"MatchId": &types.AttributeValueMemberS{Value: match.MatchId},
-		},
+	err = storageClient.PutUserMatch(ctx, entities.UserMatch{
+		UserId:  userRating.UserId,
+		MatchId: match.MatchId,
 	})
 	if err != nil {
-		var condCheckFailed *types.ConditionalCheckFailedException
-		if errors.As(err, &condCheckFailed) {
-			return entities.ActiveMatch{}, fmt.Errorf("user already in a match: %s", userRating.UserId)
-		}
 		return entities.ActiveMatch{}, err
 	}
 
 	// Pre-calculate players' rating in each possible outcome
-	opponentRating, err := getUserRating(ctx, opponentId)
+	opponentRating, err := storageClient.GetUserRating(ctx, opponentId)
+	if err != nil {
+		return entities.ActiveMatch{},
+			fmt.Errorf("failed to get user rating: %w", err)
+	}
+
+	newUserRatings, newUserRDs, err := calculateNewRatings(
+		ctx,
+		userRating,
+		opponentRating,
+	)
 	if err != nil {
 		return entities.ActiveMatch{}, err
 	}
 
-	newUserRatings, newUserRDs, err := calculateNewRatings(ctx, userRating, opponentRating)
+	newOpponentRatings, newOpponentRatingsRDs, err := calculateNewRatings(
+		ctx,
+		opponentRating,
+		userRating,
+	)
 	if err != nil {
 		return entities.ActiveMatch{}, err
 	}
+
 	match.Player1 = entities.Player{
 		Id:         userRating.UserId,
 		Rating:     userRating.Rating,
 		RD:         userRating.RD,
 		NewRatings: newUserRatings,
 		NewRDs:     newUserRDs,
-	}
-
-	newOpponentRatings, newOpponentRatingsRDs, err := calculateNewRatings(ctx, opponentRating, userRating)
-	if err != nil {
-		return entities.ActiveMatch{}, err
 	}
 	match.Player2 = entities.Player{
 		Id:         opponentRating.UserId,
@@ -262,47 +289,30 @@ func createMatch(ctx context.Context, userRating entities.UserRating, opponentId
 		NewRatings: newOpponentRatings,
 		NewRDs:     newOpponentRatingsRDs,
 	}
-
 	match.AverageRating = (match.Player1.Rating + match.Player2.Rating) / 2
 
 	// Save match information
-	matchAv, err := attributevalue.MarshalMap(match)
-	if err != nil {
-		log.Fatalf("Failed to save match state: %v", err)
-	}
-
-	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String("ActiveMatches"),
-		Item:      matchAv,
-	})
-	if err != nil {
-		return entities.ActiveMatch{}, err
-	}
+	storageClient.PutActiveMatch(ctx, match)
 
 	// Match created, remove opponent ticket from the queue
-	_, err = dynamoClient.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-		TableName: aws.String("MatchmakingTickets"),
-		Key: map[string]types.AttributeValue{
-			"UserId": &types.AttributeValueMemberS{Value: opponentId},
-		},
-	})
+	err = storageClient.DeleteMatchmakingTickets(ctx, opponentId)
 	if err != nil {
-		return entities.ActiveMatch{}, err
+		return entities.ActiveMatch{},
+			fmt.Errorf(
+				"failed to delete match making ticket: [userId: %s] %w",
+				opponentId,
+				err,
+			)
 	}
 
 	// Create a conversation for spectators
-	spectatorConversation := entities.SpectatorConversation{
-		MatchId:        match.MatchId,
-		ConversationId: utils.GenerateUUID(),
-	}
-	spectatorConversationAv, err := attributevalue.MarshalMap(spectatorConversation)
-	if err != nil {
-		log.Fatalf("Failed to create spectator conversation: %v", err)
-	}
-	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String("SpectatorConversations"),
-		Item:      spectatorConversationAv,
-	})
+	err = storageClient.PutSpectatorConversation(
+		ctx,
+		entities.SpectatorConversation{
+			MatchId:        match.MatchId,
+			ConversationId: utils.GenerateUUID(),
+		},
+	)
 	if err != nil {
 		return entities.ActiveMatch{}, err
 	}
@@ -310,190 +320,38 @@ func createMatch(ctx context.Context, userRating entities.UserRating, opponentId
 	return match, nil
 }
 
-func checkForActiveMatch(ctx context.Context, userId string) (entities.ActiveMatch, bool, error) {
-	userMatchOutput, err := dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String("UserMatches"),
-		Key: map[string]types.AttributeValue{
-			"UserId": &types.AttributeValueMemberS{
-				Value: userId,
-			},
-		},
-		ConsistentRead: aws.Bool(true),
-	})
-	if err != nil {
-		return entities.ActiveMatch{}, false, err
-	}
-	if userMatchOutput.Item == nil {
-		return entities.ActiveMatch{}, false, nil
-	}
-
-	var userMatch entities.UserMatch
-	if err := attributevalue.UnmarshalMap(userMatchOutput.Item, &userMatch); err != nil {
-		return entities.ActiveMatch{}, false, err
-	}
-
-	activeMatchOutput, err := dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String("ActiveMatches"),
-		Key: map[string]types.AttributeValue{
-			"MatchId": &types.AttributeValueMemberS{Value: userMatch.MatchId},
-		},
-		ConsistentRead: aws.Bool(true),
-	})
-	if err != nil {
-		return entities.ActiveMatch{}, false, err
-	}
-	if activeMatchOutput.Item == nil {
-		return entities.ActiveMatch{}, false, nil
-	}
-
-	var activeMatch entities.ActiveMatch
-	if err := attributevalue.UnmarshalMap(activeMatchOutput.Item, &activeMatch); err != nil {
-		return entities.ActiveMatch{}, false, err
-	}
-	return activeMatch, true, nil
-}
-
-func notifyQueueingUser(ctx context.Context, userId string, matchJson []byte) error {
-	cfg, _ := config.LoadDefaultConfig(ctx)
-
+func notifyQueueingUser(ctx context.Context, userId string, data []byte) error {
 	// Get user ID from DynamoDB
-	connectionOutput, err := dynamoClient.Query(ctx, &dynamodb.QueryInput{
-		TableName:              aws.String("Connections"),
-		IndexName:              aws.String("UserIdIndex"),
-		KeyConditionExpression: aws.String("UserId = :userId"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":userId": &types.AttributeValueMemberS{Value: userId},
-		},
-		Limit: aws.Int32(1),
-	})
+	connection, err := storageClient.GetConnectionByUserId(ctx, userId)
 	if err != nil {
-		return fmt.Errorf("failed to query connection: %w", err)
+		if errors.Is(err, storage.ErrConnectionNotFound) {
+			return nil
+		}
+		return fmt.Errorf("failed to get connection: %w", err)
 	}
-	if len(connectionOutput.Items) > 0 {
-		var connection entities.Connection
-		if err := attributevalue.UnmarshalMap(connectionOutput.Items[0], &connection); err != nil {
-			return fmt.Errorf("failed to unmarshal connection map: %w", err)
-		}
-		apiEndpoint := fmt.Sprintf("https://%s.execute-api.%s.amazonaws.com/%s", websocketApiId, region, websocketApiStage)
-		apiGatewayClient := apigatewaymanagementapi.New(apigatewaymanagementapi.Options{
-			BaseEndpoint: aws.String(apiEndpoint),
-			Region:       region,
-			Credentials:  cfg.Credentials,
-		})
-		_, err := apiGatewayClient.PostToConnection(ctx, &apigatewaymanagementapi.PostToConnectionInput{
+
+	_, err = apigatewayClient.PostToConnection(
+		ctx,
+		&apigatewaymanagementapi.PostToConnectionInput{
 			ConnectionId: aws.String(connection.Id),
-			Data:         matchJson,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to post to connect: %w", err)
-		}
-		_, err = apiGatewayClient.DeleteConnection(ctx, &apigatewaymanagementapi.DeleteConnectionInput{
+			Data:         data,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to post to connect: %w", err)
+	}
+
+	_, err = apigatewayClient.DeleteConnection(
+		ctx,
+		&apigatewaymanagementapi.DeleteConnectionInput{
 			ConnectionId: aws.String(connection.Id),
-		})
-		if err != nil {
-			return fmt.Errorf("failed to delete connection: %w", err)
-		}
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to delete connection: %w", err)
 	}
 
 	return nil
-}
-
-func getServerIp(ctx context.Context, clusterName, serviceName string) (string, error) {
-	// List tasks in the cluster
-	listTasksOutput, err := ecsClient.ListTasks(ctx, &ecs.ListTasksInput{
-		Cluster:       &clusterName,
-		ServiceName:   &serviceName,
-		DesiredStatus: "RUNNING",
-	})
-	if err != nil || len(listTasksOutput.TaskArns) == 0 {
-		return "", fmt.Errorf("no running tasks found or error occurred: %v", err)
-	}
-
-	describeTasksOutput, err := ecsClient.DescribeTasks(ctx, &ecs.DescribeTasksInput{
-		Cluster: aws.String(clusterName),
-		Tasks:   listTasksOutput.TaskArns,
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed to describe ECS tasks: %w", err)
-	}
-
-	sort.Slice(describeTasksOutput.Tasks, func(i, j int) bool {
-		return describeTasksOutput.Tasks[i].StartedAt.Before(*describeTasksOutput.Tasks[j].StartedAt)
-	})
-
-	var eniId string
-	for _, detail := range describeTasksOutput.Tasks[0].Attachments[0].Details {
-		if *detail.Name == "networkInterfaceId" {
-			eniId = *detail.Value
-			break
-		}
-	}
-
-	if eniId == "" {
-		return "", fmt.Errorf("ENI ID not found in task details")
-	}
-
-	// Get the public IP from EC2
-	eniResp, err := ec2Client.DescribeNetworkInterfaces(ctx, &ec2.DescribeNetworkInterfacesInput{
-		NetworkInterfaceIds: []string{eniId},
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed to describe network interface: %w", err)
-	}
-
-	if len(eniResp.NetworkInterfaces) == 0 || eniResp.NetworkInterfaces[0].Association == nil {
-		return "", fmt.Errorf("no public IP found for ENI")
-	}
-
-	return *eniResp.NetworkInterfaces[0].Association.PublicIp, nil
-}
-
-func checkAndStartServer(ctx context.Context) error {
-	// Check running task count
-	listTasksOutput, err := ecsClient.ListTasks(ctx, &ecs.ListTasksInput{
-		Cluster:       aws.String(clusterName),
-		ServiceName:   aws.String(serviceName),
-		DesiredStatus: "RUNNING",
-	})
-	if err != nil {
-		return fmt.Errorf("failed to list ECS tasks: %w", err)
-	}
-
-	// If no tasks are running, scale service to 1
-	if len(listTasksOutput.TaskArns) == 0 {
-		logging.Info("No running tasks found. Scaling up ECS service...")
-
-		_, err := ecsClient.UpdateService(ctx, &ecs.UpdateServiceInput{
-			Cluster:      aws.String(clusterName),
-			Service:      aws.String(serviceName),
-			DesiredCount: aws.Int32(1),
-		})
-		if err != nil {
-			return fmt.Errorf("failed to update ECS desired count: %w", err)
-		}
-		logging.Info("ECS service scaled to 1 instance.")
-	} else {
-		logging.Info("ECS service already running, no scaling needed.")
-	}
-
-	return nil
-}
-
-func getUserRating(ctx context.Context, userId string) (entities.UserRating, error) {
-	userRatingOutput, err := dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String("UserRatings"),
-		Key: map[string]types.AttributeValue{
-			"UserId": &types.AttributeValueMemberS{Value: userId},
-		},
-	})
-	if err != nil {
-		return entities.UserRating{}, err
-	}
-	var userRating entities.UserRating
-	if err := attributevalue.UnmarshalMap(userRatingOutput.Item, &userRating); err != nil {
-		return entities.UserRating{}, err
-	}
-	return userRating, nil
 }
 
 func main() {

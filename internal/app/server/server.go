@@ -9,12 +9,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/chess-vn/slchess/internal/domains/entities"
+	"github.com/chess-vn/slchess/internal/aws/auth"
+	awsAuth "github.com/chess-vn/slchess/internal/aws/auth"
+	"github.com/chess-vn/slchess/internal/aws/storage"
 	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
@@ -30,6 +29,7 @@ type server struct {
 	mu      sync.Mutex
 
 	cognitoPublicKeys map[string]*rsa.PublicKey
+	storageClient     *storage.Client
 }
 
 type payload struct {
@@ -38,9 +38,19 @@ type payload struct {
 }
 
 func NewServer() *server {
-	config := NewConfig()
+	cfg := NewConfig()
+	tokenSigningKeyUrl := fmt.Sprintf(
+		"https://cognito-idp.%s.amazonaws.com/%s/.well-known/jwks.json",
+		cfg.AwsRegion,
+		cfg.CognitoUserPoolId,
+	)
+	cognitoPublicKeys, err := awsAuth.LoadCognitoPublicKeys(tokenSigningKeyUrl)
+	if err != nil {
+		panic(err)
+	}
+	awsCfg, _ := config.LoadDefaultConfig(context.TODO())
 	srv := &server{
-		address: "0.0.0.0:" + config.Port,
+		address: "0.0.0.0:" + cfg.Port,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -48,10 +58,12 @@ func NewServer() *server {
 				return true // Allow all origins
 			},
 		},
-		config:            config,
-		cognitoPublicKeys: make(map[string]*rsa.PublicKey),
+		config:            cfg,
+		cognitoPublicKeys: cognitoPublicKeys,
+		storageClient: storage.NewClient(
+			dynamodb.NewFromConfig(awsCfg),
+		),
 	}
-	srv.loadCognitoPublicKeys()
 	return srv
 }
 
@@ -62,12 +74,16 @@ func (s *server) Start() error {
 		if err != nil {
 			w.WriteHeader(http.StatusUnauthorized)
 			w.Write([]byte(err.Error()))
+			logging.Error("failed to auth: %w", zap.Error(err))
 			return
 		}
 
 		conn, err := s.upgrader.Upgrade(w, r, nil)
 		if err != nil {
-			logging.Error("failed to upgrade connection", zap.String("error", err.Error()))
+			logging.Error(
+				"failed to upgrade connection",
+				zap.String("error", err.Error()),
+			)
 			return
 		}
 		defer conn.Close()
@@ -83,14 +99,12 @@ func (s *server) Start() error {
 		for {
 			_, message, err := conn.ReadMessage()
 			if err != nil {
-				if websocket.IsUnexpectedCloseError(err, websocket.CloseMessage, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-					logging.Info("unexpected close error", zap.String("remote_address", conn.RemoteAddr().String()))
-				} else if websocket.IsCloseError(err, websocket.CloseMessage, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-					logging.Info("connection closed", zap.String("remote_address", conn.RemoteAddr().String()))
-				} else {
-					logging.Info("ws message read error", zap.String("remote_address", conn.RemoteAddr().String()), zap.Error(err))
-				}
 				s.handlePlayerDisconnect(match, playerId)
+				logging.Info(
+					"connection closed",
+					zap.String("remote_address", conn.RemoteAddr().String()),
+					zap.Error(err),
+				)
 				break
 			}
 
@@ -111,7 +125,7 @@ func (s *server) auth(r *http.Request) (string, error) {
 	if token == "" {
 		return "", fmt.Errorf("no authorization")
 	}
-	validToken, err := s.validateJWT(token)
+	validToken, err := auth.ValidateJwt(token, s.cognitoPublicKeys)
 	if err != nil || !validToken.Valid {
 		return "", fmt.Errorf("invalid token: %w", err)
 	}
@@ -130,30 +144,18 @@ func (s *server) auth(r *http.Request) (string, error) {
 	return userId, nil
 }
 
-// loadMatch method    loads match with corresponding matchId.
-// If no such match exists, create a new match.
-// This is used to start the match only when white side player send in the first valid move.
+/*
+loadMatch method    loads match with corresponding matchId.
+If no such match exists, create a new match.
+This is used to start the match only when white side player send in the first valid move.
+*/
 func (s *server) loadMatch(matchId string) (*Match, error) {
 	ctx := context.Background()
-	cfg, _ := config.LoadDefaultConfig(ctx)
-	dynamoClient := dynamodb.NewFromConfig(cfg)
-	activeMatchOutput, err := dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String("ActiveMatches"),
-		Key: map[string]types.AttributeValue{
-			"MatchId": &types.AttributeValueMemberS{
-				Value: matchId,
-			},
-		},
-		ConsistentRead: aws.Bool(true),
-	})
+
+	activeMatch, err := s.storageClient.GetActiveMatch(ctx, matchId)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get active match: %w", err)
 	}
-	if activeMatchOutput.Item == nil {
-		return nil, fmt.Errorf("match not found: %s", matchId)
-	}
-	var activeMatch entities.ActiveMatch
-	attributevalue.UnmarshalMap(activeMatchOutput.Item, &activeMatch)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -167,23 +169,15 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 		}
 		return nil, ErrFailedToLoadMatch
 	} else {
-		input := &dynamodb.QueryInput{
-			TableName:              aws.String("MatchStates"),
-			IndexName:              aws.String("MatchIndex"),
-			KeyConditionExpression: aws.String("MatchId = :matchId"),
-			ExpressionAttributeValues: map[string]types.AttributeValue{
-				":matchId": &types.AttributeValueMemberS{Value: matchId},
-			},
-			ScanIndexForward: aws.Bool(false), // Sort by timestamp DESCENDING (most recent first)
-			Limit:            aws.Int32(1),
-		}
-		matchStatesOutput, err := dynamoClient.Query(ctx, input)
+		matchStates, _, err := s.storageClient.FetchMatchStates(
+			ctx,
+			matchId,
+			nil,
+			1,
+			false,
+		)
 		if err != nil {
-			return nil, err
-		}
-		var matchStates []entities.MatchState
-		if err := attributevalue.UnmarshalListOfMaps(matchStatesOutput.Items, &matchStates); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to fetch match states: %w", err)
 		}
 
 		config, err := configForGameMode(activeMatch.GameMode)
@@ -229,7 +223,12 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 	}
 }
 
-func (s *server) newMatch(matchId string, player1, player2 player, config MatchConfig) *Match {
+func (s *server) newMatch(
+	matchId string,
+	player1,
+	player2 player,
+	config MatchConfig,
+) *Match {
 	match := &Match{
 		id:              matchId,
 		game:            newGame(),
