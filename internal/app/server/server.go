@@ -74,6 +74,7 @@ func (s *server) Start() error {
 		if err != nil {
 			w.WriteHeader(http.StatusUnauthorized)
 			w.Write([]byte(err.Error()))
+			logging.Error("failed to auth: %w", zap.Error(err))
 			return
 		}
 
