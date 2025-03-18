@@ -27,10 +27,11 @@ tasks:
         --region $AWS_REGION
         --parameter-overrides "ServerImageUri=$SERVER_IMAGE_URI"
         --confirm-changeset
-        --capabilities CAPABILITY_NAMED_IAM
+        --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
         --no-disable-rollback
         --config-file samconfig.yaml
         --config-env default
+        --on-failure DELETE
 
   remove:
     desc: Remove the stack from AWS
@@ -38,6 +39,7 @@ tasks:
     cmds:
       - sam delete --region $AWS_REGION --config-file samconfig.yaml
       - rm ./configs/aws/*.env
+      - rm -rf ./.aws-sam
 
   sync:
     desc: Sync the stack
@@ -48,23 +50,5 @@ tasks:
     desc: Build the stack
     deps: [utils:check-base-env]
     vars:
-      HANDLERS:
-        - ConnectFunction
-        - DisconnectFunction
-        - QueueingFunction
-        - PostUserConfirmationFunction
-        - EndGameFunction
-        - MatchmakingFunction
-        - MatchRecordGetFunction
-        - MatchResultListFunction
-        - MatchStateListFunction
-        - ActiveMatchListFunction
-        - UserRatingListFunction
-        - MatchRestoreFunction
-        - MatchSpectateFunction
-        - AvatarUploadFunction
-        - PostAvatarUploadFunction
     cmds:
       - sam build --region $AWS_REGION --config-file samconfig.yaml
-      - for: { var: HANDLERS }
-        cmd: chmod +x $BUILD_DIR/{{.ITEM}}/bootstrap

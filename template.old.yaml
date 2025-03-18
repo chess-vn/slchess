@@ -1,0 +1,1268 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Slchess Backend
+
+Globals:
+  Function:
+    Timeout: 5
+    MemorySize: 128
+
+Parameters:
+  ServerImageUri:
+    Type: String
+    Description: "URI of the Docker image for game server in ECR"
+  SlchessDeploymentStage:
+    Type: String
+    Default: dev
+
+Resources:
+  ### CloudWatch LogGroups ###
+  ServerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/slchess-server
+      RetentionInDays: 7
+
+  ### Cognito User Pool ###
+  SlchessUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: SlchessUserPool
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: true
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+      LambdaConfig:
+        PostConfirmation: !GetAtt PostUserConfirmationFunction.Arn
+
+  SlchessUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: SlchessUserPoolClient
+      UserPoolId: !Ref SlchessUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+
+  SlchessUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: slchess
+      UserPoolId: !Ref SlchessUserPool
+
+  ### ECS ###
+  SlchessServerCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: slchess-server-cluster
+
+  SlchessServerDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: slchess-server
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: "256"
+      Memory: "512"
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt SlchessServerRole.Arn
+      ContainerDefinitions:
+        - Image: !Ref ServerImageUri
+          Name: slchess-server
+          Essential: true
+          PortMappings:
+            - ContainerPort: 7202
+              Protocol: tcp
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ServerLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  SlchessServerService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref SlchessServerCluster
+      ServiceName: slchess-server-service
+      LaunchType: FARGATE
+      DesiredCount: 0
+      TaskDefinition: !Ref SlchessServerDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - subnet-08afaaea0b1e4f825
+            - subnet-0f7183aa53381f50c
+            - subnet-0642049eeace8e1b3
+          SecurityGroups:
+            - sg-003fd8c2326289ec4
+          AssignPublicIp: ENABLED
+
+  SlchessServerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SlchessServerRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "ecs-tasks.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: LambdaInvokePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt EndGameFunction.Arn
+        - PolicyName: AppSyncAccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - appsync:GraphQL
+                Resource:
+                  - !Sub "${SlchessAppSyncApi.Arn}/*"
+        - PolicyName: DynamoDBAccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                Resource:
+                  - !GetAtt ActiveMatches.Arn
+                  - !GetAtt MatchStates.Arn
+                  - !Sub ${MatchStates.Arn}/index/MatchIndex
+
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ECSTaskExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:GetAuthorizationToken
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  ECSAutoScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: 2
+      MinCapacity: 0
+      ResourceId: !Sub service/${SlchessServerCluster}/${SlchessServerService.Name}
+      RoleARN: !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+
+  ECSAutoScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: ECSAutoScalingPolicy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ECSAutoScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70.0
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        ScaleInCooldown: 1800
+        ScaleOutCooldown: 60
+
+  ### AppSync ###
+  SlchessAppSyncApi:
+    Type: AWS::Serverless::GraphQLApi
+    Properties:
+      SchemaUri: ./internal/aws/appsync/schema.graphql
+      Auth:
+        Type: AMAZON_COGNITO_USER_POOLS
+        UserPool:
+          AwsRegion: !Ref AWS::Region
+          UserPoolId: !Ref SlchessUserPool
+          DefaultAction: ALLOW
+        Additional:
+          - Type: AWS_IAM
+
+  MatchStatesDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt SlchessAppSyncApi.ApiId
+      Name: MatchStatesDataSource
+      Type: AMAZON_DYNAMODB
+      DynamoDBConfig:
+        TableName: !Ref MatchStates
+        AwsRegion: !Ref AWS::Region
+      ServiceRoleArn: !GetAtt AppSyncRole.Arn
+
+  MessagesDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt SlchessAppSyncApi.ApiId
+      Name: MessagessDataSource
+      Type: AMAZON_DYNAMODB
+      DynamoDBConfig:
+        TableName: !Ref Messages
+        AwsRegion: !Ref AWS::Region
+      ServiceRoleArn: !GetAtt AppSyncRole.Arn
+
+  UpdateMatchStateResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt SlchessAppSyncApi.ApiId
+      TypeName: Mutation
+      FieldName: updateMatchState
+      DataSourceName: !GetAtt MatchStatesDataSource.Name
+      RequestMappingTemplate: |
+        {
+          "version": "2018-05-29",
+          "operation": "PutItem",
+          "key": {
+            "Id": { "S": "$context.arguments.input.id" }
+          },
+          "attributeValues": {
+            "MatchId": { "S": "$context.arguments.input.matchId" },
+            "GameState": { "S": "$context.arguments.input.gameState" },
+            "PlayerStates": { "L": [
+              #foreach($playerState in $context.arguments.input.playerStates)
+                {
+                  "M": {
+                    "Clock": { "S": "$playerState.clock" },
+                    "Status": { "S": "$playerState.status" }
+                  }
+                }
+                #if($foreach.hasNext),#end
+              #end
+            ] },
+            "Move": { "M": {
+              "PlayerId": { "S": "$context.arguments.input.move.playerId" },
+              "Uci": { "S": "$context.arguments.input.move.uci" },
+            } },
+            "Ply": { "N" : "$context.arguments.input.ply" },
+            "Timestamp": { "S": "$context.arguments.input.timestamp" }
+          }
+        }
+      ResponseMappingTemplate: |
+        $util.toJson($context.result)
+
+  GetMatchStateResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt SlchessAppSyncApi.ApiId
+      TypeName: Query
+      FieldName: getMatchState
+      DataSourceName: !GetAtt MatchStatesDataSource.Name
+      RequestMappingTemplate: |
+        {
+          "version": "2018-05-29",
+          "operation": "GetItem",
+          "key": {
+            "MatchId": { "S": "$context.arguments.matchId" }
+          }
+        }
+      ResponseMappingTemplate: |
+        $util.toJson($context.result)
+
+  SendMessageResolver:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId: !GetAtt SlchessAppSyncApi.ApiId
+      TypeName: Mutation
+      FieldName: sendMessage
+      DataSourceName: !GetAtt MessagesDataSource.Name
+      RequestMappingTemplate: |
+        {
+          "version": "2018-05-29",
+          "operation": "PutItem",
+          "key": {
+            "Id": { "S": "$context.arguments.input.id" }
+          },
+          "attributeValues": {
+            "ConversationId": { "S": "$context.arguments.input.conversationId" },
+            "SenderId": { "S": "$context.arguments.input.senderId" },
+            "Content": { "S": "$context.arguments.input.content" },
+            "CreatedAt": { "S": "$util.time.nowISO8601()" }
+          }
+        }
+      ResponseMappingTemplate: |
+        $util.toJson($context.result)
+
+  AppSyncRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: appsync.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: AppSyncDynamoDBAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Scan
+                Resource:
+                  - !GetAtt MatchStates.Arn
+                  - !GetAtt Messages.Arn
+
+  AppSyncAccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: AppSyncAccessRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: "*"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: AppSyncGraphQLPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - appsync:GraphQL
+                Resource:
+                  - !Sub "${SlchessAppSyncApi.Arn}/*"
+
+  ### Websocket API ###
+  SlchessWebsocketApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: SlchessWebsocketApi
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: $request.body.action
+
+  SlchessWebsocketApiDeployment:
+    Type: AWS::ApiGatewayV2::Deployment
+    Properties:
+      ApiId: !Ref SlchessWebsocketApi
+    DependsOn:
+      - ConnectRoute
+      - DisconnectRoute
+      - QueueingRoute
+
+  SlchessWebsocketApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref SlchessWebsocketApi
+      DeploymentId: !Ref SlchessWebsocketApiDeployment
+      StageName: !Ref SlchessDeploymentStage
+
+  ConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SlchessWebsocketApi
+      RouteKey: $connect
+      AuthorizationType: NONE
+      OperationName: ConnectRoute
+      Target: !Sub "integrations/${ConnectIntegration}"
+  ConnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref SlchessWebsocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ConnectFunction.Arn}/invocations"
+  ConnectFunctionPermission:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - SlchessWebsocketApi
+      - ConnectFunction
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ConnectFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SlchessWebsocketApi}/*/$connect
+
+  DisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SlchessWebsocketApi
+      RouteKey: $disconnect
+      AuthorizationType: NONE
+      OperationName: DisconnectRoute
+      Target: !Sub "integrations/${DisconnectIntegration}"
+  DisconnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref SlchessWebsocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DisconnectFunction.Arn}/invocations"
+  DisconnectFunctionPermission:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - SlchessWebsocketApi
+      - DisconnectFunction
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref DisconnectFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SlchessWebsocketApi}/*/$disconnect
+
+  QueueingRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SlchessWebsocketApi
+      RouteKey: queueing
+      AuthorizationType: NONE
+      OperationName: QueueingRoute
+      Target: !Sub "integrations/${QueueingIntegration}"
+  QueueingIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref SlchessWebsocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${QueueingFunction.Arn}/invocations"
+  QueueingFunctionPermission:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - SlchessWebsocketApi
+      - QueueingFunction
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref QueueingFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SlchessWebsocketApi}/*/queueing
+
+  SlchessApiGatewayRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SlchessApiGatewayRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: ""
+            Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SlchessInvokeLambdaPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: "*"
+
+  ### HTTP API ###
+  SlchessHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Name: SlchessHttpApi
+      StageName: !Ref SlchessDeploymentStage
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowHeaders:
+          - Authorization
+        AllowMethods:
+          - GET
+          - POST
+      Auth:
+        Authorizers:
+          OAuth2Authorizer:
+            JwtConfiguration:
+              issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${SlchessUserPool}
+              audience:
+                - !Ref SlchessUserPoolClient
+            IdentitySource: "$request.header.Authorization"
+        DefaultAuthorizer: OAuth2Authorizer
+
+  ### Lambda Functions ###
+  ConnectFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-Connect
+      CodeUri: ./cmd/lambda/connect/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: Connections
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref SlchessUserPool
+
+  DisconnectFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-Disconnect
+      CodeUri: ./cmd/lambda/disconnect/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: Connections
+
+  QueueingFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-Queueing
+      CodeUri: ./cmd/lambda/queueing/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: Connections
+        - DynamoDBCrudPolicy:
+            TableName: UserMatches
+        - DynamoDBCrudPolicy:
+            TableName: ActiveMatches
+      Environment:
+        Variables:
+          WEBSOCKET_API_ID: !Ref SlchessWebsocketApi
+          WEBSOCKET_API_STAGE: !Ref SlchessDeploymentStage
+
+  PostUserConfirmationFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-PostUserConfirmation
+      CodeUri: ./cmd/lambda/postUserConfirmation/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - DynamoDBCrudPolicy:
+            TableName: UserProfiles
+        - DynamoDBCrudPolicy:
+            TableName: UserRatings
+
+  PostUserConfirmationPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref PostUserConfirmationFunction
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt SlchessUserPool.Arn
+
+  EndGameFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-EndGame
+      CodeUri: ./cmd/lambda/endGame/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Timeout: 10
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: UserMatches
+        - DynamoDBCrudPolicy:
+            TableName: ActiveMatches
+        - DynamoDBCrudPolicy:
+            TableName: MatchStates
+        - DynamoDBCrudPolicy:
+            TableName: MatchRecords
+        - DynamoDBCrudPolicy:
+            TableName: MatchResults
+        - DynamoDBCrudPolicy:
+            TableName: UserRatings
+        - DynamoDBCrudPolicy:
+            TableName: SpectatorConversations
+
+  MatchmakingFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-Matchmaking
+      CodeUri: ./cmd/lambda/matchmaking/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Timeout: 60
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: Connections
+        - DynamoDBCrudPolicy:
+            TableName: MatchmakingTickets
+        - DynamoDBCrudPolicy:
+            TableName: UserMatches
+        - DynamoDBCrudPolicy:
+            TableName: ActiveMatches
+        - DynamoDBCrudPolicy:
+            TableName: UserRatings
+        - DynamoDBCrudPolicy:
+            TableName: MatchResults
+        - DynamoDBCrudPolicy:
+            TableName: SpectatorConversations
+        - EcsRunTaskPolicy:
+            TaskDefinition: !Ref SlchessServerDefinition
+        - Statement:
+            - Effect: Allow
+              Action:
+                - "ecs:ListTasks"
+                - "ecs:DescribeTasks"
+                - "ecs:UpdateService"
+              Resource: "*"
+        - Statement:
+            - Effect: Allow
+              Action:
+                - "ec2:DescribeNetworkInterfaces"
+              Resource: "*"
+        - Statement:
+            - Effect: Allow
+              Action:
+                - "execute-api:ManageConnections"
+              Resource:
+                - !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SlchessWebsocketApi}/*"
+      Environment:
+        Variables:
+          ECS_CLUSTER_NAME: !Ref SlchessServerCluster
+          ECS_SERVICE_NAME: !GetAtt SlchessServerService.Name
+          WEBSOCKET_API_ID: !Ref SlchessWebsocketApi
+          WEBSOCKET_API_STAGE: !Ref SlchessWebsocketApiStage
+          DEPLOYMENT_STAGE: !Ref SlchessDeploymentStage
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /matchmaking
+            Method: post
+            ApiId: !Ref SlchessHttpApi
+
+  UserGetFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-UserGet
+      CodeUri: ./cmd/lambda/userGet/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: UserProfiles
+        - DynamoDBCrudPolicy:
+            TableName: UserRatings
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /user/{id}
+            Method: get
+            ApiId: !Ref SlchessHttpApi
+
+  MatchRecordGetFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-MatchRecordGet
+      CodeUri: ./cmd/lambda/matchRecordGet/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: MatchRecords
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /match/{id}
+            Method: get
+            ApiId: !Ref SlchessHttpApi
+
+  MatchResultListFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-MatchResultList
+      CodeUri: ./cmd/lambda/matchResultList/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: MatchResults
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /matchResults
+            Method: get
+            ApiId: !Ref SlchessHttpApi
+
+  MatchStateListFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-MatchStateList
+      CodeUri: ./cmd/lambda/matchStateList/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: MatchStates
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /match/{id}/states
+            Method: get
+            ApiId: !Ref SlchessHttpApi
+
+  ActiveMatchListFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-ActiveMatchList
+      CodeUri: ./cmd/lambda/activeMatchList/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: ActiveMatches
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /activeMatches
+            Method: get
+            ApiId: !Ref SlchessHttpApi
+
+  UserRatingListFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-UserRatingList
+      CodeUri: ./cmd/lambda/userRatingList/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: UserRatings
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /userRatings
+            Method: get
+            ApiId: !Ref SlchessHttpApi
+
+  MatchRestoreFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-MatchRestore
+      CodeUri: ./cmd/lambda/matchRestore/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Timeout: 60
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: ActiveMatches
+        - EcsRunTaskPolicy:
+            TaskDefinition: !Ref SlchessServerDefinition
+        - Statement:
+            - Effect: Allow
+              Action:
+                - "ecs:ListTasks"
+                - "ecs:DescribeTasks"
+                - "ecs:UpdateService"
+              Resource: "*"
+        - Statement:
+            - Effect: Allow
+              Action:
+                - "ec2:DescribeNetworkInterfaces"
+              Resource: "*"
+      Environment:
+        Variables:
+          ECS_CLUSTER_NAME: !Ref SlchessServerCluster
+          ECS_SERVICE_NAME: !GetAtt SlchessServerService.Name
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /match/{id}/restore
+            Method: post
+            ApiId: !Ref SlchessHttpApi
+
+  MatchSpectateFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-MatchSpectate
+      CodeUri: ./cmd/lambda/matchSpectate/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: MatchStates
+        - DynamoDBCrudPolicy:
+            TableName: SpectatorConversations
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /match/{id}/spectate
+            Method: get
+            ApiId: !Ref SlchessHttpApi
+
+  AvatarUploadFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-AvatarUpload
+      CodeUri: ./cmd/lambda/avatarUpload/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref Images
+      Environment:
+        Variables:
+          IMAGE_BUCKET_NAME: !Ref Images
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /avatar/upload
+            Method: post
+            ApiId: !Ref SlchessHttpApi
+
+  PostAvatarUploadFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-PostAvatarUpload
+      CodeUri: ./cmd/lambda/postAvatarUpload/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Timeout: 10
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref Images
+        - S3CrudPolicy:
+            BucketName: !Ref Avatars
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserProfiles
+      Environment:
+        Variables:
+          AVATAR_BUCKET_NAME: !Ref Avatars
+
+  ### S3 ###
+  Images:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: slchess-images
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - "*"
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+              - DELETE
+            AllowedHeaders:
+              - "*"
+
+  Avatars:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: slchess-avatars
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - "*"
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+              - DELETE
+            AllowedHeaders:
+              - "*"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: false
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: false
+
+  AvatarsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref Avatars
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: "s3:GetObject"
+            Resource: !Sub "${Avatars.Arn}/*"
+
+  S3InvokeLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref PostAvatarUploadFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !GetAtt Images.Arn
+
+  ApplyNotificationFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Path: /
+      Policies:
+        - PolicyName: S3BucketNotificationPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AllowBucketNotification
+                Effect: Allow
+                Action: s3:PutBucketNotification
+                Resource:
+                  - !Sub "arn:aws:s3:::${Images}"
+                  - !Sub "arn:aws:s3:::${Images}/*"
+
+  ApplyBucketNotificationFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: slchess-ApplyBucketNotification
+      CodeUri: ./cmd/lambda/applyBucketNotification/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Role: !GetAtt ApplyNotificationFunctionRole.Arn
+      Timeout: 240
+
+  ApplyAvatarUploadNotification:
+    Type: Custom::ApplyNotification
+    Properties:
+      ServiceToken: !GetAtt ApplyBucketNotificationFunction.Arn
+      S3Bucket: !Ref Images
+      FunctionARN: !GetAtt PostAvatarUploadFunction.Arn
+      PrefixValue: "avatars/"
+      NotificationId: S3ObjectCreatedEvent
+
+  ### DynamoDB Tables ###
+  Connections:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Connections
+      AttributeDefinitions:
+        - AttributeName: Id
+          AttributeType: S
+        - AttributeName: UserId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: Id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: UserIdIndex
+          KeySchema:
+            - AttributeName: UserId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      BillingMode: PAY_PER_REQUEST
+
+  UserProfiles:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: UserProfiles
+      AttributeDefinitions:
+        - AttributeName: UserId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: UserId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  UserRatings:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: UserRatings
+      AttributeDefinitions:
+        - AttributeName: UserId
+          AttributeType: S
+        - AttributeName: Rating
+          AttributeType: N
+        - AttributeName: PartitionKey # Static partition key for GSI
+          AttributeType: S
+      KeySchema:
+        - AttributeName: UserId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: RatingIndex
+          KeySchema:
+            - AttributeName: PartitionKey # Static key
+              KeyType: HASH
+            - AttributeName: Rating
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      BillingMode: PAY_PER_REQUEST
+
+  UserMatches:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: UserMatches
+      AttributeDefinitions:
+        - AttributeName: UserId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: UserId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  MatchmakingTickets:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: MatchmakingTickets
+      AttributeDefinitions:
+        - AttributeName: UserId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: UserId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  ActiveMatches:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ActiveMatches
+      AttributeDefinitions:
+        - AttributeName: MatchId
+          AttributeType: S
+        - AttributeName: AverageRating
+          AttributeType: N
+        - AttributeName: PartitionKey # Static partition key for GSI
+          AttributeType: S
+      KeySchema:
+        - AttributeName: MatchId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: AverageRatingIndex
+          KeySchema:
+            - AttributeName: PartitionKey
+              KeyType: HASH
+            - AttributeName: AverageRating
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      BillingMode: PAY_PER_REQUEST
+
+  MatchStates:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: MatchStates
+      AttributeDefinitions:
+        - AttributeName: Id
+          AttributeType: S
+        - AttributeName: MatchId
+          AttributeType: S
+        - AttributeName: Ply
+          AttributeType: N
+      KeySchema:
+        - AttributeName: Id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: MatchIndex
+          KeySchema:
+            - AttributeName: MatchId
+              KeyType: HASH
+            - AttributeName: Ply
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      BillingMode: PAY_PER_REQUEST
+
+  MatchRecords:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: MatchRecords
+      AttributeDefinitions:
+        - AttributeName: MatchId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: MatchId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  MatchResults:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: MatchResults
+      AttributeDefinitions:
+        - AttributeName: UserId
+          AttributeType: S
+        - AttributeName: Timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: UserId
+          KeyType: HASH
+        - AttributeName: Timestamp
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: TTL
+        Enabled: true
+      BillingMode: PAY_PER_REQUEST
+
+  Messages:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Messages
+      AttributeDefinitions:
+        - AttributeName: Id
+          AttributeType: S
+        - AttributeName: ConversationId
+          AttributeType: S
+        - AttributeName: CreatedAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: Id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: ConversationIndex
+          KeySchema:
+            - AttributeName: ConversationId
+              KeyType: HASH
+            - AttributeName: CreatedAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      BillingMode: PAY_PER_REQUEST
+
+  SpectatorConversations:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: SpectatorConversations
+      AttributeDefinitions:
+        - AttributeName: MatchId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: MatchId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  UserConversations:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: UserConversations
+      AttributeDefinitions:
+        - AttributeName: UserId
+          AttributeType: S
+        - AttributeName: UpdatedAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: UserId
+          KeyType: HASH
+        - AttributeName: UpdatedAt
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+
+Outputs:
+  SlchessAppSyncGraphQLApiUrl:
+    Description: AppSync GraphQL API endpoint URL
+    Value: !GetAtt SlchessAppSyncApi.GraphQLUrl
+
+  SlchessAppSyncRealtimeApiUrl:
+    Description: AppSync API real-time endpoint URL
+    Value: !GetAtt SlchessAppSyncApi.RealtimeUrl
+
+  SlchessWebsocketApiUrl:
+    Description: WebSocket API URL
+    Value: !Sub "wss://${SlchessWebsocketApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessWebsocketApiStage}"
+
+  MatchmakingEndpointUrl:
+    Description: "Endpoint URL for matchmaking"
+    Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/matchmaking"
+
+  UserGetEndpointUrl:
+    Description: "Endpoint URL for get user information"
+    Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/user"
+
+  MatchRecordGetEndpointUrl:
+    Description: "Endpoint URL for get a single match record"
+    Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/match/{id}"
+
+  MatchResultListEndpointUrl:
+    Description: "Endpoint URL for get a list of match results"
+    Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/matchResults?limit=5&startKey=<START-KEY>"
+
+  MatchStateListEndpointUrl:
+    Description: "Endpoint URL for get a list of match results"
+    Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/match/{id}/states?limit=20&startKey=<START-KEY>&order=asc"
+
+  ActiveMatchListEndpointUrl:
+    Description: "Endpoint URL for get a list of active matches"
+    Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/activeMatches?limit=5&startKey=<START-KEY>"
+
+  UserRatingListEndpointUrl:
+    Description: "Endpoint URL for get a list of user ratings"
+    Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/userRatings?limit=5&startKey=<START-KEY>"
+
+  RestoreMatchEndpointUrl:
+    Description: "Endpoint URL for restoring a match"
+    Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/match/{id}/restore"
+
+  SpectateMatchEndpointUrl:
+    Description: "Endpoint URL for spectating a match"
+    Value: !Sub "https://${SlchessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${SlchessDeploymentStage}/match/{id}/spectate"

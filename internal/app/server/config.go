@@ -16,7 +16,7 @@ type Config struct {
 	AppSyncHttpUrl       string
 	AppSyncAccessRoleArn string
 
-	EndGameFunctionName string
+	EndGameFunctionArn string
 }
 
 func NewConfig() Config {
@@ -55,7 +55,7 @@ func NewConfig() Config {
 	config.CognitoUserPoolId = viper.GetString("COGNITO_USER_POOL_ID")
 	config.AppSyncHttpUrl = viper.GetString("APPSYNC_HTTP_URL")
 	config.AppSyncAccessRoleArn = viper.GetString("APPSYNC_ACCESS_ROLE_ARN")
-	config.EndGameFunctionName = viper.GetString("END_GAME_FUNCTION_NAME")
+	config.EndGameFunctionArn = viper.GetString("END_GAME_FUNCTION_ARN")
 
 	return config
 }

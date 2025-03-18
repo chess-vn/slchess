@@ -30,8 +30,8 @@ var (
 	computeClient    *compute.Client
 	apigatewayClient *apigatewaymanagementapi.Client
 
-	clusterName       = os.Getenv("ECS_CLUSTER_NAME")
-	serviceName       = os.Getenv("ECS_SERVICE_NAME")
+	clusterName       = os.Getenv("SERVER_CLUSTER_NAME")
+	serviceName       = os.Getenv("SERVER_SERVICE_NAME")
 	region            = os.Getenv("AWS_REGION")
 	websocketApiId    = os.Getenv("WEBSOCKET_API_ID")
 	websocketApiStage = os.Getenv("WEBSOCKET_API_STAGE")
