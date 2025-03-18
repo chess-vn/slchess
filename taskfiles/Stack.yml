@@ -28,10 +28,9 @@ tasks:
         --parameter-overrides "ServerImageUri=$SERVER_IMAGE_URI"
         --confirm-changeset
         --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
-        --no-disable-rollback
+        --on-failure DELETE
         --config-file samconfig.yaml
         --config-env default
-        --on-failure DELETE
 
   remove:
     desc: Remove the stack from AWS
