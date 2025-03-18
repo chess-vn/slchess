@@ -21,6 +21,7 @@ Resources:
     Properties:
       Name: !Sub "${StackName}-http-api"
       StageName: !Ref DeploymentStage
+      FailOnWarnings: true
       CorsConfiguration:
         AllowOrigins: ["*"]
         AllowHeaders: ["Authorization"]
@@ -32,9 +33,8 @@ Resources:
               issuer: !Sub
                 - "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPoolId}"
                 - UserPoolId: !ImportValue UserPoolId
-              audience: !Sub
-                - "${UserPoolClientId}"
-                - UserPoolClientId: !ImportValue UserPoolClientId
+              audience:
+                - !ImportValue UserPoolClientId
             IdentitySource: "$request.header.Authorization"
         DefaultAuthorizer: CognitoAuthorizer
 
@@ -92,12 +92,19 @@ Resources:
           WEBSOCKET_API_ID: !ImportValue WebsocketApiId
           WEBSOCKET_API_STAGE: !Ref DeploymentStage
           DEPLOYMENT_STAGE: !Ref DeploymentStage
+          CONNECTIONS_TABLE_NAME: !ImportValue ConnectionsTableName
+          MATCHMAKING_TICKETS_TABLE_NAME: !ImportValue MatchmakingTicketsTableName
+          USER_MATCHES_TABLE_NAME: !ImportValue UserMatchesTableName
+          ACTIVE_MATCHES_TABLE_NAME: !ImportValue ActiveMatchesTableName
+          USER_RATINGS_TABLE_NAME: !ImportValue UserRatingsTableName
+          MATCH_RESULTS_TABLE_NAME: !ImportValue MatchResultsTableName
+          SPECTATOR_CONVERSATIONS_TABLE_NAME: !ImportValue SpectatorConversationsTableName
       Events:
         ApiEvent:
           Type: HttpApi
           Properties:
             Path: /matchmaking
-            Method: post
+            Method: POST
             ApiId: !Ref HttpApi
 
   UserGetFunction:
@@ -114,12 +121,16 @@ Resources:
             TableName: !ImportValue UserProfilesTableName
         - DynamoDBCrudPolicy:
             TableName: !ImportValue UserRatingsTableName
+      Environment:
+        Variables:
+          USER_PROFILES_TABLE_NAME: !ImportValue UserProfilesTableName
+          USER_RATINGS_TABLE_NAME: !ImportValue UserRatingsTableName
       Events:
         ApiEvent:
           Type: HttpApi
           Properties:
             Path: /user/{id}
-            Method: get
+            Method: GET
             ApiId: !Ref HttpApi
 
   MatchRecordGetFunction:
@@ -134,12 +145,15 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !ImportValue MatchRecordsTableName
+      Environment:
+        Variables:
+          MATCH_RECORDS_TABLE_NAME: !ImportValue MatchRecordsTableName
       Events:
         ApiEvent:
           Type: HttpApi
           Properties:
             Path: /match/{id}
-            Method: get
+            Method: GET
             ApiId: !Ref HttpApi
 
   MatchResultListFunction:
@@ -154,12 +168,15 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !ImportValue MatchResultsTableName
+      Environment:
+        Variables:
+          MATCH_RESULTS_TABLE_NAME: !ImportValue MatchResultsTableName
       Events:
         ApiEvent:
           Type: HttpApi
           Properties:
             Path: /matchResults
-            Method: get
+            Method: GET
             ApiId: !Ref HttpApi
 
   MatchStateListFunction:
@@ -174,12 +191,15 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !ImportValue MatchStatesTableName
+      Environment:
+        Variables:
+          MATCH_STATES_TABLE_NAME: !ImportValue MatchStatesTableName
       Events:
         ApiEvent:
           Type: HttpApi
           Properties:
             Path: /match/{id}/states
-            Method: get
+            Method: GET
             ApiId: !Ref HttpApi
 
   ActiveMatchListFunction:
@@ -194,12 +214,15 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !ImportValue ActiveMatchesTableName
+      Environment:
+        Variables:
+          ACTIVE_MATCHES_TABLE_NAME: !ImportValue ActiveMatchesTableName
       Events:
         ApiEvent:
           Type: HttpApi
           Properties:
             Path: /activeMatches
-            Method: get
+            Method: GET
             ApiId: !Ref HttpApi
 
   UserRatingListFunction:
@@ -214,12 +237,15 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !ImportValue UserRatingsTableName
+      Environment:
+        Variables:
+          USER_RATINGS_TABLE_NAME: !ImportValue UserRatingsTableName
       Events:
         ApiEvent:
           Type: HttpApi
           Properties:
             Path: /userRatings
-            Method: get
+            Method: GET
             ApiId: !Ref HttpApi
 
   MatchRestoreFunction:
@@ -253,12 +279,13 @@ Resources:
         Variables:
           ECS_CLUSTER_NAME: !ImportValue ServerClusterName
           ECS_SERVICE_NAME: !ImportValue ServerServiceName
+          ACTIVE_MATCHES_TABLE_NAME: !ImportValue ActiveMatchesTableName
       Events:
         ApiEvent:
           Type: HttpApi
           Properties:
             Path: /match/{id}/restore
-            Method: post
+            Method: POST
             ApiId: !Ref HttpApi
 
   MatchSpectateFunction:
@@ -275,12 +302,16 @@ Resources:
             TableName: !ImportValue MatchStatesTableName
         - DynamoDBCrudPolicy:
             TableName: !ImportValue SpectatorConversationsTableName
+      Environment:
+        Variables:
+          MATCH_STATES_TABLE_NAME: !ImportValue MatchStatesTableName
+          SPECTATOR_CONVERSATIONS_TABLE_NAME: !ImportValue SpectatorConversationsTableName
       Events:
         ApiEvent:
           Type: HttpApi
           Properties:
             Path: /match/{id}/spectate
-            Method: get
+            Method: GET
             ApiId: !Ref HttpApi
 
   AvatarUploadFunction:

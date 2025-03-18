@@ -21,7 +21,7 @@ func (client *Client) GetUserRating(
 	error,
 ) {
 	output, err := client.dynamodb.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String("UserRatings"),
+		TableName: client.cfg.UserRatingsTableName,
 		Key: map[string]types.AttributeValue{
 			"UserId": &types.AttributeValueMemberS{
 				Value: userId,
@@ -48,7 +48,7 @@ func (client *Client) FetchUserRatings(
 	error,
 ) {
 	input := &dynamodb.QueryInput{
-		TableName:              aws.String("UserRatings"),
+		TableName:              client.cfg.UserRatingsTableName,
 		IndexName:              aws.String("RatingIndex"),
 		KeyConditionExpression: aws.String("#pk = :pk"),
 		ExpressionAttributeNames: map[string]string{
@@ -85,7 +85,7 @@ func (client *Client) PutUserRating(
 		return fmt.Errorf("failed to marshal user rating map: %w", err)
 	}
 	_, err = client.dynamodb.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String("UserRatings"),
+		TableName: client.cfg.UserRatingsTableName,
 		Item:      av,
 	})
 	if err != nil {

@@ -25,7 +25,7 @@ func (client *Client) GetUserMatch(
 	error,
 ) {
 	output, err := client.dynamodb.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String("UserMatches"),
+		TableName: client.cfg.UserMatchesTableName,
 		Key: map[string]types.AttributeValue{
 			"UserId": &types.AttributeValueMemberS{
 				Value: userId,
@@ -59,7 +59,7 @@ func (client *Client) PutUserMatch(
 	}
 
 	_, err = client.dynamodb.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName:           aws.String("UserMatches"),
+		TableName:           client.cfg.UserMatchesTableName,
 		ConditionExpression: aws.String("attribute_not_exists(UserId)"),
 		Item:                av,
 	})
@@ -84,7 +84,7 @@ func (client *Client) DeleteUserMatch(
 	userId string,
 ) error {
 	_, err := client.dynamodb.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-		TableName: aws.String("UserMatches"),
+		TableName: client.cfg.UserMatchesTableName,
 		Key: map[string]types.AttributeValue{
 			"UserId": &types.AttributeValueMemberS{Value: userId},
 		},

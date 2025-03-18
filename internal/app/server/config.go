@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 )
 
@@ -20,8 +21,9 @@ type Config struct {
 }
 
 func NewConfig() Config {
-	var config Config
+	godotenv.Load("./configs/aws/dynamodb.env")
 
+	var config Config
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath("./configs/server")

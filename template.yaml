@@ -78,6 +78,14 @@ Resources:
       - ComputeStack
       - WebsocketApiStack
 
+  LogStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./templates/log.yaml
+      Parameters:
+        StackName: !Ref AWS::StackName
+        DeploymentStage: !Ref DeploymentStage
+
 Outputs:
   AppSyncGraphQLApiUrl:
     Description: AppSync GraphQL API endpoint URL

@@ -26,7 +26,7 @@ func (client *Client) GetUserProfile(
 	error,
 ) {
 	output, err := client.dynamodb.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String("UserProfiles"),
+		TableName: client.cfg.UserProfilesTableName,
 		Key: map[string]types.AttributeValue{
 			"UserId": &types.AttributeValueMemberS{
 				Value: userId,
@@ -58,7 +58,7 @@ func (client *Client) PutUserProfile(
 		return fmt.Errorf("failed to marshal user profile map")
 	}
 	_, err = client.dynamodb.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String("UserProfiles"),
+		TableName: client.cfg.UserProfilesTableName,
 		Item:      av,
 	})
 	if err != nil {
@@ -83,7 +83,7 @@ func (client *Client) UpdateUserProfile(
 	}
 
 	_, err := client.dynamodb.UpdateItem(ctx, &dynamodb.UpdateItemInput{
-		TableName: aws.String("UserProfiles"),
+		TableName: client.cfg.UserProfilesTableName,
 		Key: map[string]types.AttributeValue{
 			"UserId": &types.AttributeValueMemberS{
 				Value: userId,

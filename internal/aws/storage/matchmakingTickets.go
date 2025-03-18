@@ -20,7 +20,7 @@ func (client *Client) ScanMatchmakingTickets(
 ) {
 	filter := "MinRating >= :min AND MaxRating <= :max AND GameMode = :mode"
 	output, err := client.dynamodb.Scan(ctx, &dynamodb.ScanInput{
-		TableName:        aws.String("MatchmakingTickets"),
+		TableName:        client.cfg.MatchmakingTicketsTableName,
 		FilterExpression: aws.String(filter),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":min": &types.AttributeValueMemberN{
@@ -53,7 +53,7 @@ func (client *Client) PutMatchmakingTickets(
 ) error {
 	ticketAv, _ := attributevalue.MarshalMap(ticket)
 	_, err := client.dynamodb.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String("MatchmakingTickets"),
+		TableName: client.cfg.MatchmakingTicketsTableName,
 		Item:      ticketAv,
 	})
 	if err != nil {
@@ -67,7 +67,7 @@ func (client *Client) DeleteMatchmakingTickets(
 	userId string,
 ) error {
 	_, err := client.dynamodb.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-		TableName: aws.String("MatchmakingTickets"),
+		TableName: client.cfg.MatchmakingTicketsTableName,
 		Key: map[string]types.AttributeValue{
 			"UserId": &types.AttributeValueMemberS{Value: userId},
 		},

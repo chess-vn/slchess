@@ -80,6 +80,7 @@ Resources:
       Environment:
         Variables:
           AVATAR_BUCKET_NAME: !Ref Avatars
+          USER_PROFILES_TABLE_NAME: !Ref UserProfiles
 
   S3InvokeLambdaPermission:
     Type: AWS::Lambda::Permission

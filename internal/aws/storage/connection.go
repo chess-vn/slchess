@@ -19,7 +19,7 @@ func (client *Client) PutConnection(ctx context.Context, connection entities.Con
 		return fmt.Errorf("failed to marshal connection map: %w", err)
 	}
 	_, err = client.dynamodb.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String("Connections"),
+		TableName: client.cfg.ConnectionsTableName,
 		Item:      av,
 	})
 	if err != nil {
@@ -36,7 +36,7 @@ func (client *Client) GetConnectionByUserId(
 	error,
 ) {
 	output, err := client.dynamodb.Query(ctx, &dynamodb.QueryInput{
-		TableName:              aws.String("Connections"),
+		TableName:              client.cfg.ConnectionsTableName,
 		IndexName:              aws.String("UserIdIndex"),
 		KeyConditionExpression: aws.String("UserId = :userId"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
@@ -47,6 +47,9 @@ func (client *Client) GetConnectionByUserId(
 	if err != nil {
 		return entities.Connection{},
 			fmt.Errorf("failed to query connections: %w", err)
+	}
+	if len(output.Items) == 0 {
+		return entities.Connection{}, ErrConnectionNotFound
 	}
 
 	var connection entities.Connection
@@ -67,7 +70,7 @@ func (client *Client) GetConnection(
 	error,
 ) {
 	output, err := client.dynamodb.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String("Connections"),
+		TableName: client.cfg.ConnectionsTableName,
 		Key: map[string]types.AttributeValue{
 			"Id": &types.AttributeValueMemberS{
 				Value: connectionId,
@@ -90,7 +93,7 @@ func (client *Client) GetConnection(
 
 func (client *Client) DeleteConnection(ctx context.Context, connectionId string) error {
 	_, err := client.dynamodb.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-		TableName: aws.String("Connections"),
+		TableName: client.cfg.ConnectionsTableName,
 		Key: map[string]types.AttributeValue{
 			"Id": &types.AttributeValueMemberS{Value: connectionId},
 		},

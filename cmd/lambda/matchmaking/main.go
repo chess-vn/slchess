@@ -324,7 +324,9 @@ func notifyQueueingUser(ctx context.Context, userId string, data []byte) error {
 	// Get user ID from DynamoDB
 	connection, err := storageClient.GetConnectionByUserId(ctx, userId)
 	if err != nil {
-		return fmt.Errorf("failed to get connection: %w", err)
+		if !errors.Is(err, storage.ErrConnectionNotFound) {
+			return fmt.Errorf("failed to get connection: %w", err)
+		}
 	}
 
 	_, err = apigatewayClient.PostToConnection(

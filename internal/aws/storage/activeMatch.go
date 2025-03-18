@@ -26,7 +26,7 @@ func (client *Client) GetActiveMatch(
 	error,
 ) {
 	output, err := client.dynamodb.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String("ActiveMatches"),
+		TableName: client.cfg.ActiveMatchesTableName,
 		Key: map[string]types.AttributeValue{
 			"MatchId": &types.AttributeValueMemberS{Value: matchId},
 		},
@@ -59,7 +59,7 @@ func (client *Client) FetchActiveMatchList(
 	error,
 ) {
 	input := &dynamodb.QueryInput{
-		TableName:              aws.String("ActiveMatches"),
+		TableName:              client.cfg.ActiveMatchesTableName,
 		IndexName:              aws.String("AverageRatingIndex"),
 		KeyConditionExpression: aws.String("#pk = :pk AND #rating >= :rating"),
 		ExpressionAttributeNames: map[string]string{
@@ -107,7 +107,7 @@ func (client *Client) PutActiveMatch(
 	}
 
 	_, err = client.dynamodb.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String("ActiveMatches"),
+		TableName: client.cfg.ActiveMatchesTableName,
 		Item:      av,
 	})
 	if err != nil {
@@ -133,7 +133,7 @@ func (client *Client) UpdateActiveMatch(
 	}
 
 	_, err := client.dynamodb.UpdateItem(ctx, &dynamodb.UpdateItemInput{
-		TableName: aws.String("ActiveMatches"),
+		TableName: client.cfg.ActiveMatchesTableName,
 		Key: map[string]types.AttributeValue{
 			"MatchId": &types.AttributeValueMemberS{
 				Value: matchId,
@@ -154,7 +154,7 @@ func (client *Client) DeleteActiveMatch(
 	matchId string,
 ) error {
 	_, err := client.dynamodb.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-		TableName: aws.String("ActiveMatches"),
+		TableName: client.cfg.ActiveMatchesTableName,
 		Key: map[string]types.AttributeValue{
 			"MatchId": &types.AttributeValueMemberS{
 				Value: matchId,

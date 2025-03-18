@@ -25,7 +25,7 @@ func (client *Client) FetchMatchStates(
 	error,
 ) {
 	input := &dynamodb.QueryInput{
-		TableName:              aws.String("MatchStates"),
+		TableName:              client.cfg.MatchStatesTableName,
 		IndexName:              aws.String("MatchIndex"),
 		KeyConditionExpression: aws.String("MatchId = :matchId"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
@@ -58,7 +58,7 @@ func (client *Client) PutMatchState(
 	}
 
 	_, err = client.dynamodb.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String("MatchStates"),
+		TableName: client.cfg.MatchStatesTableName,
 		Item:      av,
 	})
 	if err != nil {

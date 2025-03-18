@@ -180,6 +180,15 @@ Resources:
             TableName: !ImportValue UserRatingsTableName
         - DynamoDBCrudPolicy:
             TableName: !ImportValue SpectatorConversationsTableName
+      Environment:
+        Variables:
+          USER_MATCHES_TABLE_NAME: !ImportValue UserMatchesTableName
+          ACTIVE_MATCHES_TABLE_NAME: !ImportValue ActiveMatchesTableName
+          MATCH_STATES_TABLE_NAME: !ImportValue MatchStatesTableName
+          MATCH_RECORDS_TABLE_NAME: !ImportValue MatchRecordsTableName
+          MATCH_RESULTS_TABLE_NAME: !ImportValue MatchResultsTableName
+          USER_RATINGS_TABLE_NAME: !ImportValue UserRatingsTableName
+          SPECTATOR_CONVERSATIONS_TABLE_NAME: !ImportValue SpectatorConversationsTableName
 
 Outputs:
   ServerClusterName:

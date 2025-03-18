@@ -71,6 +71,7 @@ Resources:
         Variables:
           CONNECTIONS_TABLE: !ImportValue ConnectionsTableName
           COGNITO_USER_POOL_ID: !ImportValue UserPoolId
+          CONNECTIONS_TABLE_NAME: !ImportValue ConnectionsTableName
 
   ConnectFunctionPermission:
     Type: AWS::Lambda::Permission
@@ -108,6 +109,9 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !ImportValue ConnectionsTableName
+      Environment:
+        Variables:
+          CONNECTIONS_TABLE: !ImportValue ConnectionsTableName
 
   DisconnectFunctionPermission:
     Type: AWS::Lambda::Permission
@@ -153,6 +157,9 @@ Resources:
         Variables:
           WEBSOCKET_API_ID: !Ref WebsocketApi
           WEBSOCKET_API_STAGE: !Ref DeploymentStage
+          CONNECTIONS_TABLE_NAME: !ImportValue ConnectionsTableName
+          USER_MATCHES_TABLE_NAME: !ImportValue UserMatchesTableName
+          ACTIVE_MATCHES_TABLE_NAME: !ImportValue ActiveMatchesTableName
 
   QueueingFunctionPermission:
     Type: AWS::Lambda::Permission

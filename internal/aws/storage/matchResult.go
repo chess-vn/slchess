@@ -18,7 +18,7 @@ func (client *Client) FetchMatchResults(
 	limit int32,
 ) ([]entities.MatchResult, map[string]types.AttributeValue, error) {
 	input := &dynamodb.QueryInput{
-		TableName:              aws.String("MatchResults"),
+		TableName:              client.cfg.MatchResultsTableName,
 		KeyConditionExpression: aws.String("UserId = :userId"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":userId": &types.AttributeValueMemberS{Value: userId},
@@ -51,7 +51,7 @@ func (client *Client) PutMatchResult(
 		return fmt.Errorf("failed to marshal match result map: %w", err)
 	}
 	_, err = client.dynamodb.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String("MatchResults"),
+		TableName: client.cfg.MatchResultsTableName,
 		Item:      av,
 	})
 	if err != nil {

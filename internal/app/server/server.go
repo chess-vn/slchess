@@ -9,14 +9,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/chess-vn/slchess/internal/aws/auth"
 	awsAuth "github.com/chess-vn/slchess/internal/aws/auth"
-	"github.com/chess-vn/slchess/internal/domains/entities"
+	"github.com/chess-vn/slchess/internal/aws/storage"
 	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
@@ -32,6 +29,7 @@ type server struct {
 	mu      sync.Mutex
 
 	cognitoPublicKeys map[string]*rsa.PublicKey
+	storageClient     *storage.Client
 }
 
 type payload struct {
@@ -40,18 +38,19 @@ type payload struct {
 }
 
 func NewServer() *server {
-	config := NewConfig()
+	cfg := NewConfig()
 	tokenSigningKeyUrl := fmt.Sprintf(
 		"https://cognito-idp.%s.amazonaws.com/%s/.well-known/jwks.json",
-		config.AwsRegion,
-		config.CognitoUserPoolId,
+		cfg.AwsRegion,
+		cfg.CognitoUserPoolId,
 	)
 	cognitoPublicKeys, err := awsAuth.LoadCognitoPublicKeys(tokenSigningKeyUrl)
 	if err != nil {
 		panic(err)
 	}
+	awsCfg, _ := config.LoadDefaultConfig(context.TODO())
 	srv := &server{
-		address: "0.0.0.0:" + config.Port,
+		address: "0.0.0.0:" + cfg.Port,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -59,8 +58,11 @@ func NewServer() *server {
 				return true // Allow all origins
 			},
 		},
-		config:            config,
+		config:            cfg,
 		cognitoPublicKeys: cognitoPublicKeys,
+		storageClient: storage.NewClient(
+			dynamodb.NewFromConfig(awsCfg),
+		),
 	}
 	return srv
 }
@@ -148,25 +150,11 @@ This is used to start the match only when white side player send in the first va
 */
 func (s *server) loadMatch(matchId string) (*Match, error) {
 	ctx := context.Background()
-	cfg, _ := config.LoadDefaultConfig(ctx)
-	dynamoClient := dynamodb.NewFromConfig(cfg)
-	activeMatchOutput, err := dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String("ActiveMatches"),
-		Key: map[string]types.AttributeValue{
-			"MatchId": &types.AttributeValueMemberS{
-				Value: matchId,
-			},
-		},
-		ConsistentRead: aws.Bool(true),
-	})
+
+	activeMatch, err := s.storageClient.GetActiveMatch(ctx, matchId)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get active match: %w", err)
 	}
-	if activeMatchOutput.Item == nil {
-		return nil, fmt.Errorf("match not found: %s", matchId)
-	}
-	var activeMatch entities.ActiveMatch
-	attributevalue.UnmarshalMap(activeMatchOutput.Item, &activeMatch)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -180,24 +168,15 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 		}
 		return nil, ErrFailedToLoadMatch
 	} else {
-		input := &dynamodb.QueryInput{
-			TableName:              aws.String("MatchStates"),
-			IndexName:              aws.String("MatchIndex"),
-			KeyConditionExpression: aws.String("MatchId = :matchId"),
-			ExpressionAttributeValues: map[string]types.AttributeValue{
-				":matchId": &types.AttributeValueMemberS{Value: matchId},
-			},
-			ScanIndexForward: aws.Bool(false), // Sort by timestamp DESCENDING (most recent first)
-			Limit:            aws.Int32(1),
-		}
-		matchStatesOutput, err := dynamoClient.Query(ctx, input)
+		matchStates, _, err := s.storageClient.FetchMatchStates(
+			ctx,
+			matchId,
+			nil,
+			1,
+			false,
+		)
 		if err != nil {
-			return nil, err
-		}
-		var matchStates []entities.MatchState
-		attributevalue.UnmarshalListOfMaps(matchStatesOutput.Items, &matchStates)
-		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to fetch match states: %w", err)
 		}
 
 		config, err := configForGameMode(activeMatch.GameMode)

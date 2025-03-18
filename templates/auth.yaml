@@ -65,6 +65,10 @@ Resources:
             TableName: !ImportValue UserProfilesTableName
         - DynamoDBCrudPolicy:
             TableName: !ImportValue UserRatingsTableName
+      Environment:
+        Variables:
+          USER_PROFILES_TABLE_NAME: !ImportValue UserProfilesTableName
+          USER_RATINGS_TABLE_NAME: !ImportValue UserRatingsTableName
 
   PostUserConfirmationPermission:
     Type: AWS::Lambda::Permission

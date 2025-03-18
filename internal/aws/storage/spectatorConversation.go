@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
@@ -21,7 +20,7 @@ func (client *Client) GetSpectatorConversation(
 	error,
 ) {
 	output, err := client.dynamodb.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String("SpectatorConversations"),
+		TableName: client.cfg.SpectatorConversationsTableName,
 		Key: map[string]types.AttributeValue{
 			"MatchId": &types.AttributeValueMemberS{
 				Value: matchId,
@@ -51,7 +50,7 @@ func (client *Client) PutSpectatorConversation(
 		return fmt.Errorf("failed to marshal spectator conversation map: %w", err)
 	}
 	_, err = client.dynamodb.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String("SpectatorConversations"),
+		TableName: client.cfg.SpectatorConversationsTableName,
 		Item:      av,
 	})
 	if err != nil {
@@ -65,7 +64,7 @@ func (client *Client) DeleteSpectatorConversation(
 	matchId string,
 ) error {
 	_, err := client.dynamodb.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-		TableName: aws.String("SpectatorConversations"),
+		TableName: client.cfg.SpectatorConversationsTableName,
 		Key: map[string]types.AttributeValue{
 			"MatchId": &types.AttributeValueMemberS{Value: matchId},
 		},
