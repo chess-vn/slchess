@@ -337,6 +337,53 @@ Resources:
             Method: POST
             ApiId: !Ref HttpApi
 
+  CreateCheckoutSession:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: !Sub "${StackName}-${DeploymentStage}-CreateCheckoutSession"
+      CodeUri: ../cmd/lambda/createCheckoutSession/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - Statement:
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+            Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/slchess/payment/stripe/secret-key-${DeploymentStage}"
+      Environment:
+        Variables:
+          STRIPE_SECRET_KEY: !Sub "{{resolve:ssm:/slchess/payment/stripe/secret-key-${DeploymentStage}}}"
+          PLUS_PRICE_ID: !Sub "{{resolve:ssm:/slchess/membership/plus/price-id}}"
+          PREMIUM_PRICE_ID: !Sub "{{resolve:ssm:/slchess/membership/premium/price-id}}"
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /payment/checkout
+            Method: POST
+            ApiId: !Ref HttpApi
+
+  PaymentConfirmation:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: !Sub "${StackName}-${DeploymentStage}-PaymentConfirmation"
+      CodeUri: ../cmd/lambda/paymentConfirmation/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - Statement:
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+            Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/slchess/membership/*"
+      Environment:
+        Variables:
+          STRIPE_WEBHOOK_SECRET: !Sub "{{resolve:ssm:/slchess/payment/stripe/webhook-key-${DeploymentStage}}}"
+
 Outputs:
   HttpApiEndpoint:
     Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${DeploymentStage}"
