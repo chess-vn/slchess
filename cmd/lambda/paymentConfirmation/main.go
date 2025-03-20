@@ -18,10 +18,7 @@ import (
 	"github.com/stripe/stripe-go/v81/webhook"
 )
 
-var (
-	webhookSecret = os.Getenv("STRIPE_WEBHOOK_SECRET")
-	storageClient *storage.Client
-)
+var storageClient *storage.Client
 
 func init() {
 	cfg, err := config.LoadDefaultConfig(context.TODO())
@@ -39,13 +36,12 @@ func handler(
 	events.APIGatewayProxyResponse,
 	error,
 ) {
-	event := stripe.Event{}
-
 	// Verify the webhook signature
-	sigHeader := request.Headers["Stripe-Signature"]
-	body := []byte(request.Body)
-
-	event, err := webhook.ConstructEvent(body, sigHeader, webhookSecret)
+	event, err := webhook.ConstructEvent(
+		[]byte(request.Body),
+		request.Headers["stripe-signature"],
+		os.Getenv("STRIPE_WEBHOOK_SECRET"),
+	)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusBadRequest,
@@ -58,18 +54,25 @@ func handler(
 		var session stripe.CheckoutSession
 		err := json.Unmarshal(event.Data.Raw, &session)
 		if err != nil {
-			log.Printf("Error parsing session data: %v", err)
 			return events.APIGatewayProxyResponse{
 				StatusCode: http.StatusBadRequest,
 			}, fmt.Errorf("failed to parse session data: %w", err)
 		}
 
-		membership, ok := session.Metadata["membership"]
-		if !ok {
-			return events.APIGatewayProxyResponse{
-				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("failed to get membership")
-		}
+		// productName, err := getSubscriptionProductName(session.Subscription.ID)
+		// if err != nil {
+		// 	return events.APIGatewayProxyResponse{
+		// 		StatusCode: http.StatusBadRequest,
+		// 	}, fmt.Errorf("failed to get product name: %w", err)
+		// }
+		// var membership string
+		// switch productName {
+		// case "Slchess Plus":
+		// 	membership = "plus"
+		// case "Slchess Premium":
+		// 	membership = "premium"
+		// }
+		membership := session.Metadata["membership"]
 		userId := session.ClientReferenceID
 		err = storageClient.UpdateUserProfile(
 			ctx,
@@ -90,20 +93,20 @@ func handler(
 	}, nil
 }
 
-// func GetSubscriptionProductName(subscriptionId string) {
+// func getSubscriptionProductName(subscriptionId string) (string, error) {
 // 	stripe.Key = os.Getenv("STRIPE_SECRET_KEY")
 //
-// 	// Retrieve subscription details
-// 	subscription, err := sub.Get(subscriptionId, nil)
+// 	// Retrieve sub details
+// 	sub, err := subscription.Get(subscriptionId, nil)
 // 	if err != nil {
-// 		log.Fatal(err)
+// 		return "", fmt.Errorf("failed to get subscription: %w", err)
 // 	}
 //
-// 	// Get the product and price details
-// 	for _, item := range subscription.Items.Data {
-// 		fmt.Println("Price ID:", item.Price.ID)
-// 		fmt.Println("Product ID:", item.Price.Product.ID)
+// 	if len(sub.Items.Data) == 0 {
+// 		return "", fmt.Errorf("no subscription item")
 // 	}
+//
+// 	return sub.Items.Data[0].Price.Product.Name, nil
 // }
 
 func main() {
