@@ -24,8 +24,12 @@ Resources:
       FailOnWarnings: true
       CorsConfiguration:
         AllowOrigins: ["*"]
-        AllowHeaders: ["Authorization"]
-        AllowMethods: ["GET", "POST"]
+        AllowHeaders:
+          - Authorization
+          - Stripe-Signature
+        AllowMethods:
+          - GET
+          - POST
       Auth:
         Authorizers:
           CognitoAuthorizer:
@@ -334,6 +338,66 @@ Resources:
           Type: HttpApi
           Properties:
             Path: /avatar/upload
+            Method: POST
+            ApiId: !Ref HttpApi
+
+  CreateCheckoutSessionFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: !Sub "${StackName}-${DeploymentStage}-CreateCheckoutSession"
+      CodeUri: ../cmd/lambda/createCheckoutSession/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - Statement:
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+            Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/slchess/payment/stripe/secret-key-${DeploymentStage}"
+      Environment:
+        Variables:
+          STRIPE_SECRET_KEY: !Sub "{{resolve:ssm:/slchess/payment/stripe/secret-key-${DeploymentStage}}}"
+          PLUS_PRICE_ID: !Sub "{{resolve:ssm:/slchess/membership/plus/price-id}}"
+          PREMIUM_PRICE_ID: !Sub "{{resolve:ssm:/slchess/membership/premium/price-id}}"
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /payment/checkout
+            Method: POST
+            ApiId: !Ref HttpApi
+
+  PaymentConfirmationFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: !Sub "${StackName}-${DeploymentStage}-PaymentConfirmation"
+      CodeUri: ../cmd/lambda/paymentConfirmation/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !ImportValue UserProfilesTableName
+        - Statement:
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+            Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/slchess/membership/*"
+      Environment:
+        Variables:
+          STRIPE_SECRET_KEY: !Sub "{{resolve:ssm:/slchess/payment/stripe/secret-key-${DeploymentStage}}}"
+          STRIPE_WEBHOOK_SECRET: !Sub "{{resolve:ssm:/slchess/payment/stripe/webhook-key-${DeploymentStage}}}"
+          USER_PROFILES_TABLE_NAME: !ImportValue UserProfilesTableName
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /payment/confirm
+            Auth:
+              Authorizer: NONE
             Method: POST
             ApiId: !Ref HttpApi
 

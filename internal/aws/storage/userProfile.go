@@ -15,7 +15,8 @@ import (
 var ErrUserProfileNotFound = fmt.Errorf("user profile not found")
 
 type UserProfileUpdateOptions struct {
-	Avatar *string
+	Avatar     *string
+	Membership *string
 }
 
 func (client *Client) GetUserProfile(
@@ -79,6 +80,13 @@ func (client *Client) UpdateUserProfile(
 		updateExpression = append(updateExpression, "Avatar = :avatar")
 		expressionAttributeValues[":avatar"] = &types.AttributeValueMemberS{
 			Value: *opts.Avatar,
+		}
+	}
+
+	if opts.Membership != nil {
+		updateExpression = append(updateExpression, "Membership = :membership")
+		expressionAttributeValues[":membership"] = &types.AttributeValueMemberS{
+			Value: *opts.Membership,
 		}
 	}
 

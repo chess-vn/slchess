@@ -16,7 +16,7 @@ import (
 )
 
 type response struct {
-	Url string
+	Url string `json:"url"`
 }
 
 var (

@@ -24,6 +24,7 @@ require (
 	github.com/notnil/chess v1.10.0
 	github.com/spf13/viper v1.20.0
 	github.com/stretchr/testify v1.10.0
+	github.com/stripe/stripe-go/v81 v81.4.0
 	go.uber.org/zap v1.27.0
 	gopkg.in/freeeve/pgn.v1 v1.0.1
 )
