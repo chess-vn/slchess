@@ -337,7 +337,7 @@ Resources:
             Method: POST
             ApiId: !Ref HttpApi
 
-  CreateCheckoutSession:
+  CreateCheckoutSessionFunction:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: go1.x
@@ -365,7 +365,7 @@ Resources:
             Method: POST
             ApiId: !Ref HttpApi
 
-  PaymentConfirmation:
+  PaymentConfirmationFunction:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: go1.x
@@ -383,6 +383,15 @@ Resources:
       Environment:
         Variables:
           STRIPE_WEBHOOK_SECRET: !Sub "{{resolve:ssm:/slchess/payment/stripe/webhook-key-${DeploymentStage}}}"
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /payment/confirm
+            Auth:
+              Authorizer: NONE
+            Method: POST
+            ApiId: !Ref HttpApi
 
 Outputs:
   HttpApiEndpoint:

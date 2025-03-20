@@ -64,12 +64,18 @@ func handler(
 			}, fmt.Errorf("failed to parse session data: %w", err)
 		}
 
+		membership, ok := session.Metadata["membership"]
+		if !ok {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusBadRequest,
+			}, fmt.Errorf("failed to get membership")
+		}
 		userId := session.ClientReferenceID
 		err = storageClient.UpdateUserProfile(
 			ctx,
 			userId,
 			storage.UserProfileUpdateOptions{
-				Membership: aws.String("membership"),
+				Membership: aws.String(membership),
 			},
 		)
 		if err != nil {
@@ -83,6 +89,22 @@ func handler(
 		StatusCode: http.StatusOK,
 	}, nil
 }
+
+// func GetSubscriptionProductName(subscriptionId string) {
+// 	stripe.Key = os.Getenv("STRIPE_SECRET_KEY")
+//
+// 	// Retrieve subscription details
+// 	subscription, err := sub.Get(subscriptionId, nil)
+// 	if err != nil {
+// 		log.Fatal(err)
+// 	}
+//
+// 	// Get the product and price details
+// 	for _, item := range subscription.Items.Data {
+// 		fmt.Println("Price ID:", item.Price.ID)
+// 		fmt.Println("Product ID:", item.Price.Product.ID)
+// 	}
+// }
 
 func main() {
 	lambda.Start(handler)

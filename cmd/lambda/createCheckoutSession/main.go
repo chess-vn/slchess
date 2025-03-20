@@ -25,7 +25,7 @@ func handler(
 	events.APIGatewayProxyResponse,
 	error,
 ) {
-	auth.MustAuth(event.RequestContext.Authorizer)
+	userId := auth.MustAuth(event.RequestContext.Authorizer)
 	membership, err := extractParameters(event.QueryStringParameters)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
@@ -47,13 +47,17 @@ func handler(
 	params := &stripe.CheckoutSessionParams{
 		PaymentMethodTypes: stripe.StringSlice([]string{"card"}),
 		Mode:               stripe.String("subscription"),
-		SuccessURL:         stripe.String("https://yourchessapp.com/success"),
-		CancelURL:          stripe.String("https://yourchessapp.com/cancel"),
+		SuccessURL:         stripe.String("https://slchess.vn"),
+		CancelURL:          stripe.String("https://slchess.vn"),
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
 			{
 				Price:    stripe.String(priceId),
 				Quantity: stripe.Int64(1),
 			},
+		},
+		ClientReferenceID: stripe.String(userId),
+		Metadata: map[string]string{
+			"membership": membership,
 		},
 	}
 
