@@ -23,6 +23,46 @@ import (
 	"go.uber.org/zap"
 )
 
+func (s *server) handleAbortGame(match *Match) {
+	if match == nil {
+		return
+	}
+	ctx := context.TODO()
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		logging.Fatal("unable to load SDK config", zap.Error(err))
+	}
+	lambdaClient := lambda.NewFromConfig(cfg)
+
+	matchAbortReq := dtos.MatchAbortRequest{
+		MatchId: match.id,
+		PlayerIds: []string{
+			match.players[0].Id,
+			match.players[1].Id,
+		},
+	}
+
+	payload, err := json.Marshal(matchAbortReq)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Invoke Lambda function
+	input := &lambda.InvokeInput{
+		FunctionName:   aws.String(s.config.AbortGameFunctionArn),
+		Payload:        payload,
+		InvocationType: types.InvocationTypeEvent,
+	}
+
+	_, err = lambdaClient.Invoke(ctx, input)
+	if err != nil {
+		logging.Fatal("failed to invoke abort game", zap.Error(err))
+	}
+
+	s.removeMatch(match.id)
+	logging.Info("match aborted", zap.String("match_id", match.id))
+}
+
 // Handler for saving current game state.
 func (s *server) handleSaveGame(match *Match) {
 	ctx := context.Background()
@@ -45,7 +85,7 @@ func (s *server) handleSaveGame(match *Match) {
 			PlayerId: lastMove.playerId,
 			Uci:      lastMove.uci,
 		},
-		Ply:       len(match.game.moves),
+		Ply:       match.currentPly(),
 		Timestamp: time.Now(),
 	}
 	matchStateAppSyncReq := dtos.NewMatchStateAppSyncRequest(matchStateReq)
@@ -200,7 +240,7 @@ func (s *server) handlePlayerDisconnect(match *Match, playerId string) {
 			zap.String("player_id", player.Id),
 		)
 		if !match.isEnded() {
-			match.setTimer(match.config.DisconnectTimeout)
+			match.setTimer(match.cfg.DisconnectTimeout)
 		}
 	}
 }
@@ -222,7 +262,7 @@ func (s *server) handlePlayerJoin(
 	if player.Status == INIT && player.Side == WHITE_SIDE {
 		match.startAt = time.Now()
 		player.TurnStartedAt = match.startAt
-		match.setTimer(match.config.MatchDuration)
+		match.setTimer(match.cfg.MatchDuration)
 	}
 	player.Conn = conn
 	player.Status = CONNECTED
@@ -245,16 +285,25 @@ func (s *server) handleWebSocketMessage(
 		logging.Error("match not loaded")
 		return
 	}
+	if time.Since(payload.CreatedAt) < 0 {
+		logging.Info("invalid timestamp",
+			zap.String("created_at", payload.CreatedAt.String()),
+			zap.String("validate_time", time.Now().String()),
+		)
+		return
+	}
 	switch payload.Type {
 	case "gameData":
 		action := payload.Data["action"]
 		switch action {
+		case "abort":
+			match.processGameControl(playerId, ABORT)
 		case "resign":
 			match.processGameControl(playerId, RESIGN)
 		case "offerDraw":
 			match.processGameControl(playerId, OFFER_DRAW)
 		case "move":
-			match.processMove(playerId, payload.Data["move"])
+			match.processMove(playerId, payload.Data["move"], payload.CreatedAt)
 		default:
 			logging.Info("invalid game action:", zap.String("action", payload.Type))
 			return

@@ -21,7 +21,8 @@ const (
 	WHITE_SIDE Side = true
 	BLACK_SIDE Side = false
 
-	RESIGN GameControl = iota
+	ABORT GameControl = iota
+	RESIGN
 	OFFER_DRAW
 	NONE
 
@@ -37,12 +38,30 @@ type game struct {
 }
 
 func newGame() *game {
-	g := chess.NewGame(chess.UseNotation(chess.UCINotation{}))
+	g := chess.NewGame(
+		chess.UseNotation(chess.UCINotation{}),
+	)
 	return &game{
 		Game:       *g,
 		drawOffers: []bool{false, false},
 		moves:      []move{},
 	}
+}
+
+func restoreGame(gameState string) (*game, error) {
+	withFen, err := chess.FEN(gameState)
+	if err != nil {
+		return nil, err
+	}
+	g := chess.NewGame(
+		withFen,
+		chess.UseNotation(chess.UCINotation{}),
+	)
+	return &game{
+		Game:       *g,
+		drawOffers: []bool{false, false},
+		moves:      []move{},
+	}, nil
 }
 
 func (g *game) OfferDraw(side chess.Color) bool {
@@ -103,9 +122,10 @@ func (g *game) move(move move) error {
 }
 
 type move struct {
-	playerId string
-	uci      string
-	control  GameControl
+	playerId  string
+	uci       string
+	control   GameControl
+	createdAt time.Time
 }
 
 type player struct {
@@ -150,6 +170,14 @@ func (p *player) color() chess.Color {
 		return chess.White
 	}
 	return chess.Black
+}
+
+func (p *player) updateClock(
+	timeTaken time.Duration,
+	lagForgiven time.Duration,
+	increment time.Duration,
+) {
+	p.Clock = p.Clock - timeTaken + lagForgiven + increment
 }
 
 func (s Status) String() string {

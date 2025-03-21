@@ -33,8 +33,9 @@ type server struct {
 }
 
 type payload struct {
-	Type string            `json:"type"`
-	Data map[string]string `json:"data"`
+	Type      string            `json:"type"`
+	Data      map[string]string `json:"data"`
+	CreatedAt time.Time         `json:"createdAt"`
 }
 
 func NewServer() *server {
@@ -108,7 +109,7 @@ func (s *server) Start() error {
 				break
 			}
 
-			payload := payload{}
+			var payload payload
 			if err := json.Unmarshal(message, &payload); err != nil {
 				conn.Close()
 			}
@@ -182,21 +183,11 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 
 		config, err := configForGameMode(activeMatch.GameMode)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to get match config: %w", err)
 		}
 		var clock1 time.Duration
 		var clock2 time.Duration
 
-		// Initialize match if there is no match state data
-		if len(matchStates) == 0 {
-			clock1 = config.MatchDuration
-			clock2 = config.MatchDuration
-			logging.Info("match initialized")
-		} else {
-			clock1, _ = time.ParseDuration(matchStates[0].PlayerStates[0].Clock)
-			clock2, _ = time.ParseDuration(matchStates[0].PlayerStates[1].Clock)
-			logging.Info("match resumed")
-		}
 		player1 := newPlayer(
 			nil,
 			activeMatch.Player1.Id,
@@ -217,7 +208,33 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 			activeMatch.Player2.NewRatings,
 			activeMatch.Player1.NewRDs,
 		)
-		match := s.newMatch(matchId, player1, player2, config)
+
+		var match *Match
+		if len(matchStates) > 0 {
+			player1.Clock, _ = time.ParseDuration(matchStates[0].PlayerStates[0].Clock)
+			player2.Clock, _ = time.ParseDuration(matchStates[0].PlayerStates[1].Clock)
+			match, err = s.resumeMatch(
+				matchId,
+				player1,
+				player2,
+				config,
+				matchStates[0].GameState,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to resume match: %w", err)
+			}
+		} else {
+			player1.Clock = config.MatchDuration
+			player2.Clock = config.MatchDuration
+			match = s.newMatch(matchId, player1, player2, config)
+		}
+		logging.Info(
+			"match loaded",
+			zap.String("match_id", matchId),
+			zap.String("player1_id", player1.Id),
+			zap.String("player2_id", player2.Id),
+		)
+
 		s.matches.Store(matchId, match)
 		return match, nil
 	}
@@ -230,18 +247,46 @@ func (s *server) newMatch(
 	config MatchConfig,
 ) *Match {
 	match := &Match{
-		id:              matchId,
-		game:            newGame(),
-		players:         []*player{&player1, &player2},
-		moveCh:          make(chan move),
-		config:          config,
-		endGameHandler:  s.handleEndGame,
-		saveGameHandler: s.handleSaveGame,
+		id:               matchId,
+		game:             newGame(),
+		players:          []*player{&player1, &player2},
+		moveCh:           make(chan move),
+		cfg:              config,
+		abortGameHandler: s.handleAbortGame,
+		endGameHandler:   s.handleEndGame,
+		saveGameHandler:  s.handleSaveGame,
 	}
 	// Timeout to cancel match if first move is not made
 	match.setTimer(config.CancelTimeout)
 	go match.start()
 	return match
+}
+
+func (s *server) resumeMatch(
+	matchId string,
+	player1,
+	player2 player,
+	config MatchConfig,
+	gameState string,
+) (*Match, error) {
+	game, err := restoreGame(gameState)
+	if err != nil {
+		return nil, fmt.Errorf("failed to restore game: %w", err)
+	}
+	match := &Match{
+		id:               matchId,
+		game:             game,
+		players:          []*player{&player1, &player2},
+		moveCh:           make(chan move),
+		cfg:              config,
+		abortGameHandler: s.handleAbortGame,
+		endGameHandler:   s.handleEndGame,
+		saveGameHandler:  s.handleSaveGame,
+	}
+	// Timeout to cancel match if first move is not made
+	match.setTimer(config.CancelTimeout)
+	go match.start()
+	return match, nil
 }
 
 func (s *server) removeMatch(matchId string) {
