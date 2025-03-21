@@ -19,20 +19,22 @@ type Match struct {
 	moveCh  chan move
 	timer   *time.Timer
 	startAt time.Time
-	config  MatchConfig
+	cfg     MatchConfig
 
-	endGameHandler  func(*Match)
-	saveGameHandler func(*Match)
+	endGameHandler   func(*Match)
+	saveGameHandler  func(*Match)
+	abortGameHandler func(*Match)
 
 	ended bool
 	mu    sync.Mutex
 }
 
 type MatchConfig struct {
-	MatchDuration     time.Duration
-	ClockIncrement    time.Duration
-	CancelTimeout     time.Duration
-	DisconnectTimeout time.Duration
+	MatchDuration      time.Duration
+	ClockIncrement     time.Duration
+	CancelTimeout      time.Duration
+	DisconnectTimeout  time.Duration
+	MaxLagForgivenTime time.Duration
 }
 
 type matchResponse struct {
@@ -56,6 +58,10 @@ type drawOffer struct {
 	Type string `json:"type"`
 }
 
+type abortResponse struct {
+	Type string `json:"type"`
+}
+
 func (match *Match) start() {
 	for move := range match.moveCh {
 		player, exist := match.getPlayerWithId(move.playerId)
@@ -67,6 +73,14 @@ func (match *Match) start() {
 			continue
 		}
 		switch move.control {
+		case ABORT:
+			if match.currentPly() > 1 {
+				player.Conn.WriteJSON(errorResponse{
+					Type:  "error",
+					Error: ErrStatusAbortInvalidPly,
+				})
+			}
+			match.abort()
 		case RESIGN:
 			match.game.Resign(player.color())
 		case OFFER_DRAW:
@@ -98,7 +112,9 @@ func (match *Match) start() {
 
 			// If making move, update clock
 			timeTaken := time.Since(player.TurnStartedAt)
-			player.Clock = player.Clock - timeTaken + match.config.ClockIncrement
+			lagForgiven := match.calculateLagForgiven(move.createdAt)
+			player.updateClock(timeTaken, lagForgiven, match.cfg.ClockIncrement)
+
 			// If clock runs out, end the game
 			if player.Clock <= 0 {
 				match.game.outOfTime(player.Side)
@@ -238,11 +254,16 @@ func (m *Match) getNextTurnPlayer() *player {
 	return m.players[0]
 }
 
-func (m *Match) processMove(playerId, moveUci string) {
+func (m *Match) currentPly() int {
+	return len(m.game.moves)
+}
+
+func (m *Match) processMove(playerId, moveUci string, createdAt time.Time) {
 	m.moveCh <- move{
-		playerId: playerId,
-		uci:      moveUci,
-		control:  NONE,
+		playerId:  playerId,
+		uci:       moveUci,
+		control:   NONE,
+		createdAt: createdAt,
 	}
 }
 
@@ -251,6 +272,29 @@ func (m *Match) processGameControl(playerId string, control GameControl) {
 		playerId: playerId,
 		control:  control,
 	}
+}
+
+func (m *Match) abort() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.ended {
+		return
+	}
+	m.ended = true
+	if !utils.IsClosed(m.moveCh) {
+		close(m.moveCh)
+	}
+	// Fire off the timer to remove end game handling job
+	m.skipTimer()
+	for _, player := range m.players {
+		if player.Conn != nil {
+			player.Conn.WriteJSON(abortResponse{
+				Type: "abort",
+			})
+			player.Conn.Close()
+		}
+	}
+	m.abortGameHandler(m)
 }
 
 func (m *Match) save() {
@@ -349,4 +393,12 @@ func (m *Match) getNewPlayerRatings() ([]float64, []float64, error) {
 			nil
 	}
 	return nil, nil, ErrInvalidOutcome
+}
+
+func (m *Match) calculateLagForgiven(moveCreatedAt time.Time) time.Duration {
+	lagTime := time.Since(moveCreatedAt)
+	if lagTime > m.cfg.MaxLagForgivenTime {
+		return m.cfg.MaxLagForgivenTime
+	}
+	return lagTime
 }

@@ -23,6 +23,7 @@ type Config struct {
 	CognitoUserPoolId    string
 	AppSyncHttpUrl       string
 	AppSyncAccessRoleArn string
+	AbortGameFunctionArn string
 	EndGameFunctionArn   string
 
 	AwsCfg aws.Config
@@ -67,6 +68,7 @@ func NewConfig() Config {
 	cfg.CognitoUserPoolId = viper.GetString("COGNITO_USER_POOL_ID")
 	cfg.AppSyncHttpUrl = viper.GetString("APPSYNC_HTTP_URL")
 	cfg.AppSyncAccessRoleArn = viper.GetString("APPSYNC_ACCESS_ROLE_ARN")
+	cfg.AbortGameFunctionArn = viper.GetString("ABORT_GAME_FUNCTION_ARN")
 	cfg.EndGameFunctionArn = viper.GetString("END_GAME_FUNCTION_ARN")
 
 	if err := cfg.loadAwsConfig(); err != nil {

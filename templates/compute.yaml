@@ -178,8 +178,6 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !ImportValue ActiveMatchesTableName
         - DynamoDBCrudPolicy:
-            TableName: !ImportValue MatchStatesTableName
-        - DynamoDBCrudPolicy:
             TableName: !ImportValue MatchRecordsTableName
         - DynamoDBCrudPolicy:
             TableName: !ImportValue MatchResultsTableName
@@ -195,6 +193,29 @@ Resources:
           MATCH_RECORDS_TABLE_NAME: !ImportValue MatchRecordsTableName
           MATCH_RESULTS_TABLE_NAME: !ImportValue MatchResultsTableName
           USER_RATINGS_TABLE_NAME: !ImportValue UserRatingsTableName
+          SPECTATOR_CONVERSATIONS_TABLE_NAME: !ImportValue SpectatorConversationsTableName
+
+  AbortGameFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: !Sub "${StackName}-${DeploymentStage}-AbortGame"
+      CodeUri: ../cmd/lambda/abortGame/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Timeout: 10
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !ImportValue UserMatchesTableName
+        - DynamoDBCrudPolicy:
+            TableName: !ImportValue ActiveMatchesTableName
+        - DynamoDBCrudPolicy:
+            TableName: !ImportValue SpectatorConversationsTableName
+      Environment:
+        Variables:
+          USER_MATCHES_TABLE_NAME: !ImportValue UserMatchesTableName
+          ACTIVE_MATCHES_TABLE_NAME: !ImportValue ActiveMatchesTableName
           SPECTATOR_CONVERSATIONS_TABLE_NAME: !ImportValue SpectatorConversationsTableName
 
 Outputs:

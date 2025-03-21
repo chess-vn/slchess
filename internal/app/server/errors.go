@@ -6,6 +6,7 @@ var (
 	ErrStatusInvalidMove     string = "INVALID_MOVE"
 	ErrStatusInvalidPlayerId string = "INVALID_PLAYER_ID"
 	ErrStatusWrongTurn       string = "WRONG_TURN"
+	ErrStatusAbortInvalidPly string = "INVALID_PLY"
 )
 
 var (
