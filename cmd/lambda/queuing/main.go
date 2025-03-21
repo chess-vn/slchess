@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -60,6 +61,12 @@ func handler(
 
 	activeMatch, err := storageClient.CheckForActiveMatch(ctx, connection.UserId)
 	if err != nil {
+		if errors.Is(err, storage.ErrUserMatchNotFound) ||
+			errors.Is(err, storage.ErrActiveMatchNotFound) {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusOK,
+			}, nil
+		}
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
 		}, fmt.Errorf("failed to check for active match: %w", err)

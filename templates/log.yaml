@@ -15,3 +15,9 @@ Resources:
     Properties:
       LogGroupName: !Sub "/${StackName}/${DeploymentStage}/ecs/server"
       RetentionInDays: 7
+
+  QueuingFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${StackName}-${DeploymentStage}-Queuing"
+      RetentionInDays: 7

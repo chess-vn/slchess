@@ -6,6 +6,8 @@ Globals:
   Function:
     Timeout: 5
     MemorySize: 128
+    Architectures:
+      - arm64
 
 Parameters:
   StackName:
@@ -153,6 +155,11 @@ Resources:
             TableName: !ImportValue UserMatchesTableName
         - DynamoDBCrudPolicy:
             TableName: !ImportValue ActiveMatchesTableName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - "execute-api:ManageConnections"
+              Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebsocketApi}/*"
       Environment:
         Variables:
           WEBSOCKET_API_ID: !Ref WebsocketApi
