@@ -188,7 +188,7 @@ func (client *Client) UpdateServerProtection(
 		ProtectionEnabled: enabled,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to update task protection")
+		return fmt.Errorf("failed to update task protection: %w", err)
 	}
 	return nil
 }

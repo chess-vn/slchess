@@ -50,4 +50,4 @@ tasks:
     deps: [utils:check-base-env]
     vars:
     cmds:
-      - sam build --region $AWS_REGION --config-file samconfig.yaml
+      - sam build --region $AWS_REGION --config-file samconfig.yaml --no-cached
