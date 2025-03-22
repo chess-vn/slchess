@@ -101,7 +101,7 @@ Outputs:
 
   MatchmakingEndpointUrl:
     Description: "Endpoint URL for matchmaking"
-    Value: !Sub "https://${HttpApiStack.Outputs.HttpApiEndpoint}/matchmaking"
+    Value: !Sub "${HttpApiStack.Outputs.HttpApiEndpoint}/matchmaking"
 
   UserGetEndpointUrl:
     Description: "Endpoint URL for get user information"
