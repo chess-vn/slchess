@@ -21,7 +21,7 @@ tasks:
     desc: Deploy the current local stack on AWS
     deps: [utils:check-base-env]
     cmds:
-      - task: build
+      - sam build --region $AWS_REGION --config-file samconfig.yaml
       - sam deploy
         --stack-name $STACK
         --region $AWS_REGION

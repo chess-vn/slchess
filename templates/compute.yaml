@@ -117,6 +117,15 @@ Resources:
                   - !Sub
                     - "${MatchStatesTableArn}/index/MatchIndex"
                     - MatchStatesTableArn: !ImportValue MatchStatesTableArn
+        - PolicyName: ECSTaskProtectionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecs:UpdateTaskProtection
+                Resource:
+                  - !Sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:task/${ServerCluster}/*"
 
   ECSTaskExecutionRole:
     Type: AWS::IAM::Role
