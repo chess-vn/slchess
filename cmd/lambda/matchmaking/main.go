@@ -107,6 +107,25 @@ func handler(
 			}, fmt.Errorf("failed to check for active match: %w", err)
 		}
 	} else {
+		var serverIp string
+		for range 5 {
+			serverIp, err = computeClient.CheckAndGetNewServerIp(
+				ctx,
+				clusterName,
+				serviceName,
+				activeMatch.Server,
+			)
+			if err == nil {
+				break
+			}
+			<-time.After(5 * time.Second)
+		}
+		if err != nil {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusInternalServerError,
+			}, fmt.Errorf("failed to get server ip: %w", err)
+		}
+		activeMatch.Server = serverIp
 		matchResp := dtos.ActiveMatchResponseFromEntity(activeMatch)
 		matchRespJson, _ := json.Marshal(matchResp)
 		return events.APIGatewayProxyResponse{

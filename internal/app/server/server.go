@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -17,6 +18,7 @@ import (
 	"github.com/chess-vn/slchess/internal/aws/compute"
 	"github.com/chess-vn/slchess/internal/aws/storage"
 	"github.com/chess-vn/slchess/pkg/logging"
+	"github.com/chess-vn/slchess/pkg/utils"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
@@ -26,14 +28,15 @@ type server struct {
 	address  string
 	upgrader websocket.Upgrader
 
-	config  Config
-	matches sync.Map
-	mu      sync.Mutex
+	config       Config
+	matches      sync.Map
+	totalMatches atomic.Int32
+	mu           sync.Mutex
 
 	cognitoPublicKeys map[string]*rsa.PublicKey
 	storageClient     *storage.Client
 	computeClient     *compute.Client
-	protectionTimer   *time.Timer
+	protectionTimer   *utils.Timer
 }
 
 type payload struct {
@@ -73,7 +76,7 @@ func NewServer() *server {
 			nil,
 		),
 	}
-	srv.resetProtectionTimer()
+	srv.resetProtectionTimer(cfg.IdleTimeout)
 	return srv
 }
 
@@ -105,9 +108,6 @@ func (s *server) Start() error {
 			return
 		}
 		s.handlePlayerJoin(conn, match, playerId)
-
-		// If player is valid, reset the protection timer
-		s.resetProtectionTimer()
 
 		for {
 			_, message, err := conn.ReadMessage()
@@ -248,6 +248,9 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 		)
 
 		s.matches.Store(matchId, match)
+		s.totalMatches.Add(1)
+		s.resetProtectionTimer(2*match.cfg.MatchDuration + 5*time.Minute)
+
 		return match, nil
 	}
 }
@@ -303,23 +306,41 @@ func (s *server) resumeMatch(
 
 func (s *server) removeMatch(matchId string) {
 	s.matches.Delete(matchId)
+	total := s.totalMatches.Add(-1)
+	if total <= 0 {
+		s.skipProtectionTimer()
+	}
+	logging.Info("match removed", zap.Int32("total_matches", total))
 }
 
-func (s *server) resetProtectionTimer() {
+func (s *server) resetProtectionTimer(duration time.Duration) {
 	if s.protectionTimer != nil {
-		s.protectionTimer.Reset(s.config.IdleTimeout)
+		if s.protectionTimer.TimeRemaining() < duration {
+			s.protectionTimer.Reset(duration)
+		}
+		logging.Info("server protection timer reset",
+			zap.String("duration", duration.String()),
+		)
 		return
 	}
-	s.protectionTimer = time.NewTimer(s.config.IdleTimeout)
+	s.protectionTimer = utils.NewTimer(duration)
 	go func() {
 		s.enableProtection()
-		<-s.protectionTimer.C
+		<-s.protectionTimer.C()
 		s.disableProtection()
 		s.protectionTimer = nil
 	}()
 	logging.Info("server protection timer set",
-		zap.String("duration", s.config.IdleTimeout.String()),
+		zap.String("duration", duration.String()),
 	)
+}
+
+func (s *server) skipProtectionTimer() {
+	if s.protectionTimer == nil {
+		return
+	}
+	s.protectionTimer.Reset(0)
+	logging.Info("server protection timer skipped")
 }
 
 func (s *server) enableProtection() {

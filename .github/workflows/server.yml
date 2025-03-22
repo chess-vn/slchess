@@ -38,8 +38,8 @@ jobs:
           REPOSITORY: slchess/server
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          task env:base
-          task env:generate
+          task env:base --silent
+          task env:generate --silent
           docker build -f ./build/server/server.dockerfile -t $REGISTRY/$REPOSITORY:$IMAGE_TAG .
           docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
           docker tag $REGISTRY/$REPOSITORY:$IMAGE_TAG $REGISTRY/$REPOSITORY:latest
