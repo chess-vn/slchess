@@ -158,7 +158,7 @@ Resources:
         TargetValue: 70.0
         PredefinedMetricSpecification:
           PredefinedMetricType: ECSServiceAverageCPUUtilization
-        ScaleInCooldown: 1800
+        ScaleInCooldown: 300
         ScaleOutCooldown: 60
 
   ### Lambda ###

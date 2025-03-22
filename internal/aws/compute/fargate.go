@@ -11,6 +11,11 @@ import (
 	"github.com/chess-vn/slchess/pkg/logging"
 )
 
+type TaskMetadata struct {
+	TaskArn     string `json:"TaskARN"`
+	ClusterName string `json:"Cluster"`
+}
+
 func (client *Client) GetServerIp(
 	ctx context.Context,
 	clusterName,
@@ -167,5 +172,23 @@ func (client *Client) CheckAndStartServer(
 		}
 	}
 
+	return nil
+}
+
+func (client *Client) UpdateServerProtection(
+	ctx context.Context,
+	enabled bool,
+) error {
+	if client.cfg.ClusterName == nil || client.cfg.TaskArn == nil {
+		return fmt.Errorf("missing task metadata")
+	}
+	_, err := client.ecs.UpdateTaskProtection(ctx, &ecs.UpdateTaskProtectionInput{
+		Cluster:           client.cfg.ClusterName,
+		Tasks:             []string{*client.cfg.TaskArn},
+		ProtectionEnabled: enabled,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update task protection")
+	}
 	return nil
 }

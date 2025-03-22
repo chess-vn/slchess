@@ -11,8 +11,10 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/chess-vn/slchess/internal/aws/auth"
 	awsAuth "github.com/chess-vn/slchess/internal/aws/auth"
+	"github.com/chess-vn/slchess/internal/aws/compute"
 	"github.com/chess-vn/slchess/internal/aws/storage"
 	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/golang-jwt/jwt/v5"
@@ -30,6 +32,8 @@ type server struct {
 
 	cognitoPublicKeys map[string]*rsa.PublicKey
 	storageClient     *storage.Client
+	computeClient     *compute.Client
+	protectionTimer   *time.Timer
 }
 
 type payload struct {
@@ -64,7 +68,12 @@ func NewServer() *server {
 		storageClient: storage.NewClient(
 			dynamodb.NewFromConfig(awsCfg),
 		),
+		computeClient: compute.NewClient(
+			ecs.NewFromConfig(awsCfg),
+			nil,
+		),
 	}
+	srv.resetProtectionTimer()
 	return srv
 }
 
@@ -96,6 +105,9 @@ func (s *server) Start() error {
 			return
 		}
 		s.handlePlayerJoin(conn, match, playerId)
+
+		// If player is valid, reset the protection timer
+		s.resetProtectionTimer()
 
 		for {
 			_, message, err := conn.ReadMessage()
@@ -291,4 +303,39 @@ func (s *server) resumeMatch(
 
 func (s *server) removeMatch(matchId string) {
 	s.matches.Delete(matchId)
+}
+
+func (s *server) resetProtectionTimer() {
+	if s.protectionTimer != nil {
+		s.protectionTimer.Reset(s.config.IdleTimeout)
+		return
+	}
+	s.protectionTimer = time.NewTimer(s.config.IdleTimeout)
+	go func() {
+		s.enableProtection()
+		<-s.protectionTimer.C
+		s.disableProtection()
+		s.protectionTimer = nil
+	}()
+	logging.Info("server protection timer set",
+		zap.String("duration", s.config.IdleTimeout.String()),
+	)
+}
+
+func (s *server) enableProtection() {
+	err := s.computeClient.UpdateServerProtection(context.TODO(), true)
+	if err != nil {
+		logging.Info("failed to enable server protection", zap.Error(err))
+		return
+	}
+	logging.Info("server protection enabled")
+}
+
+func (s *server) disableProtection() {
+	err := s.computeClient.UpdateServerProtection(context.TODO(), false)
+	if err != nil {
+		logging.Info("failed to disable server protection", zap.Error(err))
+		return
+	}
+	logging.Info("server protection disabled")
 }
