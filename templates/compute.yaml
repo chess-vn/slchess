@@ -49,6 +49,11 @@ Resources:
               awslogs-group: !Sub "/${StackName}/${DeploymentStage}/ecs/server"
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: ecs
+          Environment:
+            - Name: AWS_DEFAULT_REGION
+              Value: !Ref AWS::Region
+            - Name: ECS_ENABLE_CONTAINER_METADATA
+              Value: "true"
 
   ### ECS Service ###
   ServerService:
@@ -158,7 +163,7 @@ Resources:
         TargetValue: 70.0
         PredefinedMetricSpecification:
           PredefinedMetricType: ECSServiceAverageCPUUtilization
-        ScaleInCooldown: 1800
+        ScaleInCooldown: 300
         ScaleOutCooldown: 60
 
   ### Lambda ###
