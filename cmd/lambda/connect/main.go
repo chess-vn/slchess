@@ -27,7 +27,7 @@ func init() {
 	if err != nil {
 		panic("couldn't load config")
 	}
-	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg))
+	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg), nil)
 	tokenSigningKeyUrl := fmt.Sprintf(
 		"https://cognito-idp.%s.amazonaws.com/%s/.well-known/jwks.json",
 		os.Getenv("AWS_REGION"),

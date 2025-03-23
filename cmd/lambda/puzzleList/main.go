@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/athena"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/chess-vn/slchess/internal/aws/auth"
 	"github.com/chess-vn/slchess/internal/aws/storage"
@@ -20,7 +22,10 @@ var storageClient *storage.Client
 
 func init() {
 	cfg, _ := config.LoadDefaultConfig(context.TODO())
-	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg), nil)
+	storageClient = storage.NewClient(
+		dynamodb.NewFromConfig(cfg),
+		athena.NewFromConfig(cfg),
+	)
 }
 
 func handler(
@@ -31,51 +36,61 @@ func handler(
 	error,
 ) {
 	userId := auth.MustAuth(event.RequestContext.Authorizer)
-	targetId := event.PathParameters["id"]
-	if targetId == "" {
-		targetId = userId
+	limit, err := extractParameters(event.QueryStringParameters)
+	if err != nil {
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest},
+			fmt.Errorf("failed to extract parameters: %w", err)
 	}
 
-	targetProfile, err := storageClient.GetUserProfile(ctx, targetId)
+	puzzleProfile, err := storageClient.GetPuzzleProfile(ctx, userId)
 	if err != nil {
-		if errors.Is(err, storage.ErrUserProfileNotFound) {
+		if errors.Is(err, storage.ErrPuzzleProfileNotFound) {
 			return events.APIGatewayProxyResponse{
 				StatusCode: http.StatusNotFound,
-			}, fmt.Errorf("failed to get user profile: %w", err)
+			}, nil
 		}
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("failed to get user profile: %w", err)
+		}, fmt.Errorf("failed to get puzzle profile: %w", err)
 	}
 
-	targetRating, err := storageClient.GetUserRating(ctx, targetId)
+	puzzles, err := storageClient.FetchPuzzles(ctx, puzzleProfile.Rating, limit)
 	if err != nil {
-		if errors.Is(err, storage.ErrUserRatingNotFound) {
-			return events.APIGatewayProxyResponse{
-				StatusCode: http.StatusNotFound,
-			}, fmt.Errorf("failed to get user rating: %w", err)
-		}
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("failed to get user rating: %w", err)
+		}, fmt.Errorf("failed to fetch puzzles: %w", err)
 	}
 
-	// If users request their own information, return in full
-	var getFull bool
-	if userId == targetId {
-		getFull = true
-	}
-	user := dtos.UserResponseFromEntities(targetProfile, targetRating, getFull)
-	userJson, err := json.Marshal(user)
+	resp := dtos.PuzzleListResponseFromEntities(puzzles)
+	respJson, err := json.Marshal(resp)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
 		}, fmt.Errorf("failed to marshal response: %w", err)
 	}
+
 	return events.APIGatewayProxyResponse{
 		StatusCode: http.StatusOK,
-		Body:       string(userJson),
+		Body:       string(respJson),
 	}, nil
+}
+
+func extractParameters(
+	params map[string]string,
+) (
+	int,
+	error,
+) {
+	limit := 10
+	if limitStr, ok := params["limit"]; ok {
+		limitInt64, err := strconv.ParseInt(limitStr, 10, 32)
+		if err != nil {
+			return 0, fmt.Errorf("invalid limit: %v", err)
+		}
+		limit = int(limitInt64)
+	}
+
+	return limit, nil
 }
 
 func main() {

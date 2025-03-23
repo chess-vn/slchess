@@ -17,7 +17,7 @@ var storageClient *storage.Client
 
 func init() {
 	cfg, _ := config.LoadDefaultConfig(context.TODO())
-	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg))
+	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg), nil)
 }
 
 func handler(
@@ -39,6 +39,15 @@ func handler(
 	})
 	if err != nil {
 		return event, fmt.Errorf("failed to put user profile: %w", err)
+	}
+
+	// Initial puzzle profile
+	err = storageClient.PutPuzzleProfile(ctx, entities.PuzzleProfile{
+		UserId: userId,
+		Rating: 300,
+	})
+	if err != nil {
+		return event, fmt.Errorf("failed to put puzzle profile: %w", err)
 	}
 
 	// Default user rating

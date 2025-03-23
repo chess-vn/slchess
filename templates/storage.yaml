@@ -18,10 +18,26 @@ Parameters:
 
 Resources:
   ### S3 ###
+  Puzzles:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${StackName}-${DeploymentStage}-puzzles"
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - "*"
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+              - DELETE
+            AllowedHeaders:
+              - "*"
+
   Images:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: slchess-dev-images
+      BucketName: !Sub "${StackName}-${DeploymentStage}-images"
       CorsConfiguration:
         CorsRules:
           - AllowedOrigins:
@@ -169,6 +185,18 @@ Resources:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: !Sub "${StackName}-${DeploymentStage}-UserProfiles"
+      AttributeDefinitions:
+        - AttributeName: UserId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: UserId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  PuzzleProfiles:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${StackName}-${DeploymentStage}-PuzzleProfiles"
       AttributeDefinitions:
         - AttributeName: UserId
           AttributeType: S
@@ -371,6 +399,11 @@ Outputs:
     Export:
       Name: UserProfilesTableName
 
+  PuzzleProfilesTableName:
+    Value: !Ref PuzzleProfiles
+    Export:
+      Name: PuzzleProfilesTableName
+
   UserRatingsTableName:
     Value: !Ref UserRatings
     Export:
@@ -415,6 +448,11 @@ Outputs:
     Value: !Ref SpectatorConversations
     Export:
       Name: SpectatorConversationsTableName
+
+  PuzzlesBucketName:
+    Value: !Ref Puzzles
+    Export:
+      Name: PuzzlesBucketName
 
   ImagesBucketName:
     Value: !Ref Images

@@ -25,7 +25,7 @@ func init() {
 	if err != nil {
 		log.Fatalf("Failed to load AWS config: %v", err)
 	}
-	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg))
+	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg), nil)
 }
 
 // Handle Stripe Webhook
