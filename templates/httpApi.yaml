@@ -375,6 +375,7 @@ Resources:
       CodeUri: ../cmd/lambda/puzzleGet/
       Handler: bootstrap
       Runtime: provided.al2023
+      Timeout: 15
       Policies:
         - AthenaQueryPolicy:
             WorkGroupName: primary
