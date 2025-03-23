@@ -30,22 +30,21 @@ func handler(
 	events.APIGatewayProxyResponse,
 	error,
 ) {
-	auth.MustAuth(event.RequestContext.Authorizer)
-	matchId := event.PathParameters["id"]
+	userId := auth.MustAuth(event.RequestContext.Authorizer)
 
-	matchRecord, err := storageClient.GetMatchRecord(ctx, matchId)
+	puzzleProfile, err := storageClient.GetPuzzleProfile(ctx, userId)
 	if err != nil {
-		if errors.Is(err, storage.ErrMatchRecordNotFound) {
+		if errors.Is(err, storage.ErrPuzzleProfileNotFound) {
 			return events.APIGatewayProxyResponse{
 				StatusCode: http.StatusNotFound,
 			}, nil
 		}
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("failed to get match record: %w", err)
+		}, fmt.Errorf("failed to get puzzle profile: %w", err)
 	}
 
-	resp := dtos.MatchRecordGetResponseFromEntity(matchRecord)
+	resp := dtos.PuzzleProfileResponseFromEntity(puzzleProfile)
 	respJson, err := json.Marshal(resp)
 	if err != nil {
 		return events.APIGatewayProxyResponse{

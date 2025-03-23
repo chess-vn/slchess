@@ -139,6 +139,29 @@ Resources:
             Method: GET
             ApiId: !Ref HttpApi
 
+  PuzzleProfileGetFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: !Sub "${StackName}-${DeploymentStage}-PuzzleProfileGet"
+      CodeUri: ../cmd/lambda/puzzleProfileGet/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !ImportValue PuzzleProfilesTableName
+      Environment:
+        Variables:
+          PUZZLE_PROFILES_TABLE_NAME: !ImportValue PuzzleProfilesTableName
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /puzzle/profile
+            Method: GET
+            ApiId: !Ref HttpApi
+
   MatchRecordGetFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -341,6 +364,134 @@ Resources:
           Properties:
             Path: /avatar/upload
             Method: POST
+            ApiId: !Ref HttpApi
+
+  PuzzleGetFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: !Sub "${StackName}-${DeploymentStage}-PuzzleGet"
+      CodeUri: ../cmd/lambda/puzzleGet/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Timeout: 15
+      Policies:
+        - AthenaQueryPolicy:
+            WorkGroupName: primary
+        - S3CrudPolicy:
+            BucketName: !ImportValue PuzzlesBucketName
+        - S3CrudPolicy:
+            BucketName: !Ref AWS::StackName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:ListBucket
+              Resource: arn:aws:s3:::slchess
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+              Resource: arn:aws:s3:::slchess/*
+        - Statement:
+            - Effect: Allow
+              Action:
+                - glue:GetDatabase
+                - glue:GetTable
+                - glue:GetTables
+                - glue:GetPartition
+                - glue:GetPartitions
+              Resource: "*"
+      Environment:
+        Variables:
+          ATHENA_DATABASE_NAME: !Sub "${StackName}"
+          PUZZLES_TABLE_NAME: puzzles
+          PUZZLES_RESULT_LOCATION: !Sub
+            - "s3://${PuzzlesBucketName}/"
+            - PuzzlesBucketName: !ImportValue PuzzlesBucketName
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /puzzle/{id}
+            Method: GET
+            ApiId: !Ref HttpApi
+
+  PuzzleSolveFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: !Sub "${StackName}-${DeploymentStage}-PuzzleSolve"
+      CodeUri: ../cmd/lambda/puzzleSolve/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !ImportValue PuzzleProfilesTableName
+      Environment:
+        Variables:
+          PUZZLE_PROFILES_TABLE_NAME: !ImportValue PuzzleProfilesTableName
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /puzzle/{id}/solved
+            Method: POST
+            ApiId: !Ref HttpApi
+
+  PuzzleListFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: !Sub "${StackName}-${DeploymentStage}-PuzzleList"
+      CodeUri: ../cmd/lambda/puzzleList/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Timeout: 60
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !ImportValue PuzzleProfilesTableName
+        - AthenaQueryPolicy:
+            WorkGroupName: primary
+        - S3CrudPolicy:
+            BucketName: !ImportValue PuzzlesBucketName
+        - S3CrudPolicy:
+            BucketName: !Ref AWS::StackName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:ListBucket
+              Resource: arn:aws:s3:::slchess
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+              Resource: arn:aws:s3:::slchess/*
+        - Statement:
+            - Effect: Allow
+              Action:
+                - glue:GetDatabase
+                - glue:GetTable
+                - glue:GetTables
+                - glue:GetPartition
+                - glue:GetPartitions
+              Resource: "*"
+      Environment:
+        Variables:
+          PUZZLE_PROFILES_TABLE_NAME: !ImportValue PuzzleProfilesTableName
+          ATHENA_DATABASE_NAME: !Sub "${StackName}"
+          PUZZLES_TABLE_NAME: puzzles
+          PUZZLES_RESULT_LOCATION: !Sub
+            - "s3://${PuzzlesBucketName}/"
+            - PuzzlesBucketName: !ImportValue PuzzlesBucketName
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /puzzles
+            Method: GET
             ApiId: !Ref HttpApi
 
   CreateCheckoutSessionFunction:

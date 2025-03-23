@@ -39,7 +39,7 @@ var (
 func init() {
 	cfg, _ = config.LoadDefaultConfig(context.TODO())
 	s3Client = s3.NewFromConfig(cfg)
-	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg))
+	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg), nil)
 }
 
 func handle(ctx context.Context, s3Event events.S3Event) error {

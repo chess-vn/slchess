@@ -70,6 +70,7 @@ func NewServer() *server {
 		cognitoPublicKeys: cognitoPublicKeys,
 		storageClient: storage.NewClient(
 			dynamodb.NewFromConfig(awsCfg),
+			nil,
 		),
 		computeClient: compute.NewClient(
 			ecs.NewFromConfig(awsCfg),
