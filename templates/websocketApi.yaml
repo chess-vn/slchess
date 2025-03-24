@@ -33,6 +33,7 @@ Resources:
       - ConnectRoute
       - DisconnectRoute
       - QueuingRoute
+      - FenAnalyseRoute
 
   SlchessWebsocketApiStage:
     Type: AWS::ApiGatewayV2::Stage
@@ -190,7 +191,7 @@ Resources:
     Properties:
       ApiId: !Ref WebsocketApi
       IntegrationType: AWS_PROXY
-      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${QueuingFunction.Arn}/invocations"
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FenAnalyseFunction.Arn}/invocations"
 
   FenAnalyseFunction:
     Type: AWS::Serverless::Function
@@ -204,8 +205,15 @@ Resources:
       Policies:
         - SQSSendMessagePolicy:
             QueueName: !ImportValue FenQueueName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - "execute-api:ManageConnections"
+              Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebsocketApi}/*"
       Environment:
         Variables:
+          WEBSOCKET_API_ID: !Ref WebsocketApi
+          WEBSOCKET_API_STAGE: !Ref DeploymentStage
           FEN_QUEUE_URL: !ImportValue FenQueueUrl
 
   FenAnalyseFunctionPermission:
