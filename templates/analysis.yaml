@@ -1,0 +1,27 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Analysis Stack for Slchess
+
+Parameters:
+  StackName:
+    Type: String
+  DeploymentStage:
+    Type: String
+    Default: dev
+
+Resources:
+  FenQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${StackName}-${DeploymentStage}-FenQueue"
+
+Outputs:
+  FenQueueName:
+    Value: !GetAtt FenQueue.QueueName
+    Export:
+      Name: FenQueueName
+
+  FenQueueUrl:
+    Value: !Ref FenQueue
+    Export:
+      Name: FenQueueUrl

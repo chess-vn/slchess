@@ -4,13 +4,11 @@ import (
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/athena"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 )
 
 type Client struct {
 	dynamodb *dynamodb.Client
-	athena   *athena.Client
 	cfg      config
 }
 
@@ -28,16 +26,11 @@ type config struct {
 	SpectatorConversationsTableName *string
 	UserConversationsTableName      *string
 	PuzzleProfilesTableName         *string
-
-	AthenaDatabaseName    *string
-	PuzzlesTableName      *string
-	PuzzlesResultLocation *string
 }
 
-func NewClient(dynamoClient *dynamodb.Client, athenaClient *athena.Client) *Client {
+func NewClient(dynamoClient *dynamodb.Client) *Client {
 	return &Client{
 		dynamodb: dynamoClient,
-		athena:   athenaClient,
 		cfg:      loadConfig(),
 	}
 }
@@ -82,15 +75,6 @@ func loadConfig() config {
 	}
 	if v, ok := os.LookupEnv("PUZZLE_PROFILES_TABLE_NAME"); ok {
 		cfg.PuzzleProfilesTableName = aws.String(v)
-	}
-	if v, ok := os.LookupEnv("ATHENA_DATABASE_NAME"); ok {
-		cfg.AthenaDatabaseName = aws.String(v)
-	}
-	if v, ok := os.LookupEnv("PUZZLES_TABLE_NAME"); ok {
-		cfg.PuzzlesTableName = aws.String(v)
-	}
-	if v, ok := os.LookupEnv("PUZZLES_RESULT_LOCATION"); ok {
-		cfg.PuzzlesResultLocation = aws.String(v)
 	}
 	return cfg
 }

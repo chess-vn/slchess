@@ -176,6 +176,46 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebsocketApi}/*/queuing"
 
+  ### Fen Analyse ###
+  FenAnalyseRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebsocketApi
+      RouteKey: fenAnalyse
+      AuthorizationType: NONE
+      Target: !Sub "integrations/${FenAnalyseIntegration}"
+
+  FenAnalyseIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebsocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${QueuingFunction.Arn}/invocations"
+
+  FenAnalyseFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: !Sub "${StackName}-${DeploymentStage}-FenAnalyse"
+      CodeUri: ../cmd/lambda/fenAnalyse/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !ImportValue FenQueueName
+      Environment:
+        Variables:
+          FEN_QUEUE_URL: !ImportValue FenQueueUrl
+
+  FenAnalyseFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref FenAnalyseFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebsocketApi}/*/fenAnalyse"
+
   ### IAM Role ###
   ApiGatewayRole:
     Type: AWS::IAM::Role

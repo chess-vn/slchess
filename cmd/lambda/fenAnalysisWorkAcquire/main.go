@@ -9,9 +9,8 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/athena"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/chess-vn/slchess/internal/aws/analysis"
-	"github.com/chess-vn/slchess/internal/aws/auth"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
 )
 
@@ -20,8 +19,8 @@ var analysisClient *analysis.Client
 func init() {
 	cfg, _ := config.LoadDefaultConfig(context.TODO())
 	analysisClient = analysis.NewClient(
-		athena.NewFromConfig(cfg),
 		nil,
+		sqs.NewFromConfig(cfg),
 	)
 }
 
@@ -32,17 +31,14 @@ func handler(
 	events.APIGatewayProxyResponse,
 	error,
 ) {
-	auth.MustAuth(event.RequestContext.Authorizer)
-	puzzleId := event.PathParameters["id"]
-
-	puzzle, err := analysisClient.GetPuzzle(ctx, puzzleId)
+	work, err := analysisClient.AcquireFenAnalysisWork(ctx)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("failed to get puzzle: %w", err)
+		}, fmt.Errorf("failed to acquire work : %w", err)
 	}
 
-	resp := dtos.PuzzleResponseFromEntity(puzzle)
+	resp := dtos.FenAnalysisWorkResponseFromEntity(work)
 	respJson, err := json.Marshal(resp)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
