@@ -11,6 +11,8 @@ import (
 	"github.com/chess-vn/slchess/internal/domains/entities"
 )
 
+var ErrEvaluationWorkNotFound = fmt.Errorf("evaluation work not found")
+
 func (client *Client) SubmitEvaluationRequest(
 	ctx context.Context,
 	request dtos.EvaluationRequest,
@@ -40,9 +42,8 @@ func (client *Client) AcquireEvaluationWork(ctx context.Context) (entities.Evalu
 		return entities.EvaluationWork{},
 			fmt.Errorf("failed to receive message: %w", err)
 	}
-	if len(output.Messages) < 1 {
-		return entities.EvaluationWork{},
-			fmt.Errorf("invalid message array length")
+	if len(output.Messages) == 0 {
+		return entities.EvaluationWork{}, ErrEvaluationWorkNotFound
 	}
 
 	var req dtos.EvaluationRequest

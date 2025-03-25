@@ -34,6 +34,12 @@ func LoadConfig() (Config, error) {
 	}
 	cfg.StockfishPath = viper.GetString("STOCKFISH_PATH")
 
+	logging.Info(
+		"config loaded",
+		zap.String("base_url", cfg.BaseUrl.String()),
+		zap.String("stockfish_path", cfg.StockfishPath),
+	)
+
 	return cfg, nil
 }
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/chess-vn/slchess/internal/app/stofinet"
 	"github.com/chess-vn/slchess/pkg/logging"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -24,5 +25,5 @@ func main() {
 
 	client := stofinet.NewClient()
 
-	client.Start(ctx)
+	logging.Fatal("failed to start", zap.Error(client.Start(ctx)))
 }

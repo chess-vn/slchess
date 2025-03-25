@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -33,6 +34,11 @@ func handler(
 ) {
 	evaluationWork, err := analysisClient.AcquireEvaluationWork(ctx)
 	if err != nil {
+		if errors.Is(err, analysis.ErrEvaluationWorkNotFound) {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusNotFound,
+			}, nil
+		}
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
 		}, fmt.Errorf("failed to acquire work : %w", err)

@@ -575,6 +575,8 @@ Resources:
           Type: HttpApi
           Properties:
             Path: /stofinet/acquire
+            Auth:
+              Authorizer: NONE
             Method: GET
             ApiId: !Ref HttpApi
 
@@ -589,6 +591,8 @@ Resources:
       Runtime: provided.al2023
       Timeout: 30
       Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !ImportValue EvaluationsTableName
         - Statement:
             - Effect: Allow
               Action:
@@ -607,6 +611,8 @@ Resources:
           Type: HttpApi
           Properties:
             Path: /stofinet/evaluation
+            Auth:
+              Authorizer: NONE
             Method: POST
             ApiId: !Ref HttpApi
 
