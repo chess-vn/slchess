@@ -57,7 +57,6 @@ func handler(
 	events.APIGatewayProxyResponse,
 	error,
 ) {
-	connectionId := event.PathParameters["id"]
 	var submission dtos.EvaluationSubmission
 	err := json.Unmarshal([]byte(event.Body), &submission)
 	if err != nil {
@@ -77,7 +76,7 @@ func handler(
 	_, err = apigatewayClient.PostToConnection(
 		ctx,
 		&apigatewaymanagementapi.PostToConnectionInput{
-			ConnectionId: aws.String(connectionId),
+			ConnectionId: aws.String(submission.ConnectionId),
 			Data:         evalJson,
 		},
 	)
@@ -93,6 +92,8 @@ func handler(
 			StatusCode: http.StatusInternalServerError,
 		}, fmt.Errorf("failed to put evaluation: %w", err)
 	}
+
+	analysisClient.RemoveEvaluationWork(ctx, submission.ReceiptHandle)
 
 	return events.APIGatewayProxyResponse{
 		StatusCode: http.StatusOK,

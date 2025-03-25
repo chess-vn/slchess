@@ -37,13 +37,16 @@ type EvaluationRequest struct {
 }
 
 type EvaluationWorkResponse struct {
-	ConnectionId string `json:"connectionId"`
-	Fen          string `json:"fen"`
+	ConnectionId  string `json:"connectionId"`
+	Fen           string `json:"fen"`
+	ReceiptHandle string `json:"receiptHandle"`
 }
 
 type EvaluationSubmission struct {
-	Fen     string      `json:"fen"`
-	Results uci.Results `json:"results"`
+	ConnectionId  string      `json:"connectionId"`
+	Fen           string      `json:"fen"`
+	ReceiptHandle string      `json:"receiptHandle"`
+	Results       uci.Results `json:"results"`
 }
 
 func EvaluationWorkFromRequest(req EvaluationRequest) entities.EvaluationWork {
@@ -55,8 +58,9 @@ func EvaluationWorkFromRequest(req EvaluationRequest) entities.EvaluationWork {
 
 func EvaluationWorkResponseFromEntity(work entities.EvaluationWork) EvaluationWorkResponse {
 	return EvaluationWorkResponse{
-		ConnectionId: work.ConnectionId,
-		Fen:          work.Fen,
+		ConnectionId:  work.ConnectionId,
+		Fen:           work.Fen,
+		ReceiptHandle: work.ReceiptHandle,
 	}
 }
 

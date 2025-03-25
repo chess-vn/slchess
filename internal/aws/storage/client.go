@@ -77,7 +77,7 @@ func loadConfig() config {
 	if v, ok := os.LookupEnv("PUZZLE_PROFILES_TABLE_NAME"); ok {
 		cfg.PuzzleProfilesTableName = aws.String(v)
 	}
-	if v, ok := os.LookupEnv("EVALUTIONS_TABLE_NAME"); ok {
+	if v, ok := os.LookupEnv("EVALUATIONS_TABLE_NAME"); ok {
 		cfg.EvaluationsTableName = aws.String(v)
 	}
 	return cfg

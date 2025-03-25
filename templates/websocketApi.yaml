@@ -182,7 +182,7 @@ Resources:
     Type: AWS::ApiGatewayV2::Route
     Properties:
       ApiId: !Ref WebsocketApi
-      RouteKey: fenAnalyse
+      RouteKey: evaluate
       AuthorizationType: NONE
       Target: !Sub "integrations/${EvaluateIntegration}"
 
@@ -203,6 +203,8 @@ Resources:
       Handler: bootstrap
       Runtime: provided.al2023
       Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !ImportValue EvaluationsTableName
         - SQSSendMessagePolicy:
             QueueName: !ImportValue EvaluationRequestQueueName
         - Statement:

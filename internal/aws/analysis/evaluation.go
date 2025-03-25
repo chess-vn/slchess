@@ -52,5 +52,20 @@ func (client *Client) AcquireEvaluationWork(ctx context.Context) (entities.Evalu
 			fmt.Errorf("failed to unmarshal message: %w", err)
 	}
 
-	return dtos.EvaluationWorkFromRequest(req), nil
+	evaluationWork := dtos.EvaluationWorkFromRequest(req)
+	evaluationWork.ReceiptHandle = *output.Messages[0].ReceiptHandle
+
+	return evaluationWork, nil
+}
+
+func (client *Client) RemoveEvaluationWork(ctx context.Context, receiptHandle string) error {
+	_, err := client.sqs.DeleteMessage(ctx, &sqs.DeleteMessageInput{
+		QueueUrl:      client.cfg.EvaluationRequestQueueUrl,
+		ReceiptHandle: aws.String(""),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to delete message: %w", err)
+	}
+
+	return nil
 }

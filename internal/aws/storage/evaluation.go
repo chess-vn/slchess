@@ -33,7 +33,7 @@ func (client *Client) GetEvaluation(
 		return entities.Evaluation{}, err
 	}
 	if output.Item == nil {
-		return entities.Evaluation{}, ErrMatchRecordNotFound
+		return entities.Evaluation{}, ErrEvaluationNotFound
 	}
 	var eval entities.Evaluation
 	if err := attributevalue.UnmarshalMap(output.Item, &eval); err != nil {

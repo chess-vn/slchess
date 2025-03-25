@@ -13,6 +13,7 @@ type Evaluation struct {
 }
 
 type EvaluationWork struct {
-	ConnectionId string
-	Fen          string
+	ConnectionId  string
+	Fen           string
+	ReceiptHandle string
 }

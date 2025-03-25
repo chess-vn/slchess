@@ -67,8 +67,7 @@ func handler(
 ) {
 	connectionId := aws.String(event.RequestContext.ConnectionID)
 	var body Body
-	err := json.Unmarshal([]byte(event.Body), &body)
-	if err != nil {
+	if err := json.Unmarshal([]byte(event.Body), &body); err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
 		}, fmt.Errorf("failed to unmarshal body: %w", err)
@@ -76,8 +75,7 @@ func handler(
 	fen := body.Message
 
 	// Query from lichess
-	eval, err := lichessClient.CloudEvaluate(fen)
-	if err == nil {
+	if eval, err := lichessClient.CloudEvaluate(fen); err == nil {
 		resp := dtos.EvaluationResponseFromEntity(eval)
 		respJson, err := json.Marshal(resp)
 		if err != nil {
@@ -106,8 +104,7 @@ func handler(
 	}
 
 	// If not found, check in dynamodb table
-	eval, err = storageClient.GetEvaluation(ctx, fen)
-	if err == nil {
+	if eval, err := storageClient.GetEvaluation(ctx, fen); err == nil {
 		resp := dtos.EvaluationResponseFromEntity(eval)
 		respJson, err := json.Marshal(resp)
 		if err != nil {
@@ -136,11 +133,13 @@ func handler(
 	}
 
 	// If no cached evaluation found, submit request for new evaluation
-	err = analysisClient.SubmitEvaluationRequest(ctx, dtos.EvaluationRequest{
-		ConnectionId: *connectionId,
-		Fen:          fen,
-	})
-	if err != nil {
+	if err := analysisClient.SubmitEvaluationRequest(
+		ctx,
+		dtos.EvaluationRequest{
+			ConnectionId: *connectionId,
+			Fen:          fen,
+		},
+	); err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
 		}, fmt.Errorf("failed to submit evaluation request: %w", err)
