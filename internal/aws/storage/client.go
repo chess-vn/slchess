@@ -26,6 +26,7 @@ type config struct {
 	SpectatorConversationsTableName *string
 	UserConversationsTableName      *string
 	PuzzleProfilesTableName         *string
+	EvaluationsTableName            *string
 }
 
 func NewClient(dynamoClient *dynamodb.Client) *Client {
@@ -75,6 +76,9 @@ func loadConfig() config {
 	}
 	if v, ok := os.LookupEnv("PUZZLE_PROFILES_TABLE_NAME"); ok {
 		cfg.PuzzleProfilesTableName = aws.String(v)
+	}
+	if v, ok := os.LookupEnv("EVALUTIONS_TABLE_NAME"); ok {
+		cfg.EvaluationsTableName = aws.String(v)
 	}
 	return cfg
 }

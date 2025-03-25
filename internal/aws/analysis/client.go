@@ -15,11 +15,11 @@ type Client struct {
 }
 
 type config struct {
-	AthenaDatabaseName    *string
-	PuzzlesTableName      *string
-	PuzzlesResultLocation *string
-	FenQueueName          *string
-	FenQueueUrl           *string
+	AthenaDatabaseName         *string
+	PuzzlesTableName           *string
+	PuzzlesResultLocation      *string
+	EvaluationRequestQueueName *string
+	EvaluationRequestQueueUrl  *string
 }
 
 func NewClient(athenaClient *athena.Client, sqsClient *sqs.Client) *Client {
@@ -41,11 +41,11 @@ func loadConfig() config {
 	if v, ok := os.LookupEnv("PUZZLES_RESULT_LOCATION"); ok {
 		cfg.PuzzlesResultLocation = aws.String(v)
 	}
-	if v, ok := os.LookupEnv("FEN_QUEUE_NAME"); ok {
-		cfg.FenQueueName = aws.String(v)
+	if v, ok := os.LookupEnv("EVALUATION_REQUEST_QUEUE_NAME"); ok {
+		cfg.EvaluationRequestQueueName = aws.String(v)
 	}
-	if v, ok := os.LookupEnv("FEN_QUEUE_URL"); ok {
-		cfg.FenQueueUrl = aws.String(v)
+	if v, ok := os.LookupEnv("EVALUATION_REQUEST_QUEUE_URL"); ok {
+		cfg.EvaluationRequestQueueUrl = aws.String(v)
 	}
 	return cfg
 }

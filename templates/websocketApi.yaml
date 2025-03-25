@@ -33,7 +33,7 @@ Resources:
       - ConnectRoute
       - DisconnectRoute
       - QueuingRoute
-      - FenAnalyseRoute
+      - EvaluateRoute
 
   SlchessWebsocketApiStage:
     Type: AWS::ApiGatewayV2::Stage
@@ -177,34 +177,34 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebsocketApi}/*/queuing"
 
-  ### Fen Analyse ###
-  FenAnalyseRoute:
+  ### Evaluation ###
+  EvaluateRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
       ApiId: !Ref WebsocketApi
       RouteKey: fenAnalyse
       AuthorizationType: NONE
-      Target: !Sub "integrations/${FenAnalyseIntegration}"
+      Target: !Sub "integrations/${EvaluateIntegration}"
 
-  FenAnalyseIntegration:
+  EvaluateIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
       ApiId: !Ref WebsocketApi
       IntegrationType: AWS_PROXY
-      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FenAnalyseFunction.Arn}/invocations"
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${EvaluateFunction.Arn}/invocations"
 
-  FenAnalyseFunction:
+  EvaluateFunction:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: go1.x
     Properties:
-      FunctionName: !Sub "${StackName}-${DeploymentStage}-FenAnalyse"
-      CodeUri: ../cmd/lambda/fenAnalyse/
+      FunctionName: !Sub "${StackName}-${DeploymentStage}-Evaluate"
+      CodeUri: ../cmd/lambda/evaluate/
       Handler: bootstrap
       Runtime: provided.al2023
       Policies:
         - SQSSendMessagePolicy:
-            QueueName: !ImportValue FenQueueName
+            QueueName: !ImportValue EvaluationRequestQueueName
         - Statement:
             - Effect: Allow
               Action:
@@ -214,15 +214,16 @@ Resources:
         Variables:
           WEBSOCKET_API_ID: !Ref WebsocketApi
           WEBSOCKET_API_STAGE: !Ref DeploymentStage
-          FEN_QUEUE_URL: !ImportValue FenQueueUrl
+          EVALUATION_REQUEST_QUEUE_URL: !ImportValue EvaluationRequestQueueUrl
+          EVALUATIONS_TABLE_NAME: !ImportValue EvaluationsTableName
 
-  FenAnalyseFunctionPermission:
+  EvaluateFunctionPermission:
     Type: AWS::Lambda::Permission
     Properties:
       Action: lambda:InvokeFunction
-      FunctionName: !Ref FenAnalyseFunction
+      FunctionName: !Ref EvaluateFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebsocketApi}/*/fenAnalyse"
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebsocketApi}/*/evaluate"
 
   ### IAM Role ###
   ApiGatewayRole:

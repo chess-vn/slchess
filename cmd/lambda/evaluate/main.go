@@ -13,13 +13,16 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewaymanagementapi"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/chess-vn/slchess/internal/app/lichess"
 	"github.com/chess-vn/slchess/internal/aws/analysis"
+	"github.com/chess-vn/slchess/internal/aws/storage"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
 )
 
 var (
+	storageClient    *storage.Client
 	analysisClient   *analysis.Client
 	lichessClient    *lichess.Client
 	apigatewayClient *apigatewaymanagementapi.Client
@@ -36,6 +39,7 @@ type Body struct {
 
 func init() {
 	cfg, _ := config.LoadDefaultConfig(context.TODO())
+	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg))
 	analysisClient = analysis.NewClient(
 		nil,
 		sqs.NewFromConfig(cfg),
@@ -71,6 +75,7 @@ func handler(
 	}
 	fen := body.Message
 
+	// Query from lichess
 	eval, err := lichessClient.CloudEvaluate(fen)
 	if err == nil {
 		resp := dtos.EvaluationResponseFromEntity(eval)
@@ -100,14 +105,45 @@ func handler(
 		}
 	}
 
-	err = analysisClient.SubmitFenAnalyseRequest(ctx, dtos.FenAnalyseRequest{
-		Id:  event.RequestContext.ConnectionID,
-		Fen: fen,
+	// If not found, check in dynamodb table
+	eval, err = storageClient.GetEvaluation(ctx, fen)
+	if err == nil {
+		resp := dtos.EvaluationResponseFromEntity(eval)
+		respJson, err := json.Marshal(resp)
+		if err != nil {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusInternalServerError,
+			}, fmt.Errorf("failed to marshal response: %w", err)
+		}
+		_, err = apigatewayClient.PostToConnection(
+			ctx,
+			&apigatewaymanagementapi.PostToConnectionInput{
+				ConnectionId: connectionId,
+				Data:         respJson,
+			},
+		)
+		if err != nil {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusInternalServerError,
+			}, fmt.Errorf("failed to post to connection: %w", err)
+		}
+	} else {
+		if !errors.Is(err, storage.ErrEvaluationNotFound) {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusInternalServerError,
+			}, fmt.Errorf("failed to get evaluation: %w", err)
+		}
+	}
+
+	// If no cached evaluation found, submit request for new evaluation
+	err = analysisClient.SubmitEvaluationRequest(ctx, dtos.EvaluationRequest{
+		ConnectionId: *connectionId,
+		Fen:          fen,
 	})
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("failed to submit request : %w", err)
+		}, fmt.Errorf("failed to submit evaluation request: %w", err)
 	}
 
 	return events.APIGatewayProxyResponse{

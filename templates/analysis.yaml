@@ -10,18 +10,18 @@ Parameters:
     Default: dev
 
 Resources:
-  FenQueue:
+  EvaluationRequestQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: !Sub "${StackName}-${DeploymentStage}-FenQueue"
+      QueueName: !Sub "${StackName}-${DeploymentStage}-EvaluationRequestQueue"
 
 Outputs:
-  FenQueueName:
-    Value: !GetAtt FenQueue.QueueName
+  EvaluationWorkQueueName:
+    Value: !GetAtt EvaluationRequestQueue.QueueName
     Export:
-      Name: FenQueueName
+      Name: EvaluationRequestQueueName
 
-  FenQueueUrl:
-    Value: !Ref FenQueue
+  EvaluationRequestQueueUrl:
+    Value: !Ref EvaluationRequestQueue
     Export:
-      Name: FenQueueUrl
+      Name: EvaluationRequestQueueUrl

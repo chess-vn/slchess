@@ -11,16 +11,16 @@ import (
 	"github.com/chess-vn/slchess/internal/domains/entities"
 )
 
-func (client *Client) SubmitFenAnalyseRequest(
+func (client *Client) SubmitEvaluationRequest(
 	ctx context.Context,
-	request dtos.FenAnalyseRequest,
+	request dtos.EvaluationRequest,
 ) error {
 	reqJson, err := json.Marshal(request)
 	if err != nil {
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 	_, err = client.sqs.SendMessage(ctx, &sqs.SendMessageInput{
-		QueueUrl:    client.cfg.FenQueueUrl,
+		QueueUrl:    client.cfg.EvaluationRequestQueueUrl,
 		MessageBody: aws.String(string(reqJson)),
 	})
 	if err != nil {
@@ -29,28 +29,28 @@ func (client *Client) SubmitFenAnalyseRequest(
 	return nil
 }
 
-func (client *Client) AcquireFenAnalysisWork(ctx context.Context) (entities.FenAnalysisWork, error) {
+func (client *Client) AcquireEvaluationWork(ctx context.Context) (entities.EvaluationWork, error) {
 	output, err := client.sqs.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
-		QueueUrl:            client.cfg.FenQueueUrl,
+		QueueUrl:            client.cfg.EvaluationRequestQueueUrl,
 		MaxNumberOfMessages: 1,
 		WaitTimeSeconds:     20,
 		VisibilityTimeout:   60,
 	})
 	if err != nil {
-		return entities.FenAnalysisWork{},
+		return entities.EvaluationWork{},
 			fmt.Errorf("failed to receive message: %w", err)
 	}
 	if len(output.Messages) < 1 {
-		return entities.FenAnalysisWork{},
+		return entities.EvaluationWork{},
 			fmt.Errorf("invalid message array length")
 	}
 
-	var req dtos.FenAnalyseRequest
+	var req dtos.EvaluationRequest
 	err = json.Unmarshal([]byte(*output.Messages[0].Body), &req)
 	if err != nil {
-		return entities.FenAnalysisWork{},
+		return entities.EvaluationWork{},
 			fmt.Errorf("failed to unmarshal message: %w", err)
 	}
 
-	return dtos.FenAnalysisRequestToEntity(req), nil
+	return dtos.EvaluationWorkFromRequest(req), nil
 }

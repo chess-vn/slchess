@@ -6,9 +6,20 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/internal/domains/entities"
 )
+
+type Pv struct {
+	Cp    int    `json:"cp"`
+	Moves string `json:"moves"`
+}
+
+type Evaluation struct {
+	Fen    string `json:"fen"`
+	Depth  int    `json:"depth"`
+	Knodes int    `json:"knodes"`
+	Pvs    []Pv   `json:"pvs"`
+}
 
 var ErrEvaluationNotFound = fmt.Errorf("evaluation not found")
 
@@ -40,12 +51,12 @@ func (client *Client) CloudEvaluate(fen string) (entities.Evaluation, error) {
 	case http.StatusNotFound:
 		return entities.Evaluation{}, ErrEvaluationNotFound
 	case http.StatusOK:
-		var eval dtos.EvaluationLichess
+		var eval Evaluation
 		err := json.NewDecoder(resp.Body).Decode(&eval)
 		if err != nil {
 			return entities.Evaluation{}, fmt.Errorf("failed to decode body: %w", err)
 		}
-		return dtos.EvaluationLichessToEntity(eval), nil
+		return EvaluationLichessToEntity(eval), nil
 	default:
 		return entities.Evaluation{}, fmt.Errorf("unknown response status code")
 	}

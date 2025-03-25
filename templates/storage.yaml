@@ -388,6 +388,21 @@ Resources:
           KeyType: RANGE
       BillingMode: PAY_PER_REQUEST
 
+  Evaluations:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${StackName}-${DeploymentStage}-Evaluations"
+      AttributeDefinitions:
+        - AttributeName: Fen
+          AttributeType: S
+      KeySchema:
+        - AttributeName: Fen
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: TTL
+        Enabled: true
+      BillingMode: PAY_PER_REQUEST
+
 Outputs:
   ConnectionsTableName:
     Value: !Ref Connections
@@ -448,6 +463,11 @@ Outputs:
     Value: !Ref SpectatorConversations
     Export:
       Name: SpectatorConversationsTableName
+
+  EvaluationsTableName:
+    Value: !Ref Evaluations
+    Export:
+      Name: EvaluationsTableName
 
   PuzzlesBucketName:
     Value: !Ref Puzzles

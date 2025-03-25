@@ -31,14 +31,14 @@ func handler(
 	events.APIGatewayProxyResponse,
 	error,
 ) {
-	work, err := analysisClient.AcquireFenAnalysisWork(ctx)
+	work, err := analysisClient.AcquireEvaluationWork(ctx)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
 		}, fmt.Errorf("failed to acquire work : %w", err)
 	}
 
-	resp := dtos.FenAnalysisWorkResponseFromEntity(work)
+	resp := dtos.EvaluationWorkResponseFromEntity(work)
 	respJson, err := json.Marshal(resp)
 	if err != nil {
 		return events.APIGatewayProxyResponse{

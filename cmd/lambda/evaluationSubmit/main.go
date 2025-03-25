@@ -6,20 +6,24 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewaymanagementapi"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/chess-vn/slchess/internal/aws/analysis"
+	"github.com/chess-vn/slchess/internal/aws/storage"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
 )
 
 var (
 	apigatewayClient *apigatewaymanagementapi.Client
 	analysisClient   *analysis.Client
+	storageClient    *storage.Client
 
 	region            = os.Getenv("AWS_REGION")
 	websocketApiId    = os.Getenv("WEBSOCKET_API_ID")
@@ -43,6 +47,7 @@ func init() {
 		nil,
 		sqs.NewFromConfig(cfg),
 	)
+	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg))
 }
 
 func handler(
@@ -53,15 +58,17 @@ func handler(
 	error,
 ) {
 	connectionId := event.PathParameters["id"]
-	var req dtos.FenAnalysisSubmission
-	err := json.Unmarshal([]byte(event.Body), &req)
+	var submission dtos.EvaluationSubmission
+	err := json.Unmarshal([]byte(event.Body), &submission)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
 		}, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 
-	analysisJson, err := json.Marshal(req.Results)
+	eval := dtos.EvaluationSubmissionToEntity(submission)
+
+	evalJson, err := json.Marshal(dtos.EvaluationResponseFromEntity(eval))
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
@@ -71,13 +78,20 @@ func handler(
 		ctx,
 		&apigatewaymanagementapi.PostToConnectionInput{
 			ConnectionId: aws.String(connectionId),
-			Data:         analysisJson,
+			Data:         evalJson,
 		},
 	)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
 		}, fmt.Errorf("failed to post to connect: %w", err)
+	}
+
+	err = storageClient.PutEvaluation(ctx, eval, 24*time.Hour)
+	if err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("failed to put evaluation: %w", err)
 	}
 
 	return events.APIGatewayProxyResponse{

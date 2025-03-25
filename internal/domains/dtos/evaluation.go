@@ -1,7 +1,10 @@
 package dtos
 
 import (
+	"strings"
+
 	"github.com/chess-vn/slchess/internal/domains/entities"
+	"github.com/freeeve/uci"
 )
 
 type PvLichess struct {
@@ -28,20 +31,50 @@ type EvaluationResponse struct {
 	Pvs    []PvResponse `json:"pvs"`
 }
 
-func EvaluationLichessToEntity(eval EvaluationLichess) entities.Evaluation {
-	v := entities.Evaluation{
-		Fen:    eval.Fen,
-		Depth:  eval.Depth,
-		Knodes: eval.Knodes,
-		Pvs:    make([]entities.Pv, 0, len(eval.Pvs)),
+type EvaluationRequest struct {
+	ConnectionId string `json:"connectionId"`
+	Fen          string `json:"fen"`
+}
+
+type EvaluationWorkResponse struct {
+	ConnectionId string `json:"connectionId"`
+	Fen          string `json:"fen"`
+}
+
+type EvaluationSubmission struct {
+	Fen     string      `json:"fen"`
+	Results uci.Results `json:"results"`
+}
+
+func EvaluationWorkFromRequest(req EvaluationRequest) entities.EvaluationWork {
+	return entities.EvaluationWork{
+		ConnectionId: req.ConnectionId,
+		Fen:          req.Fen,
 	}
-	for _, pv := range eval.Pvs {
-		v.Pvs = append(v.Pvs, entities.Pv{
-			Cp:    pv.Cp,
-			Moves: pv.Moves,
-		})
+}
+
+func EvaluationWorkResponseFromEntity(work entities.EvaluationWork) EvaluationWorkResponse {
+	return EvaluationWorkResponse{
+		ConnectionId: work.ConnectionId,
+		Fen:          work.Fen,
 	}
-	return v
+}
+
+func EvaluationSubmissionToEntity(submission EvaluationSubmission) entities.Evaluation {
+	eval := entities.Evaluation{
+		Fen:    submission.Fen,
+		Depth:  submission.Results.Results[0].Depth,
+		Knodes: submission.Results.Results[0].Nodes,
+		Pvs:    make([]entities.Pv, len(submission.Results.Results)),
+	}
+	for _, result := range submission.Results.Results {
+		pv := entities.Pv{
+			Cp:    result.Score,
+			Moves: strings.Join(result.BestMoves, " "),
+		}
+		eval.Pvs = append(eval.Pvs, pv)
+	}
+	return eval
 }
 
 func EvaluationResponseFromEntity(eval entities.Evaluation) EvaluationResponse {
