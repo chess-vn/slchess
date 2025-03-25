@@ -1,0 +1,28 @@
+package main
+
+import (
+	"context"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/chess-vn/slchess/internal/app/stofinet"
+	"github.com/chess-vn/slchess/pkg/logging"
+)
+
+func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan // Wait for a signal
+		logging.Info("terminating")
+		cancel() // Cancel the context
+	}()
+
+	client := stofinet.NewClient()
+
+	client.Start(ctx)
+}

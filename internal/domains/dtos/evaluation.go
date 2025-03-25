@@ -43,10 +43,10 @@ type EvaluationWorkResponse struct {
 }
 
 type EvaluationSubmission struct {
-	ConnectionId  string      `json:"connectionId"`
-	Fen           string      `json:"fen"`
-	ReceiptHandle string      `json:"receiptHandle"`
-	Results       uci.Results `json:"results"`
+	ConnectionId  string       `json:"connectionId"`
+	Fen           string       `json:"fen"`
+	ReceiptHandle string       `json:"receiptHandle"`
+	Results       *uci.Results `json:"results"`
 }
 
 func EvaluationWorkFromRequest(req EvaluationRequest) entities.EvaluationWork {

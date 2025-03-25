@@ -56,7 +56,7 @@ func TestMain(m *testing.M) {
 
 func TestGameServer(t *testing.T) {
 	matchId, serverIp := testMatchmaking(t)
-	<-time.After(10 * time.Second)
+	time.Sleep(10 * time.Second)
 
 	if os.Getenv("LOCAL") != "" {
 		serverIp = "localhost"
@@ -94,7 +94,7 @@ func TestGameServer(t *testing.T) {
 				logging.Fatal(err.Error())
 			}
 			if i == len(player1Msgs) {
-				<-time.After(2 * time.Second)
+				time.Sleep(2 * time.Second)
 				return
 			}
 			msg := player1Msgs[i]
@@ -116,7 +116,7 @@ func TestGameServer(t *testing.T) {
 			fen, err := utils.ParseFEN(gameState.Game.Fen)
 			require.NoError(t, err)
 			if i == len(player2Msgs) {
-				<-time.After(2 * time.Second)
+				time.Sleep(2 * time.Second)
 				return
 			}
 			msg := player2Msgs[i]

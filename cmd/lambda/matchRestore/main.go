@@ -81,7 +81,7 @@ func handler(
 		if err == nil {
 			break
 		}
-		<-time.After(5 * time.Second)
+		time.Sleep(5 * time.Second)
 	}
 	if err != nil {
 		return events.APIGatewayProxyResponse{
