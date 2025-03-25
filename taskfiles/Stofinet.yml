@@ -31,7 +31,6 @@ tasks:
   local:
     desc: Run the game server locally
     deps:
-      - utils:check-base-env
       - utils:check-stofinet-env
     cmds:
       - go mod download

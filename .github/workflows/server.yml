@@ -2,7 +2,7 @@ name: Deploy server image to production
 
 on:
   push:
-    branches: ["feat/game-server", "feat/stofinet"]
+    branches: ["feat/game-server"]
 
 jobs:
   build:
@@ -39,7 +39,7 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           task env:base --silent
-          task env:generate --silent
+          task env:aws --silent
           docker build -f ./build/server/server.dockerfile -t $REGISTRY/$REPOSITORY:$IMAGE_TAG .
           docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
           docker tag $REGISTRY/$REPOSITORY:$IMAGE_TAG $REGISTRY/$REPOSITORY:latest
