@@ -18,7 +18,7 @@ var storageClient *storage.Client
 
 func init() {
 	cfg, _ := config.LoadDefaultConfig(context.TODO())
-	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg), nil)
+	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg))
 }
 
 func handler(ctx context.Context, event json.RawMessage) error {

@@ -34,7 +34,7 @@ var (
 
 func init() {
 	cfg, _ := config.LoadDefaultConfig(context.TODO())
-	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg), nil)
+	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg))
 	computeClient = compute.NewClient(
 		ecs.NewFromConfig(cfg),
 		ec2.NewFromConfig(cfg),
@@ -81,7 +81,7 @@ func handler(
 		if err == nil {
 			break
 		}
-		<-time.After(5 * time.Second)
+		time.Sleep(5 * time.Second)
 	}
 	if err != nil {
 		return events.APIGatewayProxyResponse{

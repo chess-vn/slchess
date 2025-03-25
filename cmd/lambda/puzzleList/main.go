@@ -13,18 +13,25 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/athena"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/chess-vn/slchess/internal/aws/analysis"
 	"github.com/chess-vn/slchess/internal/aws/auth"
 	"github.com/chess-vn/slchess/internal/aws/storage"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
 )
 
-var storageClient *storage.Client
+var (
+	storageClient  *storage.Client
+	analysisClient *analysis.Client
+)
 
 func init() {
 	cfg, _ := config.LoadDefaultConfig(context.TODO())
 	storageClient = storage.NewClient(
 		dynamodb.NewFromConfig(cfg),
+	)
+	analysisClient = analysis.NewClient(
 		athena.NewFromConfig(cfg),
+		nil,
 	)
 }
 
@@ -54,7 +61,7 @@ func handler(
 		}, fmt.Errorf("failed to get puzzle profile: %w", err)
 	}
 
-	puzzles, err := storageClient.FetchPuzzles(ctx, puzzleProfile.Rating, limit)
+	puzzles, err := analysisClient.FetchPuzzles(ctx, puzzleProfile.Rating, limit)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,

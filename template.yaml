@@ -52,6 +52,14 @@ Resources:
       - AuthStack
       - AppSyncStack
 
+  AnalysisStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./templates/analysis.yaml
+      Parameters:
+        StackName: !Ref AWS::StackName
+        DeploymentStage: !Ref DeploymentStage
+
   WebsocketApiStack:
     Type: AWS::CloudFormation::Stack
     Properties:
@@ -63,6 +71,7 @@ Resources:
       - StorageStack
       - AuthStack
       - ComputeStack
+      - AnalysisStack
 
   HttpApiStack:
     Type: AWS::CloudFormation::Stack

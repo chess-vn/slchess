@@ -30,3 +30,9 @@ tasks:
     preconditions:
       - sh: "test -f ./configs/aws/appsync.env"
         msg: "appsync.env file not generated. Try running 'env:generate' task"
+
+  check-stofinet-env:
+    internal: true
+    preconditions:
+      - sh: "test -f ./configs/stofinet/app.env"
+        msg: "app.env file not generated. Try running 'env:generate' task"

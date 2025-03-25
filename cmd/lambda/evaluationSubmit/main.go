@@ -7,18 +7,24 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewaymanagementapi"
+	"github.com/aws/aws-sdk-go-v2/service/apigatewaymanagementapi/types"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/chess-vn/slchess/internal/aws/analysis"
 	"github.com/chess-vn/slchess/internal/aws/storage"
+	"github.com/chess-vn/slchess/internal/domains/dtos"
 )
 
 var (
 	apigatewayClient *apigatewaymanagementapi.Client
+	analysisClient   *analysis.Client
 	storageClient    *storage.Client
 
 	region            = os.Getenv("AWS_REGION")
@@ -28,7 +34,6 @@ var (
 
 func init() {
 	cfg, _ := config.LoadDefaultConfig(context.TODO())
-	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg))
 	apiEndpoint := fmt.Sprintf(
 		"https://%s.execute-api.%s.amazonaws.com/%s",
 		websocketApiId,
@@ -40,55 +45,63 @@ func init() {
 		Region:       region,
 		Credentials:  cfg.Credentials,
 	})
+	analysisClient = analysis.NewClient(
+		nil,
+		sqs.NewFromConfig(cfg),
+	)
+	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg))
 }
 
 func handler(
 	ctx context.Context,
-	event events.APIGatewayWebsocketProxyRequest,
+	event events.APIGatewayProxyRequest,
 ) (
 	events.APIGatewayProxyResponse,
 	error,
 ) {
-	connectionId := event.RequestContext.ConnectionID
+	var submission dtos.EvaluationSubmission
+	if err := json.Unmarshal([]byte(event.Body), &submission); err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("failed to unmarshal body: %w", err)
+	}
 
-	// Get user ID from DynamoDB
-	connection, err := storageClient.GetConnection(ctx, connectionId)
+	eval := dtos.EvaluationSubmissionToEntity(submission)
+
+	evalJson, err := json.Marshal(dtos.EvaluationResponseFromEntity(eval))
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("failed to get connetion: %w", err)
+		}, fmt.Errorf("failed to marshal evaluation: %w", err)
 	}
-
-	activeMatch, err := storageClient.CheckForActiveMatch(ctx, connection.UserId)
-	if err != nil {
-		if errors.Is(err, storage.ErrUserMatchNotFound) ||
-			errors.Is(err, storage.ErrActiveMatchNotFound) {
-			return events.APIGatewayProxyResponse{
-				StatusCode: http.StatusOK,
-			}, nil
-		}
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("failed to check for active match: %w", err)
-	}
-	activeMatchJson, err := json.Marshal(activeMatch)
-	if err != nil {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("failed to marshal response: %w", err)
-	}
-
 	_, err = apigatewayClient.PostToConnection(
 		ctx,
 		&apigatewaymanagementapi.PostToConnectionInput{
-			ConnectionId: &connection.Id,
-			Data:         activeMatchJson,
+			ConnectionId: aws.String(submission.ConnectionId),
+			Data:         evalJson,
 		},
 	)
 	if err != nil {
+		var goneErr *types.GoneException
+		if !errors.As(err, &goneErr) {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusInternalServerError,
+			}, fmt.Errorf("failed to post to connect: %w", err)
+		}
+	}
+
+	err = storageClient.PutEvaluation(ctx, eval, 24*time.Hour)
+	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("failed to post to connection: %w", err)
+		}, fmt.Errorf("failed to put evaluation: %w", err)
+	}
+
+	err = analysisClient.RemoveEvaluationWork(ctx, submission.ReceiptHandle)
+	if err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("failed to remove evaluation work: %w", err)
 	}
 
 	return events.APIGatewayProxyResponse{
