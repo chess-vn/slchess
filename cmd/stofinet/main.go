@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/signal"
 	"syscall"
@@ -25,5 +26,8 @@ func main() {
 
 	client := stofinet.NewClient()
 
-	logging.Fatal("failed to start", zap.Error(client.Start(ctx)))
+	err := client.Start(ctx)
+	if !errors.Is(err, context.Canceled) {
+		logging.Fatal("failed to start", zap.Error(client.Start(ctx)))
+	}
 }

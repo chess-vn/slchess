@@ -31,10 +31,10 @@ func NewClient() *Client {
 		logging.Fatal("couldn't initialize engine", zap.Error(err))
 	}
 	engine.SetOptions(uci.Options{
+		Threads: cfg.NumThreads,
 		MultiPV: 3,
-		Hash:    128,
+		Hash:    cfg.HashSize,
 		Ponder:  false,
-		OwnBook: true,
 	})
 	return &Client{
 		engine: engine,
@@ -44,7 +44,7 @@ func NewClient() *Client {
 }
 
 func (client *Client) Start(ctx context.Context) error {
-	backoffTime := 1 * time.Second
+	backoffTime := 2 * time.Second
 	for {
 		select {
 		case <-ctx.Done():
@@ -55,16 +55,12 @@ func (client *Client) Start(ctx context.Context) error {
 		if err != nil {
 			if errors.Is(err, ErrEvaluationWorkNotFound) {
 				time.Sleep(backoffTime)
-				backoffTime += 1
-				if backoffTime > 5 {
-					backoffTime = 1
-				}
 				continue
 			}
 			return fmt.Errorf("failed to acquire evaluation work: %w", err)
 		}
 
-		results, err := client.Evaluate(work.Fen, 30)
+		results, err := client.Evaluate(work.Fen, 25)
 		if err != nil {
 			return fmt.Errorf("failed to evaluate: %w", err)
 		}
@@ -141,7 +137,9 @@ func (client *Client) SubmitEvaluation(ctx context.Context, sub dtos.EvaluationS
 
 func (client *Client) Evaluate(fen string, depth int) (*uci.Results, error) {
 	logging.Info("evaluating", zap.String("fen", fen))
-	client.engine.SetFEN(fen)
+	if err := client.engine.SetFEN(fen); err != nil {
+		return nil, fmt.Errorf("failed to set fen: %w", err)
+	}
 	resultOpts := uci.HighestDepthOnly | uci.IncludeLowerbounds | uci.IncludeUpperbounds
 	results, err := client.engine.GoDepth(depth, resultOpts)
 	if err != nil {

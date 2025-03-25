@@ -62,7 +62,7 @@ func (client *Client) AcquireEvaluationWork(ctx context.Context) (entities.Evalu
 func (client *Client) RemoveEvaluationWork(ctx context.Context, receiptHandle string) error {
 	_, err := client.sqs.DeleteMessage(ctx, &sqs.DeleteMessageInput{
 		QueueUrl:      client.cfg.EvaluationRequestQueueUrl,
-		ReceiptHandle: aws.String(""),
+		ReceiptHandle: aws.String(receiptHandle),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to delete message: %w", err)

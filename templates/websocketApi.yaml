@@ -114,7 +114,7 @@ Resources:
             TableName: !ImportValue ConnectionsTableName
       Environment:
         Variables:
-          CONNECTIONS_TABLE: !ImportValue ConnectionsTableName
+          CONNECTIONS_TABLE_NAME: !ImportValue ConnectionsTableName
 
   DisconnectFunctionPermission:
     Type: AWS::Lambda::Permission
@@ -202,6 +202,7 @@ Resources:
       CodeUri: ../cmd/lambda/evaluate/
       Handler: bootstrap
       Runtime: provided.al2023
+      Timeout: 30
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !ImportValue EvaluationsTableName

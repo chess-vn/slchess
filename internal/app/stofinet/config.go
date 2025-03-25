@@ -12,6 +12,8 @@ import (
 type Config struct {
 	StockfishPath string
 	BaseUrl       *url.URL
+	NumThreads    int
+	HashSize      int
 }
 
 func LoadConfig() (Config, error) {
@@ -33,11 +35,14 @@ func LoadConfig() (Config, error) {
 		return Config{}, fmt.Errorf("failed to parse base url: %w", err)
 	}
 	cfg.StockfishPath = viper.GetString("STOCKFISH_PATH")
+	cfg.NumThreads = 2
+	cfg.HashSize = 256
 
 	logging.Info(
 		"config loaded",
 		zap.String("base_url", cfg.BaseUrl.String()),
 		zap.String("stockfish_path", cfg.StockfishPath),
+		zap.Int("threads", cfg.NumThreads),
 	)
 
 	return cfg, nil

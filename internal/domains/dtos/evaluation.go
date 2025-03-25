@@ -66,10 +66,12 @@ func EvaluationWorkResponseFromEntity(work entities.EvaluationWork) EvaluationWo
 
 func EvaluationSubmissionToEntity(submission EvaluationSubmission) entities.Evaluation {
 	eval := entities.Evaluation{
-		Fen:    submission.Fen,
-		Depth:  submission.Results.Results[0].Depth,
-		Knodes: submission.Results.Results[0].Nodes,
-		Pvs:    make([]entities.Pv, len(submission.Results.Results)),
+		Fen: submission.Fen,
+		Pvs: make([]entities.Pv, 0, len(submission.Results.Results)),
+	}
+	if len(submission.Results.Results) > 0 {
+		eval.Depth = submission.Results.Results[0].Depth
+		eval.Knodes = submission.Results.Results[0].Nodes
 	}
 	for _, result := range submission.Results.Results {
 		pv := entities.Pv{
