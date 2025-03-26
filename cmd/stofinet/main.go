@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/signal"
 	"syscall"
@@ -27,6 +28,8 @@ func main() {
 
 	err := client.Start(ctx)
 	if err != nil {
-		logging.Fatal("failed to start", zap.Error(client.Start(ctx)))
+		if !errors.Is(err, context.Canceled) {
+			logging.Fatal("failed to start", zap.Error(client.Start(ctx)))
+		}
 	}
 }

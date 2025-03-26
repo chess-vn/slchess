@@ -53,7 +53,7 @@ func handler(
 	}
 
 	return events.APIGatewayProxyResponse{
-		StatusCode: http.StatusOK,
+		StatusCode: http.StatusAccepted,
 		Body:       string(respJson),
 	}, nil
 }

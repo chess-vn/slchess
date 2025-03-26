@@ -7,18 +7,23 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/chess-vn/slchess/pkg/logging"
+	"go.uber.org/zap"
 )
 
-type Pv struct {
-	Cp    int
-	Moves string
+type options struct {
+	threads  int
+	hash     int
+	multiPvs int
 }
 
-type Evaluation struct {
-	Fen    string
-	Depth  int
-	Knodes int
-	Pvs    []Pv
+func defaultOptions() options {
+	return options{
+		threads:  1,
+		hash:     128,
+		multiPvs: 3,
+	}
 }
 
 func parsePvsLines(lines []string) Evaluation {
@@ -29,11 +34,8 @@ func parsePvsLines(lines []string) Evaluation {
 	eval.Pvs = []Pv{}
 
 	for _, line := range lines {
-		fmt.Println("Processing Line:", line) // Debugging step
-
 		match := re.FindStringSubmatch(line)
 		if match == nil {
-			fmt.Println("No match found for line:", line)
 			continue
 		}
 
@@ -43,14 +45,19 @@ func parsePvsLines(lines []string) Evaluation {
 		moves := strings.TrimSpace(match[4])
 
 		if err1 != nil || err2 != nil || err3 != nil {
-			fmt.Println("Error converting values:", err1, err2, err3)
+			logging.Error(
+				"Error converting values:",
+				zap.Error(err1),
+				zap.Error(err2),
+				zap.Error(err3),
+			)
 			continue
 		}
 
 		// Set depth and knodes once
 		if eval.Depth == 0 {
 			eval.Depth = depth
-			eval.Knodes = nodes / 1000
+			eval.Knodes = nodes
 		}
 
 		// Append move sequence
@@ -63,9 +70,7 @@ func parsePvsLines(lines []string) Evaluation {
 	return eval
 }
 
-// runStockfish runs the Stockfish engine with the given FEN and depth
-
-func runStockfish(path string, fen string, depth int) ([]string, error) {
+func runStockfish(path string, fen string, depth int, opts options) ([]string, error) {
 	cmd := exec.Command(path)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -85,9 +90,9 @@ func runStockfish(path string, fen string, depth int) ([]string, error) {
 
 	options := []string{
 		"uci",
-		"setoption name Threads value 2",
-		"setoption name Hash value 256",
-		"setoption name MultiPV value 3",
+		fmt.Sprintf("setoption name Threads value %d", opts.threads),
+		fmt.Sprintf("setoption name Hash value %d", opts.hash),
+		fmt.Sprintf("setoption name MultiPV value %d", opts.multiPvs),
 		"isready",
 	}
 	for _, option := range options {

@@ -3,6 +3,7 @@ package stofinet
 import (
 	"fmt"
 	"net/url"
+	"runtime"
 
 	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/spf13/viper"
@@ -35,7 +36,10 @@ func LoadConfig() (Config, error) {
 		return Config{}, fmt.Errorf("failed to parse base url: %w", err)
 	}
 	cfg.StockfishPath = viper.GetString("STOCKFISH_PATH")
-	cfg.NumThreads = 2
+	cfg.NumThreads = runtime.NumCPU() / 4
+	if cfg.NumThreads < 1 {
+		cfg.NumThreads = 1
+	}
 	cfg.HashSize = 256
 
 	logging.Info(

@@ -2,6 +2,18 @@ package stofinet
 
 import "github.com/chess-vn/slchess/internal/domains/dtos"
 
+type Pv struct {
+	Cp    int
+	Moves string
+}
+
+type Evaluation struct {
+	Fen    string
+	Depth  int
+	Knodes int
+	Pvs    []Pv
+}
+
 func EvaluationResultFromStofinet(eval Evaluation) dtos.EvaluationResult {
 	v := dtos.EvaluationResult{
 		Fen:    eval.Fen,
