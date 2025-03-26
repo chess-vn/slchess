@@ -219,6 +219,8 @@ Resources:
           WEBSOCKET_API_STAGE: !Ref DeploymentStage
           EVALUATION_REQUEST_QUEUE_URL: !ImportValue EvaluationRequestQueueUrl
           EVALUATIONS_TABLE_NAME: !ImportValue EvaluationsTableName
+          STOFINET_CLUSTER_NAME: !ImportValue StofinetClusterName
+          STOFINET_SERVICE_NAME: !ImportValue StofinetServiceName
 
   EvaluateFunctionPermission:
     Type: AWS::Lambda::Permission

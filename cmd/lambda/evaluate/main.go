@@ -14,19 +14,27 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewaymanagementapi"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/chess-vn/slchess/internal/app/lichess"
 	"github.com/chess-vn/slchess/internal/aws/analysis"
+	"github.com/chess-vn/slchess/internal/aws/compute"
 	"github.com/chess-vn/slchess/internal/aws/storage"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
+	"github.com/chess-vn/slchess/pkg/logging"
+	"go.uber.org/zap"
 )
 
 var (
 	storageClient    *storage.Client
+	computeClient    *compute.Client
 	analysisClient   *analysis.Client
 	lichessClient    *lichess.Client
 	apigatewayClient *apigatewaymanagementapi.Client
 
+	clusterName       = os.Getenv("STOFINET_CLUSTER_NAME")
+	serviceName       = os.Getenv("STOFINET_SERVICE_NAME")
 	region            = os.Getenv("AWS_REGION")
 	websocketApiId    = os.Getenv("WEBSOCKET_API_ID")
 	websocketApiStage = os.Getenv("WEBSOCKET_API_STAGE")
@@ -40,6 +48,10 @@ type Body struct {
 func init() {
 	cfg, _ := config.LoadDefaultConfig(context.TODO())
 	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg))
+	computeClient = compute.NewClient(
+		ecs.NewFromConfig(cfg),
+		ec2.NewFromConfig(cfg),
+	)
 	analysisClient = analysis.NewClient(
 		nil,
 		sqs.NewFromConfig(cfg),
@@ -143,6 +155,12 @@ func handler(
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
 		}, fmt.Errorf("failed to submit evaluation request: %w", err)
+	}
+
+	// Check and start an analysis node
+	err := computeClient.CheckAndStartTask(ctx, clusterName, serviceName)
+	if err != nil {
+		logging.Info("failed to check and start task", zap.Error(err))
 	}
 
 	return events.APIGatewayProxyResponse{

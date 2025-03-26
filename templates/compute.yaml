@@ -14,6 +14,8 @@ Parameters:
     Type: String
   ServerImageUri:
     Type: String
+  StofinetImageUri:
+    Type: String
   DeploymentStage:
     Type: String
 
@@ -23,6 +25,13 @@ Resources:
     Type: AWS::ECS::Cluster
     Properties:
       ClusterName: !Sub "${StackName}-${DeploymentStage}-server-cluster"
+
+  StofinetCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub "${StackName}-${DeploymentStage}-stofinet-cluster"
+    CapacityProviders:
+      - FARGATE_SPOT
 
   ### Task Definition ###
   ServerDefinition:
@@ -55,6 +64,33 @@ Resources:
             - Name: ECS_ENABLE_CONTAINER_METADATA
               Value: "true"
 
+  StofinetDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${StackName}-${DeploymentStage}-stofinet"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: "1024"
+      Memory: "2048"
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt StofinetRole.Arn
+      ContainerDefinitions:
+        - Image: !Ref StofinetImageUri
+          Name: !Sub "${StackName}-${DeploymentStage}-stofinet"
+          Essential: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub "/${StackName}/${DeploymentStage}/ecs/stofinet"
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+          Environment:
+            - Name: AWS_DEFAULT_REGION
+              Value: !Ref AWS::Region
+            - Name: ECS_ENABLE_CONTAINER_METADATA
+              Value: "true"
+
   ### ECS Service ###
   ServerService:
     Type: AWS::ECS::Service
@@ -73,6 +109,27 @@ Resources:
           SecurityGroups:
             - sg-003fd8c2326289ec4
           AssignPublicIp: ENABLED
+
+  StofinetService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref StofinetCluster
+      ServiceName: !Sub "${StackName}-${DeploymentStage}-stofinet-service"
+      LaunchType: FARGATE
+      DesiredCount: 0
+      TaskDefinition: !Ref StofinetDefinition
+      CapacityProviderStrategy:
+        - CapacityProvider: FARGATE_SPOT
+          Weight: 1
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - subnet-08afaaea0b1e4f825
+            - subnet-0f7183aa53381f50c
+            - subnet-0642049eeace8e1b3
+          SecurityGroups:
+            - sg-003fd8c2326289ec4
+          AssignPublicIp: DISABLED
 
   ### IAM Roles ###
   ServerRole:
@@ -127,6 +184,18 @@ Resources:
                 Resource:
                   - !Sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:task/${ServerCluster}/*"
 
+  StofinetRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: StofinetRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "ecs-tasks.amazonaws.com"
+            Action: "sts:AssumeRole"
+
   ECSTaskExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -152,7 +221,7 @@ Resources:
                 Resource: "*"
 
   ### Auto Scaling ###
-  ECSAutoScalingTarget:
+  ServerAutoScalingTarget:
     Type: AWS::ApplicationAutoScaling::ScalableTarget
     Properties:
       MaxCapacity: 2
@@ -162,17 +231,40 @@ Resources:
       ScalableDimension: ecs:service:DesiredCount
       ServiceNamespace: ecs
 
-  ECSAutoScalingPolicy:
+  ServerAutoScalingPolicy:
     Type: AWS::ApplicationAutoScaling::ScalingPolicy
     Properties:
-      PolicyName: ECSAutoScalingPolicy
+      PolicyName: ServerAutoScalingPolicy
       PolicyType: TargetTrackingScaling
-      ScalingTargetId: !Ref ECSAutoScalingTarget
+      ScalingTargetId: !Ref ServerAutoScalingTarget
       TargetTrackingScalingPolicyConfiguration:
         TargetValue: 70.0
         PredefinedMetricSpecification:
           PredefinedMetricType: ECSServiceAverageCPUUtilization
         ScaleInCooldown: 300
+        ScaleOutCooldown: 60
+
+  StofinetAutoScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: 2
+      MinCapacity: 0
+      ResourceId: !Sub service/${StofinetCluster}/${StofinetService.Name}
+      RoleARN: !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+
+  StofinetAutoScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: StofinetAutoScalingPolicy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref StofinetAutoScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70.0
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        ScaleInCooldown: 1800
         ScaleOutCooldown: 60
 
   ### Lambda ###
@@ -247,3 +339,13 @@ Outputs:
     Value: !Ref ServerDefinition
     Export:
       Name: ServerDefinitionArn
+
+  StofinetClusterName:
+    Value: !Ref StofinetCluster
+    Export:
+      Name: StofinetClusterName
+
+  StofinetServiceName:
+    Value: !GetAtt StofinetService.Name
+    Export:
+      Name: StofinetServiceName
