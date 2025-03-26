@@ -107,6 +107,9 @@ func handler(
 				StatusCode: http.StatusInternalServerError,
 			}, fmt.Errorf("failed to post to connection: %w", err)
 		}
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusOK,
+		}, nil
 	} else {
 		if !errors.Is(err, lichess.ErrEvaluationNotFound) {
 			return events.APIGatewayProxyResponse{
@@ -136,6 +139,9 @@ func handler(
 				StatusCode: http.StatusInternalServerError,
 			}, fmt.Errorf("failed to post to connection: %w", err)
 		}
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusOK,
+		}, nil
 	} else {
 		if !errors.Is(err, storage.ErrEvaluationNotFound) {
 			return events.APIGatewayProxyResponse{

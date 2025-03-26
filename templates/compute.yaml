@@ -128,7 +128,7 @@ Resources:
             - subnet-0642049eeace8e1b3
           SecurityGroups:
             - sg-003fd8c2326289ec4
-          AssignPublicIp: DISABLED
+          AssignPublicIp: ENABLED
 
   ### IAM Roles ###
   ServerRole:
@@ -348,3 +348,8 @@ Outputs:
     Value: !GetAtt StofinetService.Name
     Export:
       Name: StofinetServiceName
+
+  StofinetDefinitionArn:
+    Value: !Ref StofinetDefinition
+    Export:
+      Name: StofinetDefinitionArn
