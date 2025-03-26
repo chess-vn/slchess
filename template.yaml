@@ -49,7 +49,7 @@ Resources:
       Parameters:
         StackName: !Ref AWS::StackName
         ServerImageUri: !Ref ServerImageUri
-        StofinetImageUri: !Ref StofinetImageUrl
+        StofinetImageUri: !Ref StofinetImageUri
         DeploymentStage: !Ref DeploymentStage
     DependsOn:
       - StorageStack

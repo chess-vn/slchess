@@ -30,8 +30,8 @@ Resources:
     Type: AWS::ECS::Cluster
     Properties:
       ClusterName: !Sub "${StackName}-${DeploymentStage}-stofinet-cluster"
-    CapacityProviders:
-      - FARGATE_SPOT
+      CapacityProviders:
+        - FARGATE_SPOT
 
   ### Task Definition ###
   ServerDefinition:
@@ -115,7 +115,6 @@ Resources:
     Properties:
       Cluster: !Ref StofinetCluster
       ServiceName: !Sub "${StackName}-${DeploymentStage}-stofinet-service"
-      LaunchType: FARGATE
       DesiredCount: 0
       TaskDefinition: !Ref StofinetDefinition
       CapacityProviderStrategy:
