@@ -59,6 +59,8 @@ func handler(
 	events.APIGatewayProxyResponse,
 	error,
 ) {
+	stop := extractParameters(event.QueryStringParameters)
+
 	var submission dtos.EvaluationSubmission
 	if err := json.Unmarshal([]byte(event.Body), &submission); err != nil {
 		return events.APIGatewayProxyResponse{
@@ -66,8 +68,7 @@ func handler(
 		}, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 
-	eval := dtos.EvaluationSubmissionToEntity(submission)
-
+	eval := dtos.EvaluationResultToEntity(submission.Evaluation)
 	evalJson, err := json.Marshal(dtos.EvaluationResponseFromEntity(eval))
 	if err != nil {
 		return events.APIGatewayProxyResponse{
@@ -104,9 +105,49 @@ func handler(
 		}, fmt.Errorf("failed to remove evaluation work: %w", err)
 	}
 
+	if stop {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusOK,
+		}, nil
+	}
+
+	// Assign more work
+	newWork, err := analysisClient.AcquireEvaluationWork(ctx)
+	if err != nil {
+		if errors.Is(err, analysis.ErrEvaluationWorkNotFound) {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusNoContent,
+			}, nil
+		}
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("failed to acquire work : %w", err)
+	}
+	resp := dtos.EvaluationWorkResponseFromEntity(newWork)
+	respJson, err := json.Marshal(resp)
+	if err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("failed to marshal response: %w", err)
+	}
+
 	return events.APIGatewayProxyResponse{
 		StatusCode: http.StatusOK,
+		Body:       string(respJson),
 	}, nil
+}
+
+func extractParameters(
+	params map[string]string,
+) bool {
+	var stop bool
+	if stopStr, ok := params["stop"]; ok {
+		if stopStr == "true" {
+			stop = true
+		}
+	}
+
+	return stop
 }
 
 func main() {

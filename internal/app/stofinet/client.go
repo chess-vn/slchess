@@ -7,18 +7,17 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/pkg/logging"
-	"github.com/freeeve/uci"
 	"go.uber.org/zap"
 )
 
 type Client struct {
-	engine *uci.Engine
-	http   *http.Client
-	cfg    Config
+	http *http.Client
+	cfg  Config
 }
 
 func NewClient() *Client {
@@ -26,29 +25,19 @@ func NewClient() *Client {
 	if err != nil {
 		logging.Fatal("couldn't load config", zap.Error(err))
 	}
-	engine, err := uci.NewEngine("/usr/bin/stockfish")
-	if err != nil {
-		logging.Fatal("couldn't initialize engine", zap.Error(err))
-	}
-	engine.SetOptions(uci.Options{
-		Threads: cfg.NumThreads,
-		MultiPV: 3,
-		Hash:    cfg.HashSize,
-		Ponder:  false,
-	})
 	return &Client{
-		engine: engine,
-		http:   new(http.Client),
-		cfg:    cfg,
+		http: new(http.Client),
+		cfg:  cfg,
 	}
 }
 
 func (client *Client) Start(ctx context.Context) error {
 	backoffTime := 2 * time.Second
-	for {
+	var stop bool
+	for !stop {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			stop = true
 		default:
 		}
 		work, err := client.AcquireEvaluationWork(ctx)
@@ -60,7 +49,7 @@ func (client *Client) Start(ctx context.Context) error {
 			return fmt.Errorf("failed to acquire evaluation work: %w", err)
 		}
 
-		results, err := client.Evaluate(work.Fen, 25)
+		eval, err := client.Evaluate(work.Fen, 25)
 		if err != nil {
 			return fmt.Errorf("failed to evaluate: %w", err)
 		}
@@ -68,11 +57,10 @@ func (client *Client) Start(ctx context.Context) error {
 
 		sub := dtos.EvaluationSubmission{
 			ConnectionId:  work.ConnectionId,
-			Fen:           work.Fen,
 			ReceiptHandle: work.ReceiptHandle,
-			Results:       results,
+			Evaluation:    EvaluationResultFromStofinet(eval),
 		}
-		if err := client.SubmitEvaluation(ctx, sub); err != nil {
+		if err := client.SubmitEvaluation(ctx, sub, stop); err != nil {
 			logging.Error(
 				"failed to submit evaluation: %w",
 				zap.Error(err),
@@ -80,6 +68,8 @@ func (client *Client) Start(ctx context.Context) error {
 		}
 		logging.Info("evaluation submitted")
 	}
+	logging.Info("stopped")
+	return nil
 }
 
 func (client *Client) AcquireEvaluationWork(ctx context.Context) (dtos.EvaluationWorkResponse, error) {
@@ -101,14 +91,14 @@ func (client *Client) AcquireEvaluationWork(ctx context.Context) (dtos.Evaluatio
 			return dtos.EvaluationWorkResponse{}, fmt.Errorf("failed to decode body: %w", err)
 		}
 		return eval, nil
-	case http.StatusNotFound:
+	case http.StatusNoContent:
 		return dtos.EvaluationWorkResponse{}, ErrEvaluationWorkNotFound
 	default:
 		return dtos.EvaluationWorkResponse{}, ErrUnknownStatusCode
 	}
 }
 
-func (client *Client) SubmitEvaluation(ctx context.Context, sub dtos.EvaluationSubmission) error {
+func (client *Client) SubmitEvaluation(ctx context.Context, sub dtos.EvaluationSubmission, stop bool) error {
 	// subJson, err:= json.Marshal(sub)
 	u := client.cfg.BaseUrl.JoinPath("evaluation")
 
@@ -123,6 +113,12 @@ func (client *Client) SubmitEvaluation(ctx context.Context, sub dtos.EvaluationS
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Add("Content-Type", "application/json")
+	if stop {
+		params := url.Values{}
+		params.Add("stop", "true")
+		u.RawQuery = params.Encode()
+	}
+
 	resp, err := client.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
@@ -135,15 +131,13 @@ func (client *Client) SubmitEvaluation(ctx context.Context, sub dtos.EvaluationS
 	return nil
 }
 
-func (client *Client) Evaluate(fen string, depth int) (*uci.Results, error) {
+func (client *Client) Evaluate(fen string, depth int) (Evaluation, error) {
 	logging.Info("evaluating", zap.String("fen", fen))
-	if err := client.engine.SetFEN(fen); err != nil {
-		return nil, fmt.Errorf("failed to set fen: %w", err)
-	}
-	resultOpts := uci.HighestDepthOnly | uci.IncludeLowerbounds | uci.IncludeUpperbounds
-	results, err := client.engine.GoDepth(depth, resultOpts)
+	pvLines, err := runStockfish(client.cfg.StockfishPath, fen, depth)
 	if err != nil {
-		return nil, fmt.Errorf("failed to go depth %d: %w", depth, err)
+		return Evaluation{}, fmt.Errorf("failed to run stockfish: %w", err)
 	}
-	return results, nil
+	eval := parsePvsLines(pvLines)
+
+	return eval, nil
 }

@@ -36,7 +36,7 @@ func handler(
 	if err != nil {
 		if errors.Is(err, analysis.ErrEvaluationWorkNotFound) {
 			return events.APIGatewayProxyResponse{
-				StatusCode: http.StatusNotFound,
+				StatusCode: http.StatusNoContent,
 			}, nil
 		}
 		return events.APIGatewayProxyResponse{

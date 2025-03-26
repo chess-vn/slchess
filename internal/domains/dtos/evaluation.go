@@ -1,23 +1,8 @@
 package dtos
 
 import (
-	"strings"
-
 	"github.com/chess-vn/slchess/internal/domains/entities"
-	"github.com/freeeve/uci"
 )
-
-type PvLichess struct {
-	Cp    int    `json:"cp"`
-	Moves string `json:"moves"`
-}
-
-type EvaluationLichess struct {
-	Fen    string      `json:"fen"`
-	Depth  int         `json:"depth"`
-	Knodes int         `json:"knodes"`
-	Pvs    []PvLichess `json:"pvs"`
-}
 
 type PvResponse struct {
 	Cp    int    `json:"cp"`
@@ -43,10 +28,37 @@ type EvaluationWorkResponse struct {
 }
 
 type EvaluationSubmission struct {
-	ConnectionId  string       `json:"connectionId"`
-	Fen           string       `json:"fen"`
-	ReceiptHandle string       `json:"receiptHandle"`
-	Results       *uci.Results `json:"results"`
+	ConnectionId  string           `json:"connectionId"`
+	ReceiptHandle string           `json:"receiptHandle"`
+	Evaluation    EvaluationResult `json:"evaluation"`
+}
+
+type PvResult struct {
+	Cp    int    `json:"cp"`
+	Moves string `json:"moves"`
+}
+
+type EvaluationResult struct {
+	Fen    string     `json:"fen"`
+	Depth  int        `json:"depth"`
+	Knodes int        `json:"knodes"`
+	Pvs    []PvResult `json:"pvs"`
+}
+
+func EvaluationResultToEntity(eval EvaluationResult) entities.Evaluation {
+	v := entities.Evaluation{
+		Fen:    eval.Fen,
+		Depth:  eval.Depth,
+		Knodes: eval.Knodes,
+		Pvs:    make([]entities.Pv, 0, len(eval.Pvs)),
+	}
+	for _, pv := range eval.Pvs {
+		v.Pvs = append(v.Pvs, entities.Pv{
+			Cp:    pv.Cp,
+			Moves: pv.Moves,
+		})
+	}
+	return v
 }
 
 func EvaluationWorkFromRequest(req EvaluationRequest) entities.EvaluationWork {
@@ -62,25 +74,6 @@ func EvaluationWorkResponseFromEntity(work entities.EvaluationWork) EvaluationWo
 		Fen:           work.Fen,
 		ReceiptHandle: work.ReceiptHandle,
 	}
-}
-
-func EvaluationSubmissionToEntity(submission EvaluationSubmission) entities.Evaluation {
-	eval := entities.Evaluation{
-		Fen: submission.Fen,
-		Pvs: make([]entities.Pv, 0, len(submission.Results.Results)),
-	}
-	if len(submission.Results.Results) > 0 {
-		eval.Depth = submission.Results.Results[0].Depth
-		eval.Knodes = submission.Results.Results[0].Nodes
-	}
-	for _, result := range submission.Results.Results {
-		pv := entities.Pv{
-			Cp:    result.Score,
-			Moves: strings.Join(result.BestMoves, " "),
-		}
-		eval.Pvs = append(eval.Pvs, pv)
-	}
-	return eval
 }
 
 func EvaluationResponseFromEntity(eval entities.Evaluation) EvaluationResponse {
