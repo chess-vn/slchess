@@ -30,7 +30,7 @@ RUN make -j$(nproc) build  # Automatically optimizes for architecture
 
 # Stage 3: Runtime
 FROM debian:stable-slim AS runtime
-
+RUN apt-get update && apt-get install -y ca-certificates && update-ca-certificates
 RUN mkdir -p /configs/stofinet/
 COPY --from=build-stockfish /app/Stockfish/src/stockfish /usr/bin/stockfish
 COPY --from=build-stofinet /app/stofinet /bin/stofinet
