@@ -372,20 +372,27 @@ Resources:
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
-  UserConversations:
+  Friendships:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub "${StackName}-${DeploymentStage}-UserConversations"
+      TableName: Friendships
       AttributeDefinitions:
         - AttributeName: UserId
           AttributeType: S
-        - AttributeName: UpdatedAt
+        - AttributeName: FriendId
           AttributeType: S
       KeySchema:
         - AttributeName: UserId
           KeyType: HASH
-        - AttributeName: UpdatedAt
+        - AttributeName: FriendId
           KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: FriendIdIndex
+          KeySchema:
+            - AttributeName: FriendId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
       BillingMode: PAY_PER_REQUEST
 
   Evaluations:

@@ -51,7 +51,7 @@ func handler(
 	userId := auth.MustAuth(event.RequestContext.Authorizer)
 	matchId := event.PathParameters["id"]
 
-	computeClient.CheckAndStartServer(ctx, clusterName, serviceName)
+	computeClient.CheckAndStartTask(ctx, clusterName, serviceName)
 
 	activeMatch, err := storageClient.GetActiveMatch(ctx, matchId)
 	if err != nil {

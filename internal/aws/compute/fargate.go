@@ -143,7 +143,7 @@ func (client *Client) CheckAndGetNewServerIp(
 	return newServerIp, nil
 }
 
-func (client *Client) CheckAndStartServer(
+func (client *Client) CheckAndStartTask(
 	ctx context.Context,
 	clusterName,
 	serviceName string,

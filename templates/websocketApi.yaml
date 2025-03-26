@@ -213,12 +213,29 @@ Resources:
               Action:
                 - "execute-api:ManageConnections"
               Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebsocketApi}/*"
+        - EcsRunTaskPolicy:
+            TaskDefinition: !ImportValue StofinetDefinitionArn
+        - Statement:
+            - Effect: Allow
+              Action:
+                - "ecs:ListTasks"
+                - "ecs:DescribeTasks"
+                - "ecs:UpdateService"
+              Resource: "*"
+        - Statement:
+            - Effect: Allow
+              Action:
+                - "ec2:DescribeNetworkInterfaces"
+              Resource: "*"
+
       Environment:
         Variables:
           WEBSOCKET_API_ID: !Ref WebsocketApi
           WEBSOCKET_API_STAGE: !Ref DeploymentStage
           EVALUATION_REQUEST_QUEUE_URL: !ImportValue EvaluationRequestQueueUrl
           EVALUATIONS_TABLE_NAME: !ImportValue EvaluationsTableName
+          STOFINET_CLUSTER_NAME: !ImportValue StofinetClusterName
+          STOFINET_SERVICE_NAME: !ImportValue StofinetServiceName
 
   EvaluateFunctionPermission:
     Type: AWS::Lambda::Permission

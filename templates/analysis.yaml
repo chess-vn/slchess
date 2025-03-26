@@ -14,6 +14,7 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: !Sub "${StackName}-${DeploymentStage}-EvaluationRequestQueue"
+      MessageRetentionPeriod: 300
 
 Outputs:
   EvaluationWorkQueueName:

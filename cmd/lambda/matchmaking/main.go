@@ -69,7 +69,7 @@ func handler(
 	userId := auth.MustAuth(event.RequestContext.Authorizer)
 
 	// Start game server beforehand if none available
-	err := computeClient.CheckAndStartServer(ctx, clusterName, serviceName)
+	err := computeClient.CheckAndStartTask(ctx, clusterName, serviceName)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
