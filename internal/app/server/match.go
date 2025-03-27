@@ -335,8 +335,6 @@ func (m *Match) end() {
 				),
 				time.Now().Add(5*time.Second),
 			)
-			time.Sleep(1 * time.Second)
-			player.Conn.Close()
 		}
 	}
 	m.endGameHandler(m)
@@ -425,6 +423,10 @@ func (m *Match) calculateLagForgiven(moveCreatedAt time.Time) time.Duration {
 }
 
 func (m *Match) checkDisconnectTimeout() {
+	if m.players[0].Status == CONNECTED &&
+		m.players[1].Status == CONNECTED {
+		return
+	}
 	if m.players[0].Status == DISCONNECTED &&
 		m.players[1].Status == CONNECTED {
 		m.game.disconnectTimeout(m.players[0].Side)

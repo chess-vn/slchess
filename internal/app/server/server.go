@@ -17,6 +17,7 @@ import (
 	awsAuth "github.com/chess-vn/slchess/internal/aws/auth"
 	"github.com/chess-vn/slchess/internal/aws/compute"
 	"github.com/chess-vn/slchess/internal/aws/storage"
+	"github.com/chess-vn/slchess/internal/domains/entities"
 	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/chess-vn/slchess/pkg/utils"
 	"github.com/golang-jwt/jwt/v5"
@@ -104,7 +105,15 @@ func (s *server) Start() error {
 		matchId := r.PathValue("matchId")
 		match, err := s.loadMatch(matchId)
 		if err != nil {
-			logging.Error("failed to load match", zap.String("error", err.Error()))
+			logging.Info("failed to load match", zap.String("error", err.Error()))
+			conn.WriteControl(
+				websocket.CloseMessage,
+				websocket.FormatCloseMessage(
+					websocket.CloseNormalClosure,
+					"match expired",
+				),
+				time.Now().Add(5*time.Second),
+			)
 			return
 		}
 		s.handlePlayerJoin(conn, match, playerId)
@@ -112,12 +121,25 @@ func (s *server) Start() error {
 		for {
 			_, message, err := conn.ReadMessage()
 			if err != nil {
+				if websocket.IsCloseError(
+					err,
+					websocket.CloseNormalClosure,
+				) {
+					logging.Info(
+						"connection closed gracefully",
+						zap.String("remote_address", conn.RemoteAddr().String()),
+					)
+				} else if websocket.IsUnexpectedCloseError(
+					err,
+					websocket.CloseAbnormalClosure,
+				) {
+					logging.Info(
+						"unexpected connection close",
+						zap.String("remote_address", conn.RemoteAddr().String()),
+						zap.Error(err),
+					)
+				}
 				s.handlePlayerDisconnect(match, playerId)
-				logging.Info(
-					"connection closed",
-					zap.String("remote_address", conn.RemoteAddr().String()),
-					zap.Error(err),
-				)
 				break
 			}
 
@@ -175,23 +197,14 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 		return nil, fmt.Errorf("failed to get match config: %w", err)
 	}
 
-	if activeMatch.StartedAt.IsZero() {
-		if time.Since(activeMatch.CreatedAt) > 2*time.Minute {
-			err := s.storageClient.DeleteActiveMatch(ctx, activeMatch.MatchId)
-			if err != nil {
-				err = fmt.Errorf("failed to delete match: %w", err)
-			}
-			return nil, fmt.Errorf("can't start expired match: %w", err)
-
+	// Check if match is expired
+	if (activeMatch.StartedAt == nil && time.Since(activeMatch.CreatedAt) > 2*time.Minute) ||
+		(activeMatch.StartedAt != nil && time.Since(*activeMatch.StartedAt) > 2*config.MatchDuration+2*time.Minute) {
+		err := s.removeExpiredMatch(activeMatch)
+		if err != nil {
+			err = fmt.Errorf("failed to remove expired match: %w", err)
 		}
-	} else {
-		if time.Since(activeMatch.StartedAt) > 2*config.MatchDuration+2*time.Minute {
-			err := s.storageClient.DeleteActiveMatch(ctx, activeMatch.MatchId)
-			if err != nil {
-				err = fmt.Errorf("failed to delete match: %w", err)
-			}
-			return nil, fmt.Errorf("can't continue expired match: %w", err)
-		}
+		return nil, fmt.Errorf("match expired")
 	}
 
 	s.mu.Lock()
@@ -379,4 +392,25 @@ func (s *server) disableProtection() {
 		return
 	}
 	logging.Info("server protection disabled")
+}
+
+func (s *server) removeExpiredMatch(activeMatch entities.ActiveMatch) error {
+	ctx := context.Background()
+	err := s.storageClient.DeleteActiveMatch(ctx, activeMatch.MatchId)
+	if err != nil {
+		return fmt.Errorf("failed to delete match: %w", err)
+	}
+	err = s.storageClient.DeleteUserMatch(ctx, activeMatch.Player1.Id)
+	if err != nil {
+		return fmt.Errorf("failed to delete user match: %w", err)
+	}
+	err = s.storageClient.DeleteUserMatch(ctx, activeMatch.Player2.Id)
+	if err != nil {
+		return fmt.Errorf("failed to delete user match: %w", err)
+	}
+	err = s.storageClient.DeleteSpectatorConversation(ctx, activeMatch.MatchId)
+	if err != nil {
+		return fmt.Errorf("failed to delete user match: %w", err)
+	}
+	return nil
 }

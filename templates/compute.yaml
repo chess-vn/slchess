@@ -167,6 +167,7 @@ Resources:
                 Action:
                   - dynamodb:GetItem
                   - dynamodb:Query
+                  - dynamodb:UpdateItem
                 Resource:
                   - !ImportValue ActiveMatchesTableArn
                   - !ImportValue MatchStatesTableArn
