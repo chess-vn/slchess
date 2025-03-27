@@ -1,6 +1,0 @@
-{
-  "requestContext": {
-    "connectionId": "example-connection-id",
-    "eventType": "DISCONNECT"
-  }
-}
