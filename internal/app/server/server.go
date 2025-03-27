@@ -170,6 +170,30 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 		return nil, fmt.Errorf("failed to get active match: %w", err)
 	}
 
+	config, err := configForGameMode(activeMatch.GameMode)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get match config: %w", err)
+	}
+
+	if activeMatch.StartedAt.IsZero() {
+		if time.Since(activeMatch.CreatedAt) > 2*time.Minute {
+			err := s.storageClient.DeleteActiveMatch(ctx, activeMatch.MatchId)
+			if err != nil {
+				err = fmt.Errorf("failed to delete match: %w", err)
+			}
+			return nil, fmt.Errorf("can't start expired match: %w", err)
+
+		}
+	} else {
+		if time.Since(activeMatch.StartedAt) > 2*config.MatchDuration+2*time.Minute {
+			err := s.storageClient.DeleteActiveMatch(ctx, activeMatch.MatchId)
+			if err != nil {
+				err = fmt.Errorf("failed to delete match: %w", err)
+			}
+			return nil, fmt.Errorf("can't continue expired match: %w", err)
+		}
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -193,10 +217,6 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 			return nil, fmt.Errorf("failed to fetch match states: %w", err)
 		}
 
-		config, err := configForGameMode(activeMatch.GameMode)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get match config: %w", err)
-		}
 		var clock1 time.Duration
 		var clock2 time.Duration
 

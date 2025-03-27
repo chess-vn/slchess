@@ -11,6 +11,7 @@ type ActiveMatch struct {
 	GameMode       string    `dynamodbav:"GameMode"`
 	Server         string    `dynamodbav:"Server"`
 	AverageRating  float64   `dynamodbav:"AverageRating"`
+	StartedAt      time.Time `dynamodbav:"StartedAt"`
 	CreatedAt      time.Time `dynamodbav:"CreatedAt"`
 }
 

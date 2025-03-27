@@ -8,6 +8,7 @@ import (
 	"github.com/chess-vn/slchess/internal/domains/entities"
 	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/chess-vn/slchess/pkg/utils"
+	"github.com/gorilla/websocket"
 	"github.com/notnil/chess"
 	"go.uber.org/zap"
 )
@@ -293,6 +294,16 @@ func (m *Match) abort() {
 			})
 			player.Conn.Close()
 		}
+		player.Conn.WriteControl(
+			websocket.CloseMessage,
+			websocket.FormatCloseMessage(
+				websocket.CloseNormalClosure,
+				"match aborted",
+			),
+			time.Now().Add(5*time.Second),
+		)
+		time.Sleep(1 * time.Second)
+		player.Conn.Close()
 	}
 	m.abortGameHandler(m)
 }
@@ -313,8 +324,18 @@ func (m *Match) end() {
 	}
 	// Fire off the timer to remove end game handling job
 	m.skipTimer()
+	m.checkDisconnectTimeout()
 	for _, player := range m.players {
 		if player.Conn != nil {
+			player.Conn.WriteControl(
+				websocket.CloseMessage,
+				websocket.FormatCloseMessage(
+					websocket.CloseNormalClosure,
+					"match ended",
+				),
+				time.Now().Add(5*time.Second),
+			)
+			time.Sleep(1 * time.Second)
 			player.Conn.Close()
 		}
 	}
@@ -369,7 +390,7 @@ func configForGameMode(gameMode string) (MatchConfig, error) {
 		MatchDuration:     gm.Time,
 		ClockIncrement:    gm.Increment,
 		CancelTimeout:     30 * time.Second,
-		DisconnectTimeout: 60 * time.Second,
+		DisconnectTimeout: 120 * time.Second,
 	}, nil
 }
 
@@ -401,4 +422,26 @@ func (m *Match) calculateLagForgiven(moveCreatedAt time.Time) time.Duration {
 		return m.cfg.MaxLagForgivenTime
 	}
 	return lagTime
+}
+
+func (m *Match) checkDisconnectTimeout() {
+	if m.players[0].Status == DISCONNECTED &&
+		m.players[1].Status == CONNECTED {
+		m.game.disconnectTimeout(m.players[0].Side)
+	} else if m.players[0].Status == CONNECTED &&
+		m.players[1].Status == DISCONNECTED {
+		m.game.disconnectTimeout(m.players[1].Side)
+	} else if m.players[0].Status == DISCONNECTED &&
+		m.players[1].Status == DISCONNECTED {
+		m.game.drawByTimeout()
+	}
+	m.notifyPlayers(gameStateResponse{
+		Outcome: m.game.outcome().String(),
+		Method:  m.game.method(),
+		Fen:     m.game.FEN(),
+		Clocks: []string{
+			m.players[0].Clock.String(),
+			m.players[1].Clock.String(),
+		},
+	})
 }
