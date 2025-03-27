@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/lambda/types"
+	"github.com/chess-vn/slchess/internal/aws/storage"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/pkg/logging"
 	"github.com/chess-vn/slchess/pkg/utils"
@@ -228,10 +229,17 @@ func (s *server) handlePlayerDisconnect(match *Match, playerId string) {
 	player.Conn = nil
 	player.Status = DISCONNECTED
 
-	// If both player disconnected, end match
+	currentClock := match.getCurrentTurnPlayer().Clock
+
+	// If both player disconnected, set the clock to current turn clock
 	if match.players[0].Status == match.players[1].Status {
-		logging.Info("both player disconnected", zap.String("match_id", match.id))
-		match.end()
+		logging.Info(
+			"both player disconnected",
+			zap.String("match_id", match.id),
+		)
+		if !match.isEnded() {
+			match.setTimer(currentClock)
+		}
 	} else {
 		// Else only set the timer for the disconnected player
 		logging.Info(
@@ -240,7 +248,11 @@ func (s *server) handlePlayerDisconnect(match *Match, playerId string) {
 			zap.String("player_id", player.Id),
 		)
 		if !match.isEnded() {
-			match.setTimer(match.cfg.DisconnectTimeout)
+			if currentClock < match.cfg.DisconnectTimeout {
+				match.setTimer(currentClock)
+			} else {
+				match.setTimer(match.cfg.DisconnectTimeout)
+			}
 		}
 	}
 }
@@ -263,6 +275,19 @@ func (s *server) handlePlayerJoin(
 		match.startAt = time.Now()
 		player.TurnStartedAt = match.startAt
 		match.setTimer(match.cfg.MatchDuration)
+		err := s.storageClient.UpdateActiveMatch(
+			context.Background(),
+			match.id,
+			storage.ActiveMatchUpdateOptions{
+				StartedAt: aws.Time(match.startAt),
+			},
+		)
+		if err != nil {
+			logging.Error(
+				"failed to update match: %w",
+				zap.Error(err),
+			)
+		}
 	}
 	player.Conn = conn
 	player.Status = CONNECTED

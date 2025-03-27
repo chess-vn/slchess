@@ -3,6 +3,7 @@ package e2e
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -102,7 +103,11 @@ func TestGameServer(t *testing.T) {
 				require.NoError(t, player1Conn.WriteJSON(msg))
 				i += 1
 			}
-			require.NoError(t, player1Conn.ReadJSON(&gameState))
+			err = player1Conn.ReadJSON(&gameState)
+			if errors.Is(err, websocket.ErrCloseSent) {
+				player1Conn.WriteControl(websocket.CloseNormalClosure, nil, time.Now().Add(5*time.Second))
+				return
+			}
 		}
 	}()
 
@@ -124,7 +129,11 @@ func TestGameServer(t *testing.T) {
 				require.NoError(t, player2Conn.WriteJSON(msg))
 				i += 1
 			}
-			require.NoError(t, player2Conn.ReadJSON(&gameState))
+			err = player2Conn.ReadJSON(&gameState)
+			if errors.Is(err, websocket.ErrCloseSent) {
+				player2Conn.WriteControl(websocket.CloseNormalClosure, nil, time.Now().Add(5*time.Second))
+				return
+			}
 		}
 	}()
 

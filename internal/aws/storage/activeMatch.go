@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -15,7 +16,8 @@ import (
 var ErrActiveMatchNotFound = fmt.Errorf("active match not found")
 
 type ActiveMatchUpdateOptions struct {
-	Server *string
+	Server    *string
+	StartedAt *time.Time
 }
 
 func (client *Client) GetActiveMatch(
@@ -129,6 +131,13 @@ func (client *Client) UpdateActiveMatch(
 		updateExpression = append(updateExpression, "Server = :server")
 		expressionAttributeValues[":server"] = &types.AttributeValueMemberS{
 			Value: *opts.Server,
+		}
+	}
+
+	if opts.StartedAt != nil {
+		updateExpression = append(updateExpression, "StartedAt = :startedAt")
+		expressionAttributeValues[":startedAt"] = &types.AttributeValueMemberS{
+			Value: opts.StartedAt.Format(time.RFC3339),
 		}
 	}
 

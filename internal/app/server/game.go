@@ -26,8 +26,11 @@ const (
 	OFFER_DRAW
 	NONE
 
-	BLACK_OUT_OF_TIME = "BLACK_OUT_OF_TIME"
-	WHITE_OUT_OF_TIME = "WHITE_OUT_OF_TIME"
+	BLACK_OUT_OF_TIME        = "BLACK_OUT_OF_TIME"
+	WHITE_OUT_OF_TIME        = "WHITE_OUT_OF_TIME"
+	BLACK_DISCONNECT_TIMEOUT = "BLACK_DISCONNECT_TIMEOUT"
+	WHITE_DISCONNECT_TIMEOUT = "WHITE_DISCONNECT_TIMEOUT"
+	DRAW_BY_TIMEOUT          = "DRAW_BY_TIMEOUT"
 )
 
 type game struct {
@@ -86,12 +89,30 @@ func (g *game) outOfTime(side Side) {
 	}
 }
 
+func (g *game) disconnectTimeout(side Side) {
+	if side == WHITE_SIDE {
+		g.customOutcome = WHITE_DISCONNECT_TIMEOUT
+	} else {
+		g.customOutcome = BLACK_DISCONNECT_TIMEOUT
+	}
+}
+
+func (g *game) drawByTimeout() {
+	g.customOutcome = DRAW_BY_TIMEOUT
+}
+
 func (g *game) outcome() chess.Outcome {
 	switch g.customOutcome {
 	case BLACK_OUT_OF_TIME:
 		return chess.WhiteWon
 	case WHITE_OUT_OF_TIME:
 		return chess.BlackWon
+	case BLACK_DISCONNECT_TIMEOUT:
+		return chess.WhiteWon
+	case WHITE_DISCONNECT_TIMEOUT:
+		return chess.BlackWon
+	case DRAW_BY_TIMEOUT:
+		return chess.Draw
 	default:
 		return g.Outcome()
 	}
@@ -101,6 +122,8 @@ func (g *game) method() string {
 	switch g.customOutcome {
 	case WHITE_OUT_OF_TIME, BLACK_OUT_OF_TIME:
 		return "OUT_OF_TIME"
+	case WHITE_DISCONNECT_TIMEOUT, BLACK_DISCONNECT_TIMEOUT:
+		return "DISCONNECT_TIMEOUT"
 	default:
 		return g.Method().String()
 	}

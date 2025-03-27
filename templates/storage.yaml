@@ -375,7 +375,7 @@ Resources:
   Friendships:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: Friendships
+      TableName: !Sub "${StackName}-${DeploymentStage}-Friendships"
       AttributeDefinitions:
         - AttributeName: UserId
           AttributeType: S

@@ -318,7 +318,7 @@ func createMatch(
 	if err != nil {
 		return entities.ActiveMatch{},
 			fmt.Errorf(
-				"failed to delete match making ticket: [userId: %s] %w",
+				"failed to delete matchmaking ticket: [userId: %s] %w",
 				opponentId,
 				err,
 			)
