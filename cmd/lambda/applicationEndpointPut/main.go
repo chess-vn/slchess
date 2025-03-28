@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -14,8 +14,8 @@ import (
 	"github.com/chess-vn/slchess/internal/aws/auth"
 	"github.com/chess-vn/slchess/internal/aws/notification"
 	"github.com/chess-vn/slchess/internal/aws/storage"
+	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/internal/domains/entities"
-	"github.com/chess-vn/slchess/pkg/utils"
 )
 
 var (
@@ -36,44 +36,47 @@ func handler(
 	events.APIGatewayProxyResponse,
 	error,
 ) {
-	receiverId := auth.MustAuth(event.RequestContext.Authorizer)
-	senderId := event.PathParameters["id"]
-	conversationId := utils.GenerateUUID()
-	startedAt := time.Now()
+	userId := auth.MustAuth(event.RequestContext.Authorizer)
 
-	err := storageClient.PutFriendship(ctx, entities.Friendship{
-		UserId:         receiverId,
-		FriendId:       senderId,
-		ConversationId: conversationId,
-		StartedAt:      startedAt,
-	})
+	var req dtos.ApplicationEndpointRequest
+	err := json.Unmarshal([]byte(event.Body), &req)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("failed to put friendship: %w", err)
+		}, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 
-	err = storageClient.PutFriendship(ctx, entities.Friendship{
-		UserId:         senderId,
-		FriendId:       receiverId,
-		ConversationId: conversationId,
-		StartedAt:      startedAt,
-	})
+	endpointArn, err := notiClient.CreateApplicationEndpoint(ctx, req.DeviceToken)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("failed to put friendship: %w", err)
+		}, fmt.Errorf("failed to create applicatoin endpoint: %w", err)
 	}
 
-	err = storageClient.DeleteFriendRequest(ctx, senderId, receiverId)
+	endpoint := entities.ApplicationEndpoint{
+		UserId:      userId,
+		DeviceToken: req.DeviceToken,
+		EndpointArn: endpointArn,
+	}
+
+	err = storageClient.PutApplicationEndpoint(ctx, endpoint)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("failed to delete friend request: %w", err)
+		}, fmt.Errorf("failed to put application endpoint: %w", err)
+	}
+
+	resp := dtos.ApplicationEndpointResponseFromEntity(endpoint)
+	respJson, err := json.Marshal(resp)
+	if err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("failed to marshal response: %w", err)
 	}
 
 	return events.APIGatewayProxyResponse{
 		StatusCode: http.StatusOK,
+		Body:       string(respJson),
 	}, nil
 }
 

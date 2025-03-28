@@ -23,3 +23,25 @@ func (client *Client) SendPushNotification(
 	}
 	return nil
 }
+
+func (client *Client) CreateApplicationEndpoint(
+	ctx context.Context,
+	fcmToken string,
+) (
+	string,
+	error,
+) {
+	input := &sns.CreatePlatformEndpointInput{
+		PlatformApplicationArn: client.cfg.PlatformApplicationArn,
+		Token:                  aws.String(fcmToken),
+	}
+	result, err := client.sns.CreatePlatformEndpoint(ctx, input)
+	if err != nil {
+		return "", fmt.Errorf("failed to create platform endpoint: %w", err)
+	}
+	if result.EndpointArn == nil {
+		return "", fmt.Errorf("endpoint arn is nil")
+	}
+
+	return *result.EndpointArn, nil
+}

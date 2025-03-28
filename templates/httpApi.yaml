@@ -771,10 +771,13 @@ Resources:
             TableName: !ImportValue FriendRequestsTableName
         - DynamoDBCrudPolicy:
             TableName: !ImportValue FriendshipsTableName
+        - DynamoDBCrudPolicy:
+            TableName: !ImportValue ApplicationEndpointsTableName
       Environment:
         Variables:
           FRIEND_REQUESTS_TABLE_NAME: !ImportValue FriendRequestsTableName
           FRIENDSHIPS_TABLE_NAME: !ImportValue FriendshipsTableName
+          APPLICATION_ENDPOINTS_TABLE_NAME: !ImportValue ApplicationEndpointsTableName
       Events:
         ApiEvent:
           Type: HttpApi

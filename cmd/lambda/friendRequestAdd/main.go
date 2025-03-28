@@ -71,14 +71,21 @@ func handler(
 		}, fmt.Errorf("failed to put friend request: %w", err)
 	}
 
-	// TODO: notify other user
-	//
-	// err = notiClient.SendPushNotification(ctx, "", "")
-	// if err != nil {
-	// 	return events.APIGatewayProxyResponse{
-	// 		StatusCode: http.StatusInternalServerError,
-	// 	}, fmt.Errorf("failed to send push notification: %w", err)
-	// }
+	endpoint, err := storageClient.GetApplicationEndpoint(ctx, receiverId)
+	if err != nil {
+		if !errors.Is(err, storage.ErrApplicationEndpointNotFound) {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusInternalServerError,
+			}, fmt.Errorf("failed to get application endpoint: %w", err)
+		}
+	} else {
+		err = notiClient.SendPushNotification(ctx, endpoint.EndpointArn, "Hello")
+		if err != nil {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusInternalServerError,
+			}, fmt.Errorf("failed to send push notification: %w", err)
+		}
+	}
 
 	return events.APIGatewayProxyResponse{
 		StatusCode: http.StatusOK,
