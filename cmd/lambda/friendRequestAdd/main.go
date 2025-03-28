@@ -60,27 +60,44 @@ func handler(
 		}, fmt.Errorf("failed to get friendship: %w", err)
 	}
 
-	err = storageClient.PutFriendRequest(ctx, entities.FriendRequest{
+	friendRequest := entities.FriendRequest{
 		SenderId:   senderId,
 		ReceiverId: receiverId,
 		CreatedAt:  time.Now(),
-	})
+	}
+	err = storageClient.PutFriendRequest(ctx, friendRequest)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
 		}, fmt.Errorf("failed to put friend request: %w", err)
 	}
 
-	endpoint, err := storageClient.GetApplicationEndpoint(ctx, receiverId)
+	endpoints, err := storageClient.FetchApplicationEndpoints(ctx, receiverId)
 	if err != nil {
-		if !errors.Is(err, storage.ErrApplicationEndpointNotFound) {
-			return events.APIGatewayProxyResponse{
-				StatusCode: http.StatusInternalServerError,
-			}, fmt.Errorf("failed to get application endpoint: %w", err)
-		}
-	} else {
-		err = notiClient.SendPushNotification(ctx, endpoint.EndpointArn, "Hello")
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("failed to get application endpoint: %w", err)
+	}
+
+	msg, err := json.Marshal(dtos.FriendRequestResponseFromEntity(friendRequest))
+	if err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("failed to marshal message: %w", err)
+	}
+
+	for _, endpoint := range endpoints {
+		err = notiClient.SendPushNotification(
+			ctx,
+			endpoint.EndpointArn,
+			string(msg),
+		)
 		if err != nil {
+			storageClient.DeleteApplicationEndpoint(
+				ctx,
+				endpoint.UserId,
+				endpoint.DeviceToken,
+			)
 			return events.APIGatewayProxyResponse{
 				StatusCode: http.StatusInternalServerError,
 			}, fmt.Errorf("failed to send push notification: %w", err)

@@ -2,7 +2,7 @@ name: Deploy stofinet image to production
 
 on:
   push:
-    branches: ["feat/stofinet", "feat/social"]
+    branches: ["feat/stofinet"]
 
 jobs:
   build:
