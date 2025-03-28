@@ -387,10 +387,35 @@ Resources:
         - AttributeName: FriendId
           KeyType: RANGE
       GlobalSecondaryIndexes:
-        - IndexName: FriendIdIndex
+        - IndexName: FriendIndex
           KeySchema:
             - AttributeName: FriendId
               KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      BillingMode: PAY_PER_REQUEST
+
+  FriendRequests:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${StackName}-${DeploymentStage}-FriendRequests"
+      AttributeDefinitions:
+        - AttributeName: SenderId
+          AttributeType: S
+        - AttributeName: ReceiverId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: SenderId
+          KeyType: HASH
+        - AttributeName: ReceiverId
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: ReceiverIndex
+          KeySchema:
+            - AttributeName: ReceiverId
+              KeyType: HASH
+            - AttributeName: SenderId
+              KeyType: RANGE
           Projection:
             ProjectionType: ALL
       BillingMode: PAY_PER_REQUEST
@@ -408,6 +433,22 @@ Resources:
       TimeToLiveSpecification:
         AttributeName: TTL
         Enabled: true
+      BillingMode: PAY_PER_REQUEST
+
+  ApplicationEndpoints:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${StackName}-${DeploymentStage}-ApplicationEndpoints"
+      AttributeDefinitions:
+        - AttributeName: UserId
+          AttributeType: S
+        - AttributeName: DeviceToken
+          AttributeType: S
+      KeySchema:
+        - AttributeName: UserId
+          KeyType: HASH
+        - AttributeName: DeviceToken
+          KeyType: RANGE
       BillingMode: PAY_PER_REQUEST
 
 Outputs:
@@ -476,6 +517,21 @@ Outputs:
     Export:
       Name: EvaluationsTableName
 
+  FriendshipsTableName:
+    Value: !Ref Friendships
+    Export:
+      Name: FriendshipsTableName
+
+  FriendRequestsTableName:
+    Value: !Ref FriendRequests
+    Export:
+      Name: FriendRequestsTableName
+
+  ApplicationEndpointsTableName:
+    Value: !Ref ApplicationEndpoints
+    Export:
+      Name: ApplicationEndpointsTableName
+
   PuzzlesBucketName:
     Value: !Ref Puzzles
     Export:
@@ -500,6 +556,16 @@ Outputs:
     Value: !GetAtt MatchStates.Arn
     Export:
       Name: MatchStatesTableArn
+
+  UserMatchesTableArn:
+    Value: !GetAtt UserMatches.Arn
+    Export:
+      Name: UserMatchesTableArn
+
+  SpectatorConversationsTableArn:
+    Value: !GetAtt SpectatorConversations.Arn
+    Export:
+      Name: SpectatorConversationsTableArn
 
   MessagesTableArn:
     Value: !GetAtt Messages.Arn

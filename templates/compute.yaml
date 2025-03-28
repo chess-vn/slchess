@@ -168,8 +168,11 @@ Resources:
                   - dynamodb:GetItem
                   - dynamodb:Query
                   - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
                 Resource:
+                  - !ImportValue UserMatchesTableArn
                   - !ImportValue ActiveMatchesTableArn
+                  - !ImportValue SpectatorConversationsTableArn
                   - !ImportValue MatchStatesTableArn
                   - !Sub
                     - "${MatchStatesTableArn}/index/MatchIndex"

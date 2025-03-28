@@ -202,7 +202,7 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 		(activeMatch.StartedAt != nil && time.Since(*activeMatch.StartedAt) > 2*config.MatchDuration+2*time.Minute) {
 		err := s.removeExpiredMatch(activeMatch)
 		if err != nil {
-			err = fmt.Errorf("failed to remove expired match: %w", err)
+			return nil, fmt.Errorf("failed to remove expired match: %w", err)
 		}
 		return nil, fmt.Errorf("match expired")
 	}

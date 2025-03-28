@@ -27,6 +27,9 @@ type config struct {
 	UserConversationsTableName      *string
 	PuzzleProfilesTableName         *string
 	EvaluationsTableName            *string
+	FriendshipsTableName            *string
+	FriendRequestsTableName         *string
+	ApplicationEndpointsTableName   *string
 }
 
 func NewClient(dynamoClient *dynamodb.Client) *Client {
@@ -79,6 +82,15 @@ func loadConfig() config {
 	}
 	if v, ok := os.LookupEnv("EVALUATIONS_TABLE_NAME"); ok {
 		cfg.EvaluationsTableName = aws.String(v)
+	}
+	if v, ok := os.LookupEnv("FRIENDSHIPS_TABLE_NAME"); ok {
+		cfg.FriendshipsTableName = aws.String(v)
+	}
+	if v, ok := os.LookupEnv("FRIEND_REQUESTS_TABLE_NAME"); ok {
+		cfg.FriendRequestsTableName = aws.String(v)
+	}
+	if v, ok := os.LookupEnv("APPLICATION_ENDPOINTS_TABLE_NAME"); ok {
+		cfg.ApplicationEndpointsTableName = aws.String(v)
 	}
 	return cfg
 }

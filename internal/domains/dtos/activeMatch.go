@@ -13,6 +13,7 @@ type ActiveMatchResponse struct {
 	Player2        PlayerResponse `json:"player2"`
 	GameMode       string         `json:"gameMode"`
 	Server         string         `json:"server,omitempty"`
+	StartedAt      *time.Time     `json:"startedAt"`
 	CreatedAt      time.Time      `json:"createdAt"`
 }
 
@@ -47,6 +48,7 @@ func ActiveMatchResponseFromEntity(activeMatch entities.ActiveMatch) ActiveMatch
 		},
 		GameMode:  activeMatch.GameMode,
 		Server:    activeMatch.Server,
+		StartedAt: activeMatch.StartedAt,
 		CreatedAt: activeMatch.CreatedAt,
 	}
 }
@@ -65,6 +67,7 @@ func ActiveMatchListResponseFromEntities(activeMatches []entities.ActiveMatch) A
 				Rating: activeMatch.Player2.Rating,
 			},
 			GameMode:  activeMatch.GameMode,
+			StartedAt: activeMatch.StartedAt,
 			CreatedAt: activeMatch.CreatedAt,
 		})
 	}

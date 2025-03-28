@@ -114,36 +114,84 @@ Outputs:
 
   MatchmakingEndpointUrl:
     Description: "Endpoint URL for matchmaking"
-    Value: !Sub "${HttpApiStack.Outputs.HttpApiEndpoint}/matchmaking"
+    Value: !Sub "POST ${HttpApiStack.Outputs.HttpApiEndpoint}/matchmaking"
 
   UserGetEndpointUrl:
     Description: "Endpoint URL for get user information"
-    Value: !Sub "${HttpApiStack.Outputs.HttpApiEndpoint}/user"
+    Value: !Sub "GET ${HttpApiStack.Outputs.HttpApiEndpoint}/user"
 
   MatchRecordGetEndpointUrl:
     Description: "Endpoint URL for get a single match record"
-    Value: !Sub "${HttpApiStack.Outputs.HttpApiEndpoint}/match/{id}"
+    Value: !Sub "GET ${HttpApiStack.Outputs.HttpApiEndpoint}/match/{id}"
 
   MatchResultListEndpointUrl:
     Description: "Endpoint URL for get a list of match results"
-    Value: !Sub "${HttpApiStack.Outputs.HttpApiEndpoint}/matchResults?limit=5&startKey=<START-KEY>"
+    Value: !Sub "GET ${HttpApiStack.Outputs.HttpApiEndpoint}/matchResults?limit=5&startKey=<START-KEY>"
 
   MatchStateListEndpointUrl:
     Description: "Endpoint URL for get a list of match results"
-    Value: !Sub "${HttpApiStack.Outputs.HttpApiEndpoint}/match/{id}/states?limit=20&startKey=<START-KEY>&order=asc"
+    Value: !Sub "GET ${HttpApiStack.Outputs.HttpApiEndpoint}/match/{id}/states?limit=20&startKey=<START-KEY>&order=asc"
 
   ActiveMatchListEndpointUrl:
     Description: "Endpoint URL for get a list of active matches"
-    Value: !Sub "${HttpApiStack.Outputs.HttpApiEndpoint}/activeMatches?limit=5&startKey=<START-KEY>"
+    Value: !Sub "GET ${HttpApiStack.Outputs.HttpApiEndpoint}/activeMatches?limit=5&startKey=<START-KEY>"
 
   UserRatingListEndpointUrl:
     Description: "Endpoint URL for get a list of user ratings"
-    Value: !Sub "${HttpApiStack.Outputs.HttpApiEndpoint}/userRatings?limit=5&startKey=<START-KEY>"
+    Value: !Sub "GET ${HttpApiStack.Outputs.HttpApiEndpoint}/userRatings?limit=5&startKey=<START-KEY>"
 
-  RestoreMatchEndpointUrl:
+  AvatarUploadEndpointUrl:
+    Description: "Endpoint URL for uploading avatar"
+    Value: !Sub "POST ${HttpApiStack.Outputs.HttpApiEndpoint}/avatar/upload"
+
+  MatchRestoreEndpointUrl:
     Description: "Endpoint URL for restoring a match"
-    Value: !Sub "${HttpApiStack.Outputs.HttpApiEndpoint}/match/{id}/restore"
+    Value: !Sub "GET ${HttpApiStack.Outputs.HttpApiEndpoint}/match/{id}/restore"
 
-  SpectateMatchEndpointUrl:
+  MatchSpectateEndpointUrl:
     Description: "Endpoint URL for spectating a match"
-    Value: !Sub "${HttpApiStack.Outputs.HttpApiEndpoint}/match/{id}/spectate"
+    Value: !Sub "GET ${HttpApiStack.Outputs.HttpApiEndpoint}/match/{id}/spectate"
+
+  PuzzleGetEndpointUrl:
+    Description: "Endpoint URL for getting a puzzle"
+    Value: !Sub "GET ${HttpApiStack.Outputs.HttpApiEndpoint}/puzzle/{id}"
+
+  PuzzleListEndpointUrl:
+    Description: "Endpoint URL for puzzle list by rating"
+    Value: !Sub "GET ${HttpApiStack.Outputs.HttpApiEndpoint}/puzzles?limit=5&startKey=<START-KEY>"
+
+  PuzzleProfileGetEndpointUrl:
+    Description: "Endpoint URL for getting puzzle profile"
+    Value: !Sub "GET ${HttpApiStack.Outputs.HttpApiEndpoint}/puzzle/profile"
+
+  PuzzleSolveEndpointUrl:
+    Description: "Endpoint URL for mark a puzzle as solved"
+    Value: !Sub "POST ${HttpApiStack.Outputs.HttpApiEndpoint}/puzzle/{id}/solved"
+
+  FriendshipGetEndpointUrl:
+    Description: "Endpoint URL for getting a friendship information"
+    Value: !Sub "GET ${HttpApiStack.Outputs.HttpApiEndpoint}/friend/{id}"
+
+  FriendshipListEndpointUrl:
+    Description: "Endpoint URL for getting friendship list"
+    Value: !Sub "GET ${HttpApiStack.Outputs.HttpApiEndpoint}/friends?limit=5&startKey=<START-KEY>"
+
+  FriendshipRemoveEndpointUrl:
+    Description: "Endpoint URL for removing a friendship"
+    Value: !Sub "DELETE ${HttpApiStack.Outputs.HttpApiEndpoint}/friend/{id}"
+
+  FriendshipRequestEndpointUrl:
+    Description: "Endpoint URL for requesting a friendship"
+    Value: !Sub "POST ${HttpApiStack.Outputs.HttpApiEndpoint}/friend/{id}/request"
+
+  FriendshipRespondEndpointUrl:
+    Description: "Endpoint URL for respond to a friendship request"
+    Value: !Sub "POST ${HttpApiStack.Outputs.HttpApiEndpoint}/friend/{id}/respond"
+
+  EvaluationWorkAcquireEndpointUrl:
+    Description: "Endpoint URL for acquiring evaluation work"
+    Value: !Sub "GET ${HttpApiStack.Outputs.HttpApiEndpoint}/stofinet/acquire"
+
+  EvaluationWorkSubmitEndpointUrl:
+    Description: "Endpoint URL for submit evaluation work"
+    Value: !Sub "POST ${HttpApiStack.Outputs.HttpApiEndpoint}/stofinet/submit"
