@@ -34,6 +34,7 @@ func handler(
 	userId := auth.MustAuth(event.RequestContext.Authorizer)
 
 	startKey, limit, err := extractParameters(
+		userId,
 		event.QueryStringParameters,
 	)
 	if err != nil {
@@ -56,8 +57,7 @@ func handler(
 	resp := dtos.FriendRequestListResponseFromEntities(friendRequests)
 	if lastEvalKey != nil {
 		resp.NextPageToken = &dtos.NextFriendRequestPageToken{
-			SenderId:   lastEvalKey["SenderId"].(*types.AttributeValueMemberS).Value,
-			ReceiverId: userId,
+			SenderId: lastEvalKey["SenderId"].(*types.AttributeValueMemberS).Value,
 		}
 		fmt.Println(lastEvalKey)
 	}
@@ -76,19 +76,20 @@ func handler(
 }
 
 func extractParameters(
+	userId string,
 	params map[string]string,
 ) (
 	map[string]types.AttributeValue,
 	int32,
 	error,
 ) {
-	limit := 10
+	var limit int32 = 10
 	if limitStr, ok := params["limit"]; ok {
 		limitInt64, err := strconv.ParseInt(limitStr, 10, 32)
 		if err != nil {
 			return nil, 0, fmt.Errorf("invalid limit: %v", err)
 		}
-		limit = int(limitInt64)
+		limit = int32(limitInt64)
 	}
 
 	// Check for startKey (optional)
@@ -106,12 +107,12 @@ func extractParameters(
 				Value: nextPageToken.SenderId,
 			},
 			"ReceiverId": &types.AttributeValueMemberS{
-				Value: nextPageToken.ReceiverId,
+				Value: userId,
 			},
 		}
 	}
 
-	return startKey, int32(limit), nil
+	return startKey, limit, nil
 }
 
 func main() {

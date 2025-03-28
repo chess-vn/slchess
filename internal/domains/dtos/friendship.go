@@ -19,7 +19,6 @@ type FriendshipResponse struct {
 }
 
 type NextFriendshipPageToken struct {
-	UserId   string `json:"userId"`
 	FriendId string `json:"friendId"`
 }
 

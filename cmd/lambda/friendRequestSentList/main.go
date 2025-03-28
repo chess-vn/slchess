@@ -34,6 +34,7 @@ func handler(
 	userId := auth.MustAuth(event.RequestContext.Authorizer)
 
 	startKey, limit, err := extractParameters(
+		userId,
 		event.QueryStringParameters,
 	)
 	if err != nil {
@@ -55,7 +56,6 @@ func handler(
 	resp := dtos.FriendRequestListResponseFromEntities(friendRequests)
 	if lastEvalKey != nil {
 		resp.NextPageToken = &dtos.NextFriendRequestPageToken{
-			SenderId:   userId,
 			ReceiverId: lastEvalKey["ReceiverId"].(*types.AttributeValueMemberS).Value,
 		}
 		fmt.Println(lastEvalKey)
@@ -75,6 +75,7 @@ func handler(
 }
 
 func extractParameters(
+	userId string,
 	params map[string]string,
 ) (
 	map[string]types.AttributeValue,
@@ -102,7 +103,7 @@ func extractParameters(
 		}
 		startKey = map[string]types.AttributeValue{
 			"SenderId": &types.AttributeValueMemberS{
-				Value: nextPageToken.SenderId,
+				Value: userId,
 			},
 			"ReceiverId": &types.AttributeValueMemberS{
 				Value: nextPageToken.ReceiverId,

@@ -18,8 +18,8 @@ type FriendRequestResponse struct {
 }
 
 type NextFriendRequestPageToken struct {
-	SenderId   string `json:"senderId"`
-	ReceiverId string `json:"friendId"`
+	SenderId   string `json:"senderId,omitempty"`
+	ReceiverId string `json:"receiverId,omitempty"`
 }
 
 func FriendRequestListResponseFromEntities(friendships []entities.FriendRequest) FriendRequestListResponse {

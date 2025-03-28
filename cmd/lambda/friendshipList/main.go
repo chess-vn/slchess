@@ -34,6 +34,7 @@ func handler(
 	userId := auth.MustAuth(event.RequestContext.Authorizer)
 
 	startKey, limit, err := extractParameters(
+		userId,
 		event.QueryStringParameters,
 	)
 	if err != nil {
@@ -56,7 +57,6 @@ func handler(
 	resp := dtos.FriendshipListResponseFromEntities(friendships)
 	if lastEvalKey != nil {
 		resp.NextPageToken = &dtos.NextFriendshipPageToken{
-			UserId:   userId,
 			FriendId: lastEvalKey["FriendId"].(*types.AttributeValueMemberS).Value,
 		}
 		fmt.Println(lastEvalKey)
@@ -76,6 +76,7 @@ func handler(
 }
 
 func extractParameters(
+	userId string,
 	params map[string]string,
 ) (
 	map[string]types.AttributeValue,
@@ -103,7 +104,7 @@ func extractParameters(
 		}
 		startKey = map[string]types.AttributeValue{
 			"UserId": &types.AttributeValueMemberS{
-				Value: nextPageToken.UserId,
+				Value: userId,
 			},
 			"FriendId": &types.AttributeValueMemberS{
 				Value: nextPageToken.FriendId,
