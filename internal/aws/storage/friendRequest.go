@@ -37,7 +37,6 @@ func (client *Client) FetchReceivedFriendRequests(
 	if err != nil {
 		return nil, nil, err
 	}
-	fmt.Println(userId, len(output.Items))
 	var friendRequests []entities.FriendRequest
 	err = attributevalue.UnmarshalListOfMaps(output.Items, &friendRequests)
 	if err != nil {
