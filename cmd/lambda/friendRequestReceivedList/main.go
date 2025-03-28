@@ -41,7 +41,7 @@ func handler(
 			StatusCode: http.StatusBadRequest,
 		}, fmt.Errorf("failed to extract parameters: %w", err)
 	}
-	friendships, lastEvalKey, err := storageClient.FetchFriendships(
+	friendRequests, lastEvalKey, err := storageClient.FetchReceivedFriendRequests(
 		ctx,
 		userId,
 		startKey,
@@ -50,14 +50,14 @@ func handler(
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("failed to fetch friendships: %w", err)
+		}, fmt.Errorf("failed to fetch friend requests: %w", err)
 	}
 
-	resp := dtos.FriendshipListResponseFromEntities(friendships)
+	resp := dtos.FriendRequestListResponseFromEntities(friendRequests)
 	if lastEvalKey != nil {
-		resp.NextPageToken = &dtos.NextFriendshipPageToken{
-			UserId:   userId,
-			FriendId: lastEvalKey["FriendId"].(*types.AttributeValueMemberS).Value,
+		resp.NextPageToken = &dtos.NextFriendRequestPageToken{
+			SenderId:   lastEvalKey["SenderId"].(*types.AttributeValueMemberS).Value,
+			ReceiverId: userId,
 		}
 		fmt.Println(lastEvalKey)
 	}
@@ -94,7 +94,7 @@ func extractParameters(
 	// Check for startKey (optional)
 	var startKey map[string]types.AttributeValue
 	if startKeyStr, ok := params["startKey"]; ok {
-		var nextPageToken dtos.NextFriendshipPageToken
+		var nextPageToken dtos.NextFriendRequestPageToken
 		if err := json.Unmarshal(
 			[]byte(startKeyStr),
 			&nextPageToken,
@@ -102,11 +102,11 @@ func extractParameters(
 			return nil, 0, err
 		}
 		startKey = map[string]types.AttributeValue{
-			"UserId": &types.AttributeValueMemberS{
-				Value: nextPageToken.UserId,
+			"SenderId": &types.AttributeValueMemberS{
+				Value: nextPageToken.SenderId,
 			},
-			"FriendId": &types.AttributeValueMemberS{
-				Value: nextPageToken.FriendId,
+			"ReceiverId": &types.AttributeValueMemberS{
+				Value: nextPageToken.ReceiverId,
 			},
 		}
 	}

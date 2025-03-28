@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -13,6 +16,7 @@ import (
 	"github.com/chess-vn/slchess/internal/aws/auth"
 	"github.com/chess-vn/slchess/internal/aws/notification"
 	"github.com/chess-vn/slchess/internal/aws/storage"
+	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/internal/domains/entities"
 )
 
@@ -34,19 +38,37 @@ func handler(
 	events.APIGatewayProxyResponse,
 	error,
 ) {
-	userId := auth.MustAuth(event.RequestContext.Authorizer)
-	targetId := event.PathParameters["id"]
+	senderId := auth.MustAuth(event.RequestContext.Authorizer)
+	receiverId := event.PathParameters["id"]
 
-	friendship := entities.Friendship{
-		UserId:   userId,
-		FriendId: targetId,
-		Status:   "pending",
+	friendship, err := storageClient.GetFriendship(ctx, senderId, receiverId)
+	if err == nil {
+		resp := dtos.FriendshipResponseFromEntity(friendship)
+		respJson, err := json.Marshal(resp)
+		if err != nil {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusConflict,
+			}, fmt.Errorf("failed to marshal response: %w", err)
+		}
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusNotImplemented,
+			Body:       string(respJson),
+		}, nil
+	} else if !errors.Is(err, storage.ErrFriendshipNotFound) {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("failed to get friendship: %w", err)
 	}
-	err := storageClient.PutFriendship(ctx, friendship)
+
+	err = storageClient.PutFriendRequest(ctx, entities.FriendRequest{
+		SenderId:   senderId,
+		ReceiverId: receiverId,
+		CreatedAt:  time.Now(),
+	})
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("failed to put friendship: %w", err)
+		}, fmt.Errorf("failed to put friend request: %w", err)
 	}
 
 	// TODO: notify other user

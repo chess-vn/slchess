@@ -209,6 +209,29 @@ Resources:
             Method: GET
             ApiId: !Ref HttpApi
 
+  MessageListFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: !Sub "${StackName}-${DeploymentStage}-MessageList"
+      CodeUri: ../cmd/lambda/messageList/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !ImportValue MessagesTableName
+      Environment:
+        Variables:
+          MESSAGES_TABLE_NAME: !ImportValue MessagesTableName
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /messages
+            Method: GET
+            ApiId: !Ref HttpApi
+
   MatchStateListFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -688,49 +711,124 @@ Resources:
             Method: DELETE
             ApiId: !Ref HttpApi
 
-  FriendshipRequestFunction:
+  FriendRequestReceivedListFunction:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: go1.x
     Properties:
-      FunctionName: !Sub "${StackName}-${DeploymentStage}-FriendshipRequest"
-      CodeUri: ../cmd/lambda/friendshipRequest/
+      FunctionName: !Sub "${StackName}-${DeploymentStage}-FriendRequestReceivedList"
+      CodeUri: ../cmd/lambda/friendRequestReceivedList/
       Handler: bootstrap
       Runtime: provided.al2023
       Policies:
         - DynamoDBCrudPolicy:
+            TableName: !ImportValue FriendRequestsTableName
+      Environment:
+        Variables:
+          FRIEND_REQUESTS_TABLE_NAME: !ImportValue FriendRequestsTableName
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /friendRequests/received
+            Method: GET
+            ApiId: !Ref HttpApi
+
+  FriendRequestSentListFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: !Sub "${StackName}-${DeploymentStage}-FriendRequestSentList"
+      CodeUri: ../cmd/lambda/friendRequestSentList/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !ImportValue FriendRequestsTableName
+      Environment:
+        Variables:
+          FRIEND_REQUESTS_TABLE_NAME: !ImportValue FriendRequestsTableName
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /friendRequests/sent
+            Method: GET
+            ApiId: !Ref HttpApi
+
+  FriendRequestAddFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: !Sub "${StackName}-${DeploymentStage}-FriendRequestAdd"
+      CodeUri: ../cmd/lambda/friendRequestAdd/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !ImportValue FriendRequestsTableName
+        - DynamoDBCrudPolicy:
             TableName: !ImportValue FriendshipsTableName
       Environment:
         Variables:
+          FRIEND_REQUESTS_TABLE_NAME: !ImportValue FriendRequestsTableName
           FRIENDSHIPS_TABLE_NAME: !ImportValue FriendshipsTableName
       Events:
         ApiEvent:
           Type: HttpApi
           Properties:
-            Path: /friend/{id}/request
+            Path: /friend/{id}/add
             Method: POST
             ApiId: !Ref HttpApi
 
-  FriendshipRespondFunction:
+  FriendRequestAcceptFunction:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: go1.x
     Properties:
-      FunctionName: !Sub "${StackName}-${DeploymentStage}-FriendshipRespond"
-      CodeUri: ../cmd/lambda/friendshipRespond/
+      FunctionName: !Sub "${StackName}-${DeploymentStage}-FriendRequestAccept"
+      CodeUri: ../cmd/lambda/friendRequestAccept/
       Handler: bootstrap
       Runtime: provided.al2023
       Policies:
         - DynamoDBCrudPolicy:
+            TableName: !ImportValue FriendRequestsTableName
+        - DynamoDBCrudPolicy:
             TableName: !ImportValue FriendshipsTableName
       Environment:
         Variables:
+          FRIEND_REQUESTS_TABLE_NAME: !ImportValue FriendRequestsTableName
           FRIENDSHIPS_TABLE_NAME: !ImportValue FriendshipsTableName
       Events:
         ApiEvent:
           Type: HttpApi
           Properties:
-            Path: /friend/{id}/respond
+            Path: /friend/{id}/accept
+            Method: POST
+            ApiId: !Ref HttpApi
+
+  FriendRequestRejectAcceptFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: !Sub "${StackName}-${DeploymentStage}-FriendRequestReject"
+      CodeUri: ../cmd/lambda/friendRequestReject/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !ImportValue FriendRequestsTableName
+      Environment:
+        Variables:
+          FRIEND_REQUESTS_TABLE_NAME: !ImportValue FriendRequestsTableName
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /friend/{id}/reject
             Method: POST
             ApiId: !Ref HttpApi
 

@@ -387,10 +387,35 @@ Resources:
         - AttributeName: FriendId
           KeyType: RANGE
       GlobalSecondaryIndexes:
-        - IndexName: FriendIdIndex
+        - IndexName: FriendIndex
           KeySchema:
             - AttributeName: FriendId
               KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      BillingMode: PAY_PER_REQUEST
+
+  FriendRequests:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${StackName}-${DeploymentStage}-FriendRequests"
+      AttributeDefinitions:
+        - AttributeName: SenderId
+          AttributeType: S
+        - AttributeName: ReceiverId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: SenderId
+          KeyType: HASH
+        - AttributeName: ReceiverId
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: ReceiverIndex
+          KeySchema:
+            - AttributeName: ReceiverId
+              KeyType: HASH
+            - AttributeName: SenderId
+              KeyType: RANGE
           Projection:
             ProjectionType: ALL
       BillingMode: PAY_PER_REQUEST
@@ -480,6 +505,11 @@ Outputs:
     Value: !Ref Friendships
     Export:
       Name: FriendshipsTableName
+
+  FriendRequestsTableName:
+    Value: !Ref FriendRequests
+    Export:
+      Name: FriendRequestsTableName
 
   PuzzlesBucketName:
     Value: !Ref Puzzles

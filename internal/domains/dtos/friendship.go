@@ -15,7 +15,6 @@ type FriendshipResponse struct {
 	UserId         string    `json:"userId"`
 	FriendId       string    `json:"friendId"`
 	ConversationId string    `json:"conversationId"`
-	Status         string    `json:"status"`
 	StartedAt      time.Time `json:"startedAt"`
 }
 
@@ -39,7 +38,6 @@ func FriendshipResponseFromEntity(friendship entities.Friendship) FriendshipResp
 		UserId:         friendship.UserId,
 		FriendId:       friendship.FriendId,
 		ConversationId: friendship.ConversationId,
-		Status:         friendship.Status,
 		StartedAt:      friendship.StartedAt,
 	}
 }

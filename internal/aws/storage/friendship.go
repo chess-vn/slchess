@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -16,7 +15,6 @@ import (
 var ErrFriendshipNotFound = fmt.Errorf("friendship not found")
 
 type FriendshipUpdateOptions struct {
-	Status         *string
 	ConversationId *string
 	StartedAt      *time.Time
 }
@@ -82,7 +80,7 @@ func (client *Client) FetchFriendships(
 func (client *Client) PutFriendship(ctx context.Context, friendship entities.Friendship) error {
 	av, err := attributevalue.MarshalMap(friendship)
 	if err != nil {
-		return fmt.Errorf("failed to marshal evaluation map: %w", err)
+		return fmt.Errorf("failed to marshal map: %w", err)
 	}
 
 	_, err = client.dynamodb.PutItem(ctx, &dynamodb.PutItemInput{
@@ -92,54 +90,6 @@ func (client *Client) PutFriendship(ctx context.Context, friendship entities.Fri
 	if err != nil {
 		return fmt.Errorf("failed to put friendship: %w", err)
 	}
-	return nil
-}
-
-func (client *Client) UpdateFriendship(
-	ctx context.Context,
-	userId,
-	friendId string,
-	opts FriendshipUpdateOptions,
-) error {
-	updateExpression := []string{}
-	expressionAttributeValues := map[string]types.AttributeValue{}
-
-	if opts.Status != nil {
-		updateExpression = append(updateExpression, "Status = :status")
-		expressionAttributeValues[":status"] = &types.AttributeValueMemberS{
-			Value: *opts.Status,
-		}
-	}
-	if opts.ConversationId != nil {
-		updateExpression = append(updateExpression, "ConversationId = :conversationId")
-		expressionAttributeValues[":conversationId"] = &types.AttributeValueMemberS{
-			Value: *opts.ConversationId,
-		}
-	}
-	if opts.StartedAt != nil {
-		updateExpression = append(updateExpression, "StartedAt = :startedAt")
-		expressionAttributeValues[":startedAt"] = &types.AttributeValueMemberS{
-			Value: opts.StartedAt.Format(time.RFC3339),
-		}
-	}
-
-	_, err := client.dynamodb.UpdateItem(ctx, &dynamodb.UpdateItemInput{
-		TableName: client.cfg.FriendshipsTableName,
-		Key: map[string]types.AttributeValue{
-			"UserId": &types.AttributeValueMemberS{
-				Value: userId,
-			},
-			"FriendId": &types.AttributeValueMemberS{
-				Value: friendId,
-			},
-		},
-		UpdateExpression:          aws.String("SET " + strings.Join(updateExpression, ", ")),
-		ExpressionAttributeValues: expressionAttributeValues,
-	})
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 

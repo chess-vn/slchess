@@ -31,33 +31,30 @@ func handler(
 	events.APIGatewayProxyResponse,
 	error,
 ) {
-	userId := auth.MustAuth(event.RequestContext.Authorizer)
-
-	startKey, limit, err := extractParameters(
+	auth.MustAuth(event.RequestContext.Authorizer)
+	conversationId, startKey, limit, err := extractParameters(
 		event.QueryStringParameters,
 	)
 	if err != nil {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("failed to extract parameters: %w", err)
+		return events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest},
+			fmt.Errorf("failed to extract parameters: %w", err)
 	}
-	friendships, lastEvalKey, err := storageClient.FetchFriendships(
+	messages, lastEvalKey, err := storageClient.FetchMessages(
 		ctx,
-		userId,
+		conversationId,
 		startKey,
 		limit,
 	)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("failed to fetch friendships: %w", err)
+		}, fmt.Errorf("failed to fetch messages: %w", err)
 	}
 
-	resp := dtos.FriendshipListResponseFromEntities(friendships)
+	resp := dtos.MessageListResponseFromEntities(messages)
 	if lastEvalKey != nil {
-		resp.NextPageToken = &dtos.NextFriendshipPageToken{
-			UserId:   userId,
-			FriendId: lastEvalKey["FriendId"].(*types.AttributeValueMemberS).Value,
+		resp.NextPageToken = &dtos.NextMessagePageToken{
+			CreatedAt: lastEvalKey["CreatedAt"].(*types.AttributeValueMemberS).Value,
 		}
 		fmt.Println(lastEvalKey)
 	}
@@ -78,15 +75,20 @@ func handler(
 func extractParameters(
 	params map[string]string,
 ) (
+	string,
 	map[string]types.AttributeValue,
 	int32,
 	error,
 ) {
+	conversationId, ok := params["conversationId"]
+	if !ok {
+		return "", nil, 0, fmt.Errorf("conversationId required")
+	}
 	limit := 10
 	if limitStr, ok := params["limit"]; ok {
 		limitInt64, err := strconv.ParseInt(limitStr, 10, 32)
 		if err != nil {
-			return nil, 0, fmt.Errorf("invalid limit: %v", err)
+			return "", nil, 0, fmt.Errorf("invalid limit: %v", err)
 		}
 		limit = int(limitInt64)
 	}
@@ -94,24 +96,24 @@ func extractParameters(
 	// Check for startKey (optional)
 	var startKey map[string]types.AttributeValue
 	if startKeyStr, ok := params["startKey"]; ok {
-		var nextPageToken dtos.NextFriendshipPageToken
+		var nextPageToken dtos.NextMessagePageToken
 		if err := json.Unmarshal(
 			[]byte(startKeyStr),
 			&nextPageToken,
 		); err != nil {
-			return nil, 0, err
+			return "", nil, 0, err
 		}
 		startKey = map[string]types.AttributeValue{
-			"UserId": &types.AttributeValueMemberS{
-				Value: nextPageToken.UserId,
+			"ConversationId": &types.AttributeValueMemberS{
+				Value: conversationId,
 			},
-			"FriendId": &types.AttributeValueMemberS{
-				Value: nextPageToken.FriendId,
+			"CreatedAt": &types.AttributeValueMemberS{
+				Value: nextPageToken.CreatedAt,
 			},
 		}
 	}
 
-	return startKey, int32(limit), nil
+	return conversationId, startKey, int32(limit), nil
 }
 
 func main() {
