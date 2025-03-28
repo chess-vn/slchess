@@ -506,6 +506,16 @@ Outputs:
     Export:
       Name: MatchStatesTableArn
 
+  UserMatchesTableArn:
+    Value: !GetAtt UserMatches.Arn
+    Export:
+      Name: UserMatchesTableArn
+
+  SpectatorConversationsTableArn:
+    Value: !GetAtt SpectatorConversations.Arn
+    Export:
+      Name: SpectatorConversationsTableArn
+
   MessagesTableArn:
     Value: !GetAtt Messages.Arn
     Export:

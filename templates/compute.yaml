@@ -169,7 +169,9 @@ Resources:
                   - dynamodb:Query
                   - dynamodb:UpdateItem
                 Resource:
+                  - !ImportValue UserMatchesTableArn
                   - !ImportValue ActiveMatchesTableArn
+                  - !ImportValue SpectatorConversationsTableArn
                   - !ImportValue MatchStatesTableArn
                   - !Sub
                     - "${MatchStatesTableArn}/index/MatchIndex"
