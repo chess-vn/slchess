@@ -28,14 +28,20 @@ func handler(ctx context.Context, event json.RawMessage) error {
 	}
 	matchRecord := dtos.MatchRecordRequestToEntity(matchRecordReq)
 
+	for _, player := range matchRecordReq.Players {
+		err := storageClient.DeleteUserMatch(ctx, player.Id)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to delete user match: [userId: %s] - %w",
+				player.Id,
+				err,
+			)
+		}
+	}
+
 	err := storageClient.DeleteActiveMatch(ctx, matchRecord.MatchId)
 	if err != nil {
 		return fmt.Errorf("failed to delete active match: %w", err)
-	}
-
-	err = storageClient.DeleteSpectatorConversation(ctx, matchRecord.MatchId)
-	if err != nil {
-		return fmt.Errorf("failed to delete spectator conversation: %w", err)
 	}
 
 	err = storageClient.PutMatchRecord(ctx, matchRecord)
@@ -44,15 +50,6 @@ func handler(ctx context.Context, event json.RawMessage) error {
 	}
 
 	for i, player := range matchRecordReq.Players {
-		err = storageClient.DeleteUserMatch(ctx, player.Id)
-		if err != nil {
-			return fmt.Errorf(
-				"failed to delete user match: [userId: %s] - %w",
-				player.Id,
-				err,
-			)
-		}
-
 		playerRating := entities.UserRating{
 			UserId:       player.Id,
 			PartitionKey: "UserRatings",
@@ -85,6 +82,11 @@ func handler(ctx context.Context, event json.RawMessage) error {
 				err,
 			)
 		}
+	}
+
+	err = storageClient.DeleteSpectatorConversation(ctx, matchRecord.MatchId)
+	if err != nil {
+		return fmt.Errorf("failed to delete spectator conversation: %w", err)
 	}
 
 	return nil

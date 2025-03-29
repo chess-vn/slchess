@@ -154,11 +154,6 @@ func (s *server) handleEndGame(match *Match) {
 		return
 	}
 	ctx := context.TODO()
-	cfg, err := config.LoadDefaultConfig(ctx)
-	if err != nil {
-		logging.Fatal("unable to load SDK config", zap.Error(err))
-	}
-	lambdaClient := lambda.NewFromConfig(cfg)
 
 	newRatings, newRDs, err := match.getNewPlayerRatings()
 	if err != nil {
@@ -203,10 +198,10 @@ func (s *server) handleEndGame(match *Match) {
 	input := &lambda.InvokeInput{
 		FunctionName:   aws.String(s.config.EndGameFunctionArn),
 		Payload:        payload,
-		InvocationType: types.InvocationTypeEvent,
+		InvocationType: types.InvocationTypeRequestResponse,
 	}
 
-	_, err = lambdaClient.Invoke(ctx, input)
+	_, err = s.lambdaClient.Invoke(ctx, input)
 	if err != nil {
 		logging.Fatal("failed to invoke end game", zap.Error(err))
 	}
