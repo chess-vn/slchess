@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
+	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/chess-vn/slchess/internal/aws/auth"
 	awsAuth "github.com/chess-vn/slchess/internal/aws/auth"
 	"github.com/chess-vn/slchess/internal/aws/compute"
@@ -37,7 +38,9 @@ type server struct {
 	cognitoPublicKeys map[string]*rsa.PublicKey
 	storageClient     *storage.Client
 	computeClient     *compute.Client
-	protectionTimer   *utils.Timer
+	lambdaClient      *lambda.Client
+
+	protectionTimer *utils.Timer
 }
 
 type payload struct {
@@ -76,6 +79,7 @@ func NewServer() *server {
 			ecs.NewFromConfig(awsCfg),
 			nil,
 		),
+		lambdaClient: lambda.NewFromConfig(awsCfg),
 	}
 	srv.resetProtectionTimer(cfg.IdleTimeout)
 	return srv
