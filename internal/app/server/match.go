@@ -13,6 +13,11 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	PENDING  = "pending"
+	DECLINED = "declined"
+)
+
 type Match struct {
 	id      string
 	players []*player
@@ -61,8 +66,10 @@ type errorResponse struct {
 	Error string `json:"error"`
 }
 
-type drawOffer struct {
-	Type string `json:"type"`
+type drawOfferResponse struct {
+	Type      string `json:"type"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"createdAt"`
 }
 
 type abortResponse struct {
@@ -93,7 +100,12 @@ func (match *Match) start() {
 		case OFFER_DRAW:
 			draw := match.game.OfferDraw(player.color())
 			if !draw {
-				match.sendDrawOffer()
+				match.sendDrawOfferNotification(PENDING)
+			}
+		case DECLINE_DRAW:
+			shouldNotify := match.game.DeclineDraw(player.color())
+			if shouldNotify {
+				match.sendDrawOfferNotification(DECLINED)
 			}
 		default:
 			if expectedId := match.getCurrentTurnPlayer().Id; player.Id != expectedId {
@@ -171,17 +183,19 @@ func (match *Match) start() {
 	}
 }
 
-func (m *Match) sendDrawOffer() {
+func (m *Match) sendDrawOfferNotification(status string) {
 	player := m.getNextTurnPlayer()
 	if player == nil || player.Conn == nil {
 		return
 	}
-	err := player.Conn.WriteJSON(drawOffer{
-		Type: "drawOffer",
+	err := player.Conn.WriteJSON(drawOfferResponse{
+		Type:      "drawOffer",
+		Status:    status,
+		CreatedAt: time.Now().Format(time.RFC3339),
 	})
 	if err != nil {
 		logging.Error(
-			"couldn't send draw offer to player: ",
+			"couldn't send draw offer notification to player: ",
 			zap.String("player_id", player.Id),
 		)
 	}
@@ -206,6 +220,21 @@ func (m *Match) notifyPlayers(resp gameStateResponse) {
 }
 
 func (m *Match) notifyAboutPlayerStatus(resp playerStatusResponse) {
+	for _, player := range m.players {
+		if player == nil || player.Conn == nil || player.Id == resp.PlayerId {
+			continue
+		}
+		err := player.Conn.WriteJSON(resp)
+		if err != nil {
+			logging.Error(
+				"couldn't notify player: ",
+				zap.String("player_id", player.Id),
+			)
+		}
+	}
+}
+
+func (m *Match) notifyAboutDeclinedOffer(resp playerStatusResponse) {
 	for _, player := range m.players {
 		if player == nil || player.Conn == nil || player.Id == resp.PlayerId {
 			continue
