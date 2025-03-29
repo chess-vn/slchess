@@ -2,7 +2,7 @@ name: Deploy stofinet image to production
 
 on:
   push:
-    branches: ["feat/stofinet"]
+    branches: ["feat/stofinet", "main"]
 
 jobs:
   build:
@@ -15,7 +15,7 @@ jobs:
       - name: Set up Go environment
         uses: actions/setup-go@v5
         with:
-          go-version: 1.23.5
+          go-version: 1.24.1
 
       - name: Install go-task
         run: |

@@ -1,5 +1,5 @@
 # Stage 1: Build stofinet
-FROM golang:1.23.5-alpine AS build-stofinet
+FROM golang:1.24.1-alpine AS build-stofinet
 WORKDIR /app
 
 # Cache module downloads

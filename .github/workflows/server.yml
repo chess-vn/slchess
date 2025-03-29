@@ -2,7 +2,7 @@ name: Deploy server image to production
 
 on:
   push:
-    branches: ["feat/game-server"]
+    branches: ["feat/game-server", "main"]
 
 jobs:
   build:
@@ -15,7 +15,7 @@ jobs:
       - name: Set up Go environment
         uses: actions/setup-go@v5
         with:
-          go-version: 1.23.5
+          go-version: 1.24.1
 
       - name: Install go-task
         run: |
