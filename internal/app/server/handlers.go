@@ -249,6 +249,11 @@ func (s *server) handlePlayerDisconnect(match *Match, playerId string) {
 				match.setTimer(match.cfg.DisconnectTimeout)
 			}
 		}
+		match.notifyAboutPlayerStatus(playerStatusResponse{
+			Type:     "playerStatus",
+			PlayerId: playerId,
+			Status:   player.Status.String(),
+		})
 	}
 }
 
@@ -293,6 +298,12 @@ func (s *server) handlePlayerJoin(
 		zap.String("player_id", playerId),
 		zap.String("match_id", match.id),
 	)
+
+	match.notifyAboutPlayerStatus(playerStatusResponse{
+		Type:     "playerStatus",
+		PlayerId: playerId,
+		Status:   player.Status.String(),
+	})
 }
 
 // Handler for when user sends a message
