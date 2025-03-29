@@ -333,6 +333,8 @@ func (s *server) handleWebSocketMessage(
 			match.processGameControl(playerId, RESIGN)
 		case "offerDraw":
 			match.processGameControl(playerId, OFFER_DRAW)
+		case "declineDraw":
+			match.processGameControl(playerId, DECLINE_DRAW)
 		case "move":
 			match.processMove(playerId, payload.Data["move"], payload.CreatedAt)
 		default:

@@ -24,6 +24,7 @@ const (
 	ABORT GameControl = iota
 	RESIGN
 	OFFER_DRAW
+	DECLINE_DRAW
 	NONE
 
 	BLACK_OUT_OF_TIME        = "BLACK_OUT_OF_TIME"
@@ -33,10 +34,15 @@ const (
 	DRAW_BY_TIMEOUT          = "DRAW_BY_TIMEOUT"
 )
 
+type drawOffer struct {
+	Side      chess.Color
+	Timestamp time.Time
+}
+
 type game struct {
 	chess.Game
 	customOutcome chess.Outcome
-	drawOffers    []bool
+	drawOffer     *drawOffer
 	moves         []move
 }
 
@@ -45,9 +51,9 @@ func newGame() *game {
 		chess.UseNotation(chess.UCINotation{}),
 	)
 	return &game{
-		Game:       *g,
-		drawOffers: []bool{false, false},
-		moves:      []move{},
+		Game:      *g,
+		drawOffer: nil,
+		moves:     []move{},
 	}
 }
 
@@ -61,21 +67,27 @@ func restoreGame(gameState string) (*game, error) {
 		chess.UseNotation(chess.UCINotation{}),
 	)
 	return &game{
-		Game:       *g,
-		drawOffers: []bool{false, false},
-		moves:      []move{},
+		Game:      *g,
+		drawOffer: nil,
+		moves:     []move{},
 	}, nil
 }
 
 func (g *game) OfferDraw(side chess.Color) bool {
-	switch side {
-	case chess.White:
-		g.drawOffers[0] = true
-	case chess.Black:
-		g.drawOffers[1] = true
+	if g.drawOffer != nil && g.drawOffer.Side != side &&
+		time.Now().Before(g.drawOffer.Timestamp.Add(15*time.Second)) {
+		return true
 	}
-	if g.drawOffers[0] && g.drawOffers[1] {
-		g.Draw(chess.DrawOffer)
+	g.drawOffer = &drawOffer{
+		Side:      side,
+		Timestamp: time.Now(),
+	}
+	return false
+}
+
+func (g *game) DeclineDraw(side chess.Color) bool {
+	if g.drawOffer != nil && g.drawOffer.Side != side {
+		g.drawOffer = nil
 		return true
 	}
 	return false
