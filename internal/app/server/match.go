@@ -50,6 +50,12 @@ type gameStateResponse struct {
 	Clocks  []string `json:"clocks"`
 }
 
+type playerStatusResponse struct {
+	Type     string `json:"type"`
+	PlayerId string `json:"playerId"`
+	Status   string `json:"status"`
+}
+
 type errorResponse struct {
 	Type  string `json:"type"`
 	Error string `json:"error"`
@@ -190,6 +196,21 @@ func (m *Match) notifyPlayers(resp gameStateResponse) {
 			Type:      "gameState",
 			GameState: resp,
 		})
+		if err != nil {
+			logging.Error(
+				"couldn't notify player: ",
+				zap.String("player_id", player.Id),
+			)
+		}
+	}
+}
+
+func (m *Match) notifyAboutPlayerStatus(resp playerStatusResponse) {
+	for _, player := range m.players {
+		if player == nil || player.Conn == nil || player.Id == resp.PlayerId {
+			continue
+		}
+		err := player.Conn.WriteJSON(resp)
 		if err != nil {
 			logging.Error(
 				"couldn't notify player: ",
