@@ -49,10 +49,11 @@ type matchResponse struct {
 }
 
 type gameStateResponse struct {
-	Outcome string   `json:"outcome"`
-	Method  string   `json:"method"`
-	Fen     string   `json:"fen"`
-	Clocks  []string `json:"clocks"`
+	Outcome  string   `json:"outcome"`
+	Method   string   `json:"method"`
+	Fen      string   `json:"fen"`
+	Clocks   []string `json:"clocks"`
+	Statuses []string `json:"statuses,omitempty"`
 }
 
 type playerStatusResponse struct {
@@ -260,6 +261,10 @@ func (m *Match) syncPlayer(player *player) {
 			Clocks: []string{
 				m.players[0].Clock.String(),
 				m.players[1].Clock.String(),
+			},
+			Statuses: []string{
+				m.players[0].Status.String(),
+				m.players[1].Status.String(),
 			},
 		},
 	})
