@@ -100,12 +100,12 @@ func (match *Match) start() {
 		case OFFER_DRAW:
 			draw := match.game.OfferDraw(player.color())
 			if !draw {
-				match.sendDrawOfferNotification(PENDING)
+				match.sendDrawOfferNotification(player, PENDING)
 			}
 		case DECLINE_DRAW:
 			shouldNotify := match.game.DeclineDraw(player.color())
 			if shouldNotify {
-				match.sendDrawOfferNotification(DECLINED)
+				match.sendDrawOfferNotification(player, DECLINED)
 			}
 		default:
 			if expectedId := match.getCurrentTurnPlayer().Id; player.Id != expectedId {
@@ -183,21 +183,22 @@ func (match *Match) start() {
 	}
 }
 
-func (m *Match) sendDrawOfferNotification(status string) {
-	player := m.getNextTurnPlayer()
-	if player == nil || player.Conn == nil {
-		return
-	}
-	err := player.Conn.WriteJSON(drawOfferResponse{
-		Type:      "drawOffer",
-		Status:    status,
-		CreatedAt: time.Now().Format(time.RFC3339),
-	})
-	if err != nil {
-		logging.Error(
-			"couldn't send draw offer notification to player: ",
-			zap.String("player_id", player.Id),
-		)
+func (m *Match) sendDrawOfferNotification(sender *player, status string) {
+	for _, player := range m.players {
+		if player == nil || player.Conn == nil || player.Id == sender.Id {
+			continue
+		}
+		err := player.Conn.WriteJSON(drawOfferResponse{
+			Type:      "drawOffer",
+			Status:    status,
+			CreatedAt: time.Now().Format(time.RFC3339),
+		})
+		if err != nil {
+			logging.Error(
+				"couldn't send draw offer notification to player: ",
+				zap.String("player_id", player.Id),
+			)
+		}
 	}
 }
 
