@@ -73,10 +73,6 @@ type drawOfferResponse struct {
 	CreatedAt string `json:"createdAt"`
 }
 
-type abortResponse struct {
-	Type string `json:"type"`
-}
-
 func (match *Match) start() {
 	for move := range match.moveCh {
 		player, exist := match.getPlayerWithId(move.playerId)
@@ -96,18 +92,21 @@ func (match *Match) start() {
 				})
 			}
 			match.abort()
+			continue
 		case RESIGN:
 			match.game.Resign(player.color())
 		case OFFER_DRAW:
 			draw := match.game.OfferDraw(player.color())
 			if !draw {
 				match.sendDrawOfferNotification(player, PENDING)
+				continue
 			}
 		case DECLINE_DRAW:
 			shouldNotify := match.game.DeclineDraw(player.color())
 			if shouldNotify {
 				match.sendDrawOfferNotification(player, DECLINED)
 			}
+			continue
 		default:
 			if expectedId := match.getCurrentTurnPlayer().Id; player.Id != expectedId {
 				player.Conn.WriteJSON(errorResponse{
@@ -345,21 +344,15 @@ func (m *Match) abort() {
 	m.skipTimer()
 	for _, player := range m.players {
 		if player.Conn != nil {
-			player.Conn.WriteJSON(abortResponse{
-				Type: "abort",
-			})
-			player.Conn.Close()
+			player.Conn.WriteControl(
+				websocket.CloseMessage,
+				websocket.FormatCloseMessage(
+					websocket.CloseNormalClosure,
+					"match aborted",
+				),
+				time.Now().Add(5*time.Second),
+			)
 		}
-		player.Conn.WriteControl(
-			websocket.CloseMessage,
-			websocket.FormatCloseMessage(
-				websocket.CloseNormalClosure,
-				"match aborted",
-			),
-			time.Now().Add(5*time.Second),
-		)
-		time.Sleep(1 * time.Second)
-		player.Conn.Close()
 	}
 	m.abortGameHandler(m)
 }
