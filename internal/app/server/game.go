@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -74,8 +75,10 @@ func restoreGame(gameState string) (*game, error) {
 }
 
 func (g *game) OfferDraw(side chess.Color) bool {
+	fmt.Println(side)
 	if g.drawOffer != nil && g.drawOffer.Side != side &&
-		time.Now().Before(g.drawOffer.Timestamp.Add(15*time.Second)) {
+		time.Now().Before(g.drawOffer.Timestamp.Add(20*time.Second)) {
+		g.Draw(chess.DrawOffer)
 		return true
 	}
 	g.drawOffer = &drawOffer{
