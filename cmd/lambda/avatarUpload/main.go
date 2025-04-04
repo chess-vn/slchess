@@ -41,7 +41,7 @@ func handler(
 	error,
 ) {
 	userId := auth.MustAuth(event.RequestContext.Authorizer)
-	uploadKey := userId
+	uploadKey := "avatars/" + userId
 	presignedPutRequest, err := presigner.PutObject(ctx, bucketName, uploadKey, 60)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
