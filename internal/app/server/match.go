@@ -373,19 +373,8 @@ func (m *Match) end() {
 	}
 	// Fire off the timer to remove end game handling job
 	m.skipTimer()
-	m.checkDisconnectTimeout()
-	for _, player := range m.players {
-		if player.Conn != nil {
-			player.Conn.WriteControl(
-				websocket.CloseMessage,
-				websocket.FormatCloseMessage(
-					websocket.CloseNormalClosure,
-					"match ended",
-				),
-				time.Now().Add(5*time.Second),
-			)
-		}
-	}
+	m.checkTimeout()
+	m.disconnectPlayers("match ended", time.Now().Add(5*time.Second))
 	m.endGameHandler(m)
 }
 
@@ -471,10 +460,14 @@ func (m *Match) calculateLagForgiven(moveCreatedAt time.Time) time.Duration {
 	return lagTime
 }
 
-func (m *Match) checkDisconnectTimeout() {
+func (m *Match) checkTimeout() {
 	if m.players[0].Status == CONNECTED &&
 		m.players[1].Status == CONNECTED {
 		return
+	}
+	if m.players[0].Status == INIT ||
+		m.players[1].Status == INIT {
+		m.disconnectPlayers("match cancelled", time.Now().Add(5*time.Second))
 	}
 	if m.players[0].Status == DISCONNECTED &&
 		m.players[1].Status == CONNECTED {
@@ -495,4 +488,19 @@ func (m *Match) checkDisconnectTimeout() {
 			m.players[1].Clock.String(),
 		},
 	})
+}
+
+func (m *Match) disconnectPlayers(msg string, deadline time.Time) {
+	for _, player := range m.players {
+		if player.Conn != nil {
+			player.Conn.WriteControl(
+				websocket.CloseMessage,
+				websocket.FormatCloseMessage(
+					websocket.CloseNormalClosure,
+					msg,
+				),
+				deadline,
+			)
+		}
+	}
 }

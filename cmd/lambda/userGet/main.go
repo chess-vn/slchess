@@ -36,7 +36,7 @@ func handler(
 		targetId = userId
 	}
 
-	targetProfile, err := storageClient.GetUserProfile(ctx, targetId)
+	userProfile, err := storageClient.GetUserProfile(ctx, targetId)
 	if err != nil {
 		if errors.Is(err, storage.ErrUserProfileNotFound) {
 			return events.APIGatewayProxyResponse{
@@ -48,7 +48,7 @@ func handler(
 		}, fmt.Errorf("failed to get user profile: %w", err)
 	}
 
-	targetRating, err := storageClient.GetUserRating(ctx, targetId)
+	userRating, err := storageClient.GetUserRating(ctx, targetId)
 	if err != nil {
 		if errors.Is(err, storage.ErrUserRatingNotFound) {
 			return events.APIGatewayProxyResponse{
@@ -65,7 +65,7 @@ func handler(
 	if userId == targetId {
 		getFull = true
 	}
-	user := dtos.UserResponseFromEntities(targetProfile, targetRating, getFull)
+	user := dtos.UserResponseFromEntities(userProfile, userRating, getFull)
 	userJson, err := json.Marshal(user)
 	if err != nil {
 		return events.APIGatewayProxyResponse{

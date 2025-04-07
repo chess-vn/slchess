@@ -136,7 +136,7 @@ Resources:
         ApiEvent:
           Type: HttpApi
           Properties:
-            Path: /user/{id}
+            Path: /user
             Method: GET
             ApiId: !Ref HttpApi
 
