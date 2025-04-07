@@ -35,7 +35,7 @@ jobs:
       - name: Build, tag, and push docker image to Amazon ECR
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          REPOSITORY: slchess/server
+          REPOSITORY: slchess/servertest
           IMAGE_TAG: ${{ github.sha }}
         run: |
           task env:base --silent
