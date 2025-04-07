@@ -7,17 +7,17 @@ ENV GOCACHE=/go-cache
 ENV GOMODCACHE=/gomod-cache
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/gomod-cache \
-	go mod download
+  go mod download
 
 # Copy source code and build
 COPY ./ ./
 RUN --mount=type=cache,target=/gomod-cache --mount=type=cache,target=/go-cache \
-	go build -v -o server ./cmd/server/
+  go build -v -o server ./cmd/servertest/
 
 # Stage 2: Runtime
 FROM alpine:latest
 RUN apk add --no-cache ca-certificates && update-ca-certificates
-COPY --from=builder /app/servertest/ /bin/server
+COPY --from=builder /app/server/ /bin/server
 COPY --from=builder /app/configs/server/config.yaml /configs/server/
 COPY --from=builder /app/configs/aws/* /configs/aws/
 
