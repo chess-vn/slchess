@@ -316,7 +316,7 @@ func (s *server) handleWebSocketMessage(
 		logging.Error("match not loaded")
 		return
 	}
-	if time.Since(payload.CreatedAt) < 0 {
+	if payload.CreatedAt.Sub(time.Now()) > 2*time.Second {
 		logging.Info("invalid timestamp",
 			zap.String("created_at", payload.CreatedAt.String()),
 			zap.String("validate_time", time.Now().String()),
