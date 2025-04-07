@@ -31,7 +31,7 @@ func handler(
 	error,
 ) {
 	userId := auth.MustAuth(event.RequestContext.Authorizer)
-	targetId := event.PathParameters["id"]
+	targetId := event.QueryStringParameters["id"]
 	if targetId == "" {
 		targetId = userId
 	}
