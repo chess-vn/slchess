@@ -78,14 +78,13 @@ func extractParameters(params map[string]string) (
 ) {
 	gameMode := params["gameMode"]
 
-	limitStr, ok := params["limit"]
-	if !ok {
-		return "", nil, 0, fmt.Errorf("missing parameter: limit")
-	}
-
-	limit, err := strconv.ParseInt(limitStr, 10, 32)
-	if err != nil {
-		return "", nil, 0, fmt.Errorf("invalid limit: %v", err)
+	limit := 10
+	if limitStr, ok := params["limit"]; ok {
+		limitInt64, err := strconv.ParseInt(limitStr, 10, 32)
+		if err != nil {
+			return "", nil, 0, fmt.Errorf("invalid limit: %v", err)
+		}
+		limit = int(limitInt64)
 	}
 
 	// Check for startKey (optional)

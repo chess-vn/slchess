@@ -6,6 +6,9 @@ Parameters:
   ServerImageUri:
     Type: String
     Description: "URI of the Docker image for game server in ECR"
+  ServertestImageUri:
+    Type: String
+    Description: "URI of the Docker image for game server to load test in ECR"
   StofinetImageUri:
     Type: String
     Description: "URI of the Docker image for stofinet node in ECR"
@@ -49,6 +52,7 @@ Resources:
       Parameters:
         StackName: !Ref AWS::StackName
         ServerImageUri: !Ref ServerImageUri
+        ServertestImageUri: !Ref ServertestImageUri
         StofinetImageUri: !Ref StofinetImageUri
         DeploymentStage: !Ref DeploymentStage
     DependsOn:

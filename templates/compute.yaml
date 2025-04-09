@@ -4,7 +4,7 @@ Description: Compute Stack for Slchess
 
 Globals:
   Function:
-    Timeout: 5
+    Timeout: 10
     MemorySize: 128
     Architectures:
       - arm64
@@ -13,6 +13,8 @@ Parameters:
   StackName:
     Type: String
   ServerImageUri:
+    Type: String
+  ServertestImageUri:
     Type: String
   StofinetImageUri:
     Type: String
@@ -91,6 +93,36 @@ Resources:
             - Name: ECS_ENABLE_CONTAINER_METADATA
               Value: "true"
 
+  ServertestDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${StackName}-${DeploymentStage}-servertest"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: "256"
+      Memory: "512"
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ServerRole.Arn
+      ContainerDefinitions:
+        - Image: !Ref ServertestImageUri
+          Name: !Sub "${StackName}-${DeploymentStage}-servertest"
+          Essential: true
+          PortMappings:
+            - ContainerPort: 7202
+              Protocol: tcp
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub "/${StackName}/${DeploymentStage}/ecs/servertest"
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+          Environment:
+            - Name: AWS_DEFAULT_REGION
+              Value: !Ref AWS::Region
+            - Name: ECS_ENABLE_CONTAINER_METADATA
+              Value: "true"
+
   ### ECS Service ###
   ServerService:
     Type: AWS::ECS::Service
@@ -100,6 +132,24 @@ Resources:
       LaunchType: FARGATE
       DesiredCount: 0
       TaskDefinition: !Ref ServerDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - subnet-08afaaea0b1e4f825
+            - subnet-0f7183aa53381f50c
+            - subnet-0642049eeace8e1b3
+          SecurityGroups:
+            - sg-003fd8c2326289ec4
+          AssignPublicIp: ENABLED
+
+  ServertestService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref ServerCluster
+      ServiceName: !Sub "${StackName}-${DeploymentStage}-servertest-service"
+      LaunchType: FARGATE
+      DesiredCount: 0
+      TaskDefinition: !Ref ServertestDefinition
       NetworkConfiguration:
         AwsvpcConfiguration:
           Subnets:

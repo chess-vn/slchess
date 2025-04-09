@@ -36,3 +36,9 @@ tasks:
     preconditions:
       - sh: "test -f ./configs/stofinet/app.env"
         msg: "app.env file not generated. Try running 'env:stofinet' task"
+
+  check-e2e-env:
+    internal: true
+    preconditions:
+      - sh: "test -f ./configs/e2e/e2e.env"
+        msg: "e2e.env file not generated. Try running 'cognito:authenticate-test-users' task"

@@ -1,0 +1,21 @@
+version: "3"
+
+includes:
+  utils:
+    taskfile: ./Util.yml
+    internal: true
+    dir: ../
+
+tasks:
+  script*:
+    deps: [utils:check-apigateway-env, utils:check-e2e-env]
+    interactive: true
+    aliases:
+      - $(ls -al ./test/k6/*.js | awk '{print $NF}' | xargs -n1 basename | awk '{print "script-" $1 }')
+    vars:
+      SCRIPT: '{{index .MATCH 0 | trimPrefix "-"}}'
+    cmds:
+      - K6_WEB_DASHBOARD=true
+        BASE_URL={{.API_URL}}
+        TOKEN={{.USER_1_ID_TOKEN}}
+        k6 run ./test/k6/{{.SCRIPT}}
