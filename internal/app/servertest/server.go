@@ -76,7 +76,7 @@ func NewServer() *server {
 // Start method    starts the game server
 func (s *server) Start() error {
 	http.HandleFunc("/game/{matchId}", func(w http.ResponseWriter, r *http.Request) {
-		playerId := "PLAYER"
+		playerId := r.URL.Query().Get("playerId")
 
 		conn, err := s.upgrader.Upgrade(w, r, nil)
 		if err != nil {
