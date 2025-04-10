@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/notnil/chess"
 )
 
@@ -164,58 +163,6 @@ type move struct {
 	uci       string
 	control   GameControl
 	createdAt time.Time
-}
-
-type player struct {
-	Id            string
-	Rating        float64
-	RD            float64
-	NewRatings    []float64
-	NewRDs        []float64
-	Conn          *websocket.Conn
-	Side          Side
-	Status        Status
-	Clock         time.Duration
-	TurnStartedAt time.Time
-}
-
-func newPlayer(
-	conn *websocket.Conn,
-	playerId string,
-	side Side,
-	clock time.Duration,
-	rating float64,
-	rd float64,
-	newRatings []float64,
-	newRDs []float64,
-) player {
-	player := player{
-		Id:         playerId,
-		Rating:     rating,
-		RD:         rd,
-		NewRatings: newRatings,
-		NewRDs:     newRDs,
-		Conn:       conn,
-		Side:       side,
-		Status:     INIT,
-		Clock:      clock,
-	}
-	return player
-}
-
-func (p *player) color() chess.Color {
-	if p.Side == WHITE_SIDE {
-		return chess.White
-	}
-	return chess.Black
-}
-
-func (p *player) updateClock(
-	timeTaken time.Duration,
-	lagForgiven time.Duration,
-	increment time.Duration,
-) {
-	p.Clock = p.Clock - timeTaken + lagForgiven + increment
 }
 
 func (s Status) String() string {
