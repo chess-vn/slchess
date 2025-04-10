@@ -1,15 +1,18 @@
 package compute
 
 import (
+	"net/http"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 )
 
 type Client struct {
-	ecs *ecs.Client
-	ec2 *ec2.Client
-	cfg config
+	ecs  *ecs.Client
+	ec2  *ec2.Client
+	http *http.Client
+	cfg  config
 }
 
 type config struct {
@@ -19,9 +22,10 @@ type config struct {
 
 func NewClient(ecsClient *ecs.Client, ec2Client *ec2.Client) *Client {
 	return &Client{
-		ecs: ecsClient,
-		ec2: ec2Client,
-		cfg: loadConfig(),
+		ecs:  ecsClient,
+		ec2:  ec2Client,
+		http: new(http.Client),
+		cfg:  loadConfig(),
 	}
 }
 

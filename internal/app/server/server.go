@@ -30,7 +30,7 @@ type server struct {
 	address  string
 	upgrader websocket.Upgrader
 
-	config       Config
+	cfg          Config
 	matches      sync.Map
 	totalMatches atomic.Int32
 	mu           *sync.Mutex
@@ -71,7 +71,7 @@ func NewServer() *server {
 			},
 		},
 		mu:                new(sync.Mutex),
-		config:            cfg,
+		cfg:               cfg,
 		cognitoPublicKeys: cognitoPublicKeys,
 		storageClient: storage.NewClient(
 			dynamodb.NewFromConfig(awsCfg),
@@ -88,6 +88,17 @@ func NewServer() *server {
 
 // Start method    starts the game server
 func (s *server) Start() error {
+	// Server status
+	http.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+		count := s.totalMatches.Load()
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"activeMatches": count,
+			"maxMatches":    s.cfg.MaxMatches,
+			"canAccept":     count < s.cfg.MaxMatches,
+		})
+	})
+
+	// Websocket
 	http.HandleFunc("/game/{matchId}", func(w http.ResponseWriter, r *http.Request) {
 		playerId, err := s.auth(r)
 		if err != nil {
@@ -155,7 +166,7 @@ func (s *server) Start() error {
 			s.handleWebSocketMessage(playerId, match, payload)
 		}
 	})
-	logging.Info("websocket server started", zap.String("port", s.config.Port))
+	logging.Info("websocket server started", zap.String("port", s.cfg.Port))
 	return http.ListenAndServe(s.address, nil)
 }
 

@@ -50,7 +50,7 @@ func (s *server) handleAbortGame(match *Match) {
 
 	// Invoke Lambda function
 	input := &lambda.InvokeInput{
-		FunctionName:   aws.String(s.config.AbortGameFunctionArn),
+		FunctionName:   aws.String(s.cfg.AbortGameFunctionArn),
 		Payload:        payload,
 		InvocationType: types.InvocationTypeEvent,
 	}
@@ -98,7 +98,7 @@ func (s *server) handleSaveGame(match *Match) {
 
 	req, err := http.NewRequest(
 		"POST",
-		s.config.AppSyncHttpUrl,
+		s.cfg.AppSyncHttpUrl,
 		bytes.NewReader(payload),
 	)
 	if err != nil {
@@ -109,7 +109,7 @@ func (s *server) handleSaveGame(match *Match) {
 
 	// Sign the request
 	signer := v4.NewSigner()
-	credentials, err := s.config.AwsCfg.Credentials.Retrieve(ctx)
+	credentials, err := s.cfg.AwsCfg.Credentials.Retrieve(ctx)
 	if err != nil {
 		logging.Error("Failed to save game", zap.Error(err))
 		return
@@ -120,7 +120,7 @@ func (s *server) handleSaveGame(match *Match) {
 		req,
 		sha256Hash(payload),
 		"appsync",
-		s.config.AwsRegion,
+		s.cfg.AwsRegion,
 		time.Now(),
 	)
 	if err != nil {
@@ -196,7 +196,7 @@ func (s *server) handleEndGame(match *Match) {
 
 	// Invoke Lambda function
 	input := &lambda.InvokeInput{
-		FunctionName:   aws.String(s.config.EndGameFunctionArn),
+		FunctionName:   aws.String(s.cfg.EndGameFunctionArn),
 		Payload:        payload,
 		InvocationType: types.InvocationTypeRequestResponse,
 	}
