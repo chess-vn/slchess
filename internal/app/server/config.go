@@ -52,6 +52,7 @@ func NewConfig() Config {
 
 	// Load into environment
 	godotenv.Load(envFiles...)
+	viper.AutomaticEnv()
 
 	// Load into config struct
 	err = loadEnvFiles(envFiles)
@@ -86,7 +87,6 @@ func loadEnvFiles(filenames []string) error {
 	for _, file := range filenames {
 		viper.SetConfigFile(file)
 		viper.SetConfigType("env")
-		viper.AutomaticEnv()
 
 		err := viper.MergeInConfig()
 		if err != nil {

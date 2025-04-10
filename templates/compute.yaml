@@ -65,8 +65,9 @@ Resources:
               Value: !Ref AWS::Region
             - Name: ECS_ENABLE_CONTAINER_METADATA
               Value: "true"
+          Secrets:
             - Name: MAX_MATCHES
-              Value: 200
+              ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackName}/server/max-matches"
 
   StofinetDefinition:
     Type: AWS::ECS::TaskDefinition
@@ -238,6 +239,16 @@ Resources:
                   - ecs:UpdateTaskProtection
                 Resource:
                   - !Sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:task/${ServerCluster}/*"
+        - PolicyName: SSMParameterAccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource:
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackName}/*"
 
   StofinetRole:
     Type: AWS::IAM::Role
