@@ -173,7 +173,7 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 		)
 		player2 := newPlayer(
 			nil,
-			"PLAYER_1",
+			"PLAYER_2",
 			WHITE_SIDE,
 			clock2,
 			1200,
