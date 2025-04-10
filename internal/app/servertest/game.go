@@ -2,6 +2,7 @@ package servertest
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -177,6 +178,8 @@ type player struct {
 	Status        Status
 	Clock         time.Duration
 	TurnStartedAt time.Time
+
+	mu *sync.Mutex
 }
 
 func newPlayer(
@@ -189,7 +192,7 @@ func newPlayer(
 	newRatings []float64,
 	newRDs []float64,
 ) player {
-	player := player{
+	return player{
 		Id:         playerId,
 		Rating:     rating,
 		RD:         rd,
@@ -199,8 +202,8 @@ func newPlayer(
 		Side:       side,
 		Status:     INIT,
 		Clock:      clock,
+		mu:         new(sync.Mutex),
 	}
-	return player
 }
 
 func (p *player) color() chess.Color {
@@ -219,10 +222,21 @@ func (p *player) updateClock(
 }
 
 func (p *player) Write(msg interface{}) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if p == nil || p.Conn == nil {
 		return nil
 	}
 	return p.Conn.WriteJSON(msg)
+}
+
+func (p *player) WriteControl(msgType int, data []byte, deadline time.Time) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p == nil || p.Conn == nil {
+		return nil
+	}
+	return p.Conn.WriteControl(msgType, data, deadline)
 }
 
 func (s Status) String() string {

@@ -30,7 +30,7 @@ type server struct {
 	config       Config
 	matches      sync.Map
 	totalMatches atomic.Int32
-	mu           sync.Mutex
+	mu           *sync.Mutex
 
 	cognitoPublicKeys map[string]*rsa.PublicKey
 	storageClient     *storage.Client
@@ -59,6 +59,7 @@ func NewServer() *server {
 				return true // Allow all origins
 			},
 		},
+		mu:     new(sync.Mutex),
 		config: cfg,
 		storageClient: storage.NewClient(
 			dynamodb.NewFromConfig(awsCfg),
