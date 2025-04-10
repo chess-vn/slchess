@@ -153,7 +153,7 @@ func handler(
 	// Retrieve ip address of an available server
 	var serverIp string
 	for range 5 {
-		serverIp, err = computeClient.GetServerIp(ctx, clusterName, serviceName)
+		serverIp, err = computeClient.GetAvailableServerIp(ctx, clusterName, serviceName)
 		if err == nil {
 			break
 		}

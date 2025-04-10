@@ -2,12 +2,15 @@ package compute
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"sort"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
+	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/pkg/logging"
 )
 
@@ -16,7 +19,7 @@ type TaskMetadata struct {
 	ClusterName string `json:"Cluster"`
 }
 
-func (client *Client) GetServerIp(
+func (client *Client) GetAvailableServerIp(
 	ctx context.Context,
 	clusterName,
 	serviceName string,
@@ -42,39 +45,46 @@ func (client *Client) GetServerIp(
 		return "", fmt.Errorf("failed to describe ECS tasks: %w", err)
 	}
 
+	// Sort game server by start time in descending order
 	sort.Slice(describeTasksOutput.Tasks, func(i, j int) bool {
-		return describeTasksOutput.Tasks[i].StartedAt.Before(*describeTasksOutput.Tasks[j].StartedAt)
+		return describeTasksOutput.Tasks[i].StartedAt.After(*describeTasksOutput.Tasks[j].StartedAt)
 	})
 
-	var eniId string
-	for _, detail := range describeTasksOutput.Tasks[0].Attachments[0].Details {
-		if *detail.Name == "networkInterfaceId" {
-			eniId = *detail.Value
-			break
+	for _, task := range describeTasksOutput.Tasks {
+		for _, attachment := range task.Attachments {
+			for _, detail := range attachment.Details {
+				if *detail.Name == "networkInterfaceId" {
+					eniID := *detail.Value
+
+					eniOutput, err := client.ec2.DescribeNetworkInterfaces(
+						ctx,
+						&ec2.DescribeNetworkInterfacesInput{
+							NetworkInterfaceIds: []string{eniID},
+						},
+					)
+					if err != nil {
+						return "", fmt.Errorf("failed to describe ENI: %w", err)
+					}
+
+					for _, eni := range eniOutput.NetworkInterfaces {
+						if eni.Association != nil && eni.Association.PublicIp != nil {
+							serverIp := *eni.Association.PublicIp
+							status, err := client.GetServerStatus(serverIp, 7202)
+							if err != nil {
+								return "", fmt.Errorf("failed to get server status: %w", err)
+							}
+
+							if status.CanAccept {
+								return serverIp, nil
+							}
+						}
+					}
+				}
+			}
 		}
 	}
 
-	if eniId == "" {
-		return "", fmt.Errorf("ENI ID not found in task details")
-	}
-
-	// Get the public IP from EC2
-	eniResp, err := client.ec2.DescribeNetworkInterfaces(
-		ctx,
-		&ec2.DescribeNetworkInterfacesInput{
-			NetworkInterfaceIds: []string{eniId},
-		},
-	)
-	if err != nil {
-		return "", fmt.Errorf("failed to describe network interface: %w", err)
-	}
-
-	if len(eniResp.NetworkInterfaces) == 0 ||
-		eniResp.NetworkInterfaces[0].Association == nil {
-		return "", fmt.Errorf("no public IP found for ENI")
-	}
-
-	return *eniResp.NetworkInterfaces[0].Association.PublicIp, nil
+	return "", fmt.Errorf("all servers are busy")
 }
 
 func (client *Client) CheckAndGetNewServerIp(
@@ -105,11 +115,11 @@ func (client *Client) CheckAndGetNewServerIp(
 	}
 
 	sort.Slice(describeTasksOutput.Tasks, func(i, j int) bool {
-		return describeTasksOutput.Tasks[i].StartedAt.Before(*describeTasksOutput.Tasks[j].StartedAt)
+		return describeTasksOutput.Tasks[i].StartedAt.After(*describeTasksOutput.Tasks[j].StartedAt)
 	})
 
-	var newServerIp string
-	for i, task := range describeTasksOutput.Tasks {
+	var serverIps []string
+	for _, task := range describeTasksOutput.Tasks {
 		for _, attachment := range task.Attachments {
 			for _, detail := range attachment.Details {
 				if *detail.Name == "networkInterfaceId" {
@@ -127,12 +137,11 @@ func (client *Client) CheckAndGetNewServerIp(
 
 					for _, eni := range eniOutput.NetworkInterfaces {
 						if eni.Association != nil && eni.Association.PublicIp != nil {
-							if *eni.Association.PublicIp == targetPublicIp {
+							serverIp := *eni.Association.PublicIp
+							if serverIp == targetPublicIp {
 								return targetPublicIp, nil
 							}
-							if i == 0 {
-								newServerIp = *eni.Association.PublicIp
-							}
+							serverIps = append(serverIps, serverIp)
 						}
 					}
 				}
@@ -140,7 +149,18 @@ func (client *Client) CheckAndGetNewServerIp(
 		}
 	}
 
-	return newServerIp, nil
+	for _, serverIp := range serverIps {
+		status, err := client.GetServerStatus(serverIp, 7202)
+		if err != nil {
+			return "", fmt.Errorf("failed to get server status: %w", err)
+		}
+
+		if status.CanAccept {
+			return serverIp, nil
+		}
+	}
+
+	return "", fmt.Errorf("all servers are busy")
 }
 
 func (client *Client) CheckAndStartTask(
@@ -191,4 +211,29 @@ func (client *Client) UpdateServerProtection(
 		return fmt.Errorf("failed to update task protection: %w", err)
 	}
 	return nil
+}
+
+func (client *Client) GetServerStatus(ip string, host int) (dtos.ServerStatusResponse, error) {
+	req, err := http.NewRequest(
+		http.MethodGet,
+		fmt.Sprintf("http://%s:%d/status", ip, host),
+		nil,
+	)
+	if err != nil {
+		return dtos.ServerStatusResponse{}, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := client.http.Do(req)
+	if err != nil {
+		return dtos.ServerStatusResponse{}, fmt.Errorf("failed to send request: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return dtos.ServerStatusResponse{}, fmt.Errorf("failed to check server status [response code %d]", resp.StatusCode)
+	}
+	var status dtos.ServerStatusResponse
+	err = json.NewDecoder(resp.Body).Decode(&status)
+	if err != nil {
+		return dtos.ServerStatusResponse{}, fmt.Errorf("failed to decode body: %w", err)
+	}
+	return status, nil
 }

@@ -25,6 +25,7 @@ type Config struct {
 	AppSyncAccessRoleArn string
 	AbortGameFunctionArn string
 	EndGameFunctionArn   string
+	MaxMatches           int32
 
 	AwsCfg aws.Config
 }
@@ -51,6 +52,7 @@ func NewConfig() Config {
 
 	// Load into environment
 	godotenv.Load(envFiles...)
+	viper.AutomaticEnv()
 
 	// Load into config struct
 	err = loadEnvFiles(envFiles)
@@ -71,6 +73,9 @@ func NewConfig() Config {
 	cfg.AbortGameFunctionArn = viper.GetString("ABORT_GAME_FUNCTION_ARN")
 	cfg.EndGameFunctionArn = viper.GetString("END_GAME_FUNCTION_ARN")
 
+	viper.SetDefault("MAX_MATCHES", 100)
+	cfg.MaxMatches = viper.GetInt32("MAX_MATCHES")
+
 	if err := cfg.loadAwsConfig(); err != nil {
 		logging.Fatal("failed to load aws config: %w", zap.Error(err))
 	}
@@ -82,7 +87,6 @@ func loadEnvFiles(filenames []string) error {
 	for _, file := range filenames {
 		viper.SetConfigFile(file)
 		viper.SetConfigType("env")
-		viper.AutomaticEnv()
 
 		err := viper.MergeInConfig()
 		if err != nil {
