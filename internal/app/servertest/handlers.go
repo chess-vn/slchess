@@ -43,9 +43,10 @@ func (s *server) handlePlayerDisconnect(match *Match, playerId string) {
 		logging.Fatal("invalid player id", zap.String("player_id", playerId))
 		return
 	}
+	player.mu.Lock()
 	player.Conn = nil
 	player.Status = DISCONNECTED
-
+	player.mu.Unlock()
 	currentClock := match.getCurrentTurnPlayer().Clock
 
 	// If both player disconnected, set the clock to current turn clock
@@ -111,8 +112,10 @@ func (s *server) handlePlayerJoin(
 			)
 		}
 	}
+	player.mu.Lock()
 	player.Conn = conn
 	player.Status = CONNECTED
+	player.mu.Unlock()
 
 	match.syncPlayer(player)
 

@@ -30,7 +30,7 @@ type server struct {
 	config       Config
 	matches      sync.Map
 	totalMatches atomic.Int32
-	mu           sync.Mutex
+	mu           *sync.Mutex
 
 	cognitoPublicKeys map[string]*rsa.PublicKey
 	storageClient     *storage.Client
@@ -59,6 +59,7 @@ func NewServer() *server {
 				return true // Allow all origins
 			},
 		},
+		mu:     new(sync.Mutex),
 		config: cfg,
 		storageClient: storage.NewClient(
 			dynamodb.NewFromConfig(awsCfg),
@@ -76,7 +77,7 @@ func NewServer() *server {
 // Start method    starts the game server
 func (s *server) Start() error {
 	http.HandleFunc("/game/{matchId}", func(w http.ResponseWriter, r *http.Request) {
-		playerId := "PLAYER"
+		playerId := r.URL.Query().Get("playerId")
 
 		conn, err := s.upgrader.Upgrade(w, r, nil)
 		if err != nil {
@@ -173,7 +174,7 @@ func (s *server) loadMatch(matchId string) (*Match, error) {
 		)
 		player2 := newPlayer(
 			nil,
-			"PLAYER_1",
+			"PLAYER_2",
 			WHITE_SIDE,
 			clock2,
 			1200,

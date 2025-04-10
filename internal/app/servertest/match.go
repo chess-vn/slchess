@@ -77,7 +77,7 @@ func (match *Match) start() {
 	for move := range match.moveCh {
 		player, exist := match.getPlayerWithId(move.playerId)
 		if !exist {
-			player.Conn.WriteJSON(errorResponse{
+			player.Write(errorResponse{
 				Type:  "error",
 				Error: ErrStatusInvalidPlayerId,
 			})
@@ -86,7 +86,7 @@ func (match *Match) start() {
 		switch move.control {
 		case ABORT:
 			if match.currentPly() > 1 {
-				player.Conn.WriteJSON(errorResponse{
+				player.Write(errorResponse{
 					Type:  "error",
 					Error: ErrStatusAbortInvalidPly,
 				})
@@ -109,7 +109,7 @@ func (match *Match) start() {
 			continue
 		default:
 			if expectedId := match.getCurrentTurnPlayer().Id; player.Id != expectedId {
-				player.Conn.WriteJSON(errorResponse{
+				player.Write(errorResponse{
 					Type: "error",
 					Error: fmt.Sprintf(
 						"%s: want %s - got %s",
@@ -122,7 +122,7 @@ func (match *Match) start() {
 			}
 			err := match.game.move(move)
 			if err != nil {
-				player.Conn.WriteJSON(errorResponse{
+				player.Write(errorResponse{
 					Type:  "error",
 					Error: ErrStatusInvalidMove,
 				})
@@ -185,10 +185,10 @@ func (match *Match) start() {
 
 func (m *Match) sendDrawOfferNotification(sender *player, status string) {
 	for _, player := range m.players {
-		if player == nil || player.Conn == nil || player.Id == sender.Id {
+		if player.Id == sender.Id {
 			continue
 		}
-		err := player.Conn.WriteJSON(drawOfferResponse{
+		err := player.Write(drawOfferResponse{
 			Type:      "drawOffer",
 			Status:    status,
 			CreatedAt: time.Now().Format(time.RFC3339),
@@ -204,10 +204,7 @@ func (m *Match) sendDrawOfferNotification(sender *player, status string) {
 
 func (m *Match) notifyPlayers(resp gameStateResponse) {
 	for _, player := range m.players {
-		if player == nil || player.Conn == nil {
-			continue
-		}
-		err := player.Conn.WriteJSON(matchResponse{
+		err := player.Write(matchResponse{
 			Type:      "gameState",
 			GameState: resp,
 		})
@@ -222,10 +219,10 @@ func (m *Match) notifyPlayers(resp gameStateResponse) {
 
 func (m *Match) notifyAboutPlayerStatus(resp playerStatusResponse) {
 	for _, player := range m.players {
-		if player == nil || player.Conn == nil || player.Id == resp.PlayerId {
+		if player.Id == resp.PlayerId {
 			continue
 		}
-		err := player.Conn.WriteJSON(resp)
+		err := player.Write(resp)
 		if err != nil {
 			logging.Error(
 				"couldn't notify player: ",
@@ -237,10 +234,10 @@ func (m *Match) notifyAboutPlayerStatus(resp playerStatusResponse) {
 
 func (m *Match) notifyAboutDeclinedOffer(resp playerStatusResponse) {
 	for _, player := range m.players {
-		if player == nil || player.Conn == nil || player.Id == resp.PlayerId {
+		if player.Id == resp.PlayerId {
 			continue
 		}
-		err := player.Conn.WriteJSON(resp)
+		err := player.Write(resp)
 		if err != nil {
 			logging.Error(
 				"couldn't notify player: ",
@@ -251,7 +248,7 @@ func (m *Match) notifyAboutDeclinedOffer(resp playerStatusResponse) {
 }
 
 func (m *Match) syncPlayer(player *player) {
-	err := player.Conn.WriteJSON(matchResponse{
+	err := player.Write(matchResponse{
 		Type: "gameState",
 		GameState: gameStateResponse{
 			Outcome: m.game.outcome().String(),
@@ -343,16 +340,14 @@ func (m *Match) abort() {
 	// Fire off the timer to remove end game handling job
 	m.skipTimer()
 	for _, player := range m.players {
-		if player.Conn != nil {
-			player.Conn.WriteControl(
-				websocket.CloseMessage,
-				websocket.FormatCloseMessage(
-					websocket.CloseNormalClosure,
-					"match aborted",
-				),
-				time.Now().Add(5*time.Second),
-			)
-		}
+		player.WriteControl(
+			websocket.CloseMessage,
+			websocket.FormatCloseMessage(
+				websocket.CloseNormalClosure,
+				"match aborted",
+			),
+			time.Now().Add(5*time.Second),
+		)
 	}
 	m.abortGameHandler(m)
 }

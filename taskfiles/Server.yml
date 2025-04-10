@@ -37,3 +37,13 @@ tasks:
     cmds:
       - go mod download
       - go run ./cmd/server
+
+  localtest:
+    desc: Run the game server test locally
+    deps:
+      - utils:check-base-env
+      - utils:check-lambda-env
+      - utils:check-appsync-env
+    cmds:
+      - go mod download
+      - go run ./cmd/servertest
