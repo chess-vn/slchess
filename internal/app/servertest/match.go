@@ -77,7 +77,7 @@ func (match *Match) start() {
 	for move := range match.moveCh {
 		player, exist := match.getPlayerWithId(move.playerId)
 		if !exist {
-			player.Conn.WriteJSON(errorResponse{
+			player.Write(errorResponse{
 				Type:  "error",
 				Error: ErrStatusInvalidPlayerId,
 			})
@@ -86,7 +86,7 @@ func (match *Match) start() {
 		switch move.control {
 		case ABORT:
 			if match.currentPly() > 1 {
-				player.Conn.WriteJSON(errorResponse{
+				player.Write(errorResponse{
 					Type:  "error",
 					Error: ErrStatusAbortInvalidPly,
 				})
@@ -109,7 +109,7 @@ func (match *Match) start() {
 			continue
 		default:
 			if expectedId := match.getCurrentTurnPlayer().Id; player.Id != expectedId {
-				player.Conn.WriteJSON(errorResponse{
+				player.Write(errorResponse{
 					Type: "error",
 					Error: fmt.Sprintf(
 						"%s: want %s - got %s",
@@ -122,7 +122,7 @@ func (match *Match) start() {
 			}
 			err := match.game.move(move)
 			if err != nil {
-				player.Conn.WriteJSON(errorResponse{
+				player.Write(errorResponse{
 					Type:  "error",
 					Error: ErrStatusInvalidMove,
 				})

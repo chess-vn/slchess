@@ -218,6 +218,13 @@ func (p *player) updateClock(
 	p.Clock = p.Clock - timeTaken + lagForgiven + increment
 }
 
+func (p *player) Write(msg interface{}) error {
+	if p == nil || p.Conn == nil {
+		return nil
+	}
+	return p.Conn.WriteJSON(msg)
+}
+
 func (s Status) String() string {
 	switch s {
 	case INIT:
