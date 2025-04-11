@@ -10,11 +10,15 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
+	"github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/pkg/logging"
 )
 
-var ErrNoServerAvailable = fmt.Errorf("no server available")
+var (
+	ErrNoServerAvailable   = fmt.Errorf("no server available")
+	ErrUnknownServerStatus = fmt.Errorf("unknown server status")
+)
 
 type TaskMetadata struct {
 	TaskArn     string `json:"TaskARN"`
@@ -25,15 +29,18 @@ func (client *Client) GetAvailableServerIp(
 	ctx context.Context,
 	clusterName,
 	serviceName string,
-) (string, error) {
+) (string, int, error) {
 	// List tasks in the cluster
 	listTasksOutput, err := client.ecs.ListTasks(ctx, &ecs.ListTasksInput{
 		Cluster:       &clusterName,
 		ServiceName:   &serviceName,
 		DesiredStatus: "RUNNING",
 	})
-	if err != nil || len(listTasksOutput.TaskArns) == 0 {
-		return "", fmt.Errorf("no running tasks found or error occurred: %v", err)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to list tasks: %w", err)
+	}
+	if len(listTasksOutput.TaskArns) == 0 {
+		return "", 0, ErrNoServerAvailable
 	}
 
 	describeTasksOutput, err := client.ecs.DescribeTasks(
@@ -43,8 +50,15 @@ func (client *Client) GetAvailableServerIp(
 			Tasks:   listTasksOutput.TaskArns,
 		},
 	)
-	if err != nil {
-		return "", fmt.Errorf("failed to describe ECS tasks: %w", err)
+	if err != nil || describeTasksOutput == nil {
+		return "", 0, fmt.Errorf("failed to describe ECS tasks: %w", err)
+	}
+
+	pendingCount := 0
+	for _, task := range describeTasksOutput.Tasks {
+		if task.StartedAt == nil || task.HealthStatus != types.HealthStatusHealthy {
+			pendingCount += 1
+		}
 	}
 
 	// Sort game server by start time in descending order
@@ -65,7 +79,7 @@ func (client *Client) GetAvailableServerIp(
 						},
 					)
 					if err != nil {
-						return "", fmt.Errorf("failed to describe ENI: %w", err)
+						return "", 0, fmt.Errorf("failed to describe ENI: %w", err)
 					}
 
 					for _, eni := range eniOutput.NetworkInterfaces {
@@ -73,11 +87,11 @@ func (client *Client) GetAvailableServerIp(
 							serverIp := *eni.Association.PublicIp
 							status, err := client.GetServerStatus(serverIp, 7202)
 							if err != nil {
-								return "", fmt.Errorf("failed to get server status: %w", err)
+								return "", 0, fmt.Errorf("failed to get server status: %w", err)
 							}
 
 							if status.CanAccept {
-								return serverIp, nil
+								return serverIp, 0, nil
 							}
 						}
 					}
@@ -86,7 +100,7 @@ func (client *Client) GetAvailableServerIp(
 		}
 	}
 
-	return "", ErrNoServerAvailable
+	return "", pendingCount, ErrNoServerAvailable
 }
 
 func (client *Client) CheckAndGetNewServerIp(
@@ -256,7 +270,7 @@ func (client *Client) GetServerStatus(ip string, host int) (dtos.ServerStatusRes
 		return dtos.ServerStatusResponse{}, fmt.Errorf("failed to send request: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return dtos.ServerStatusResponse{}, fmt.Errorf("failed to check server status [response code %d]", resp.StatusCode)
+		return dtos.ServerStatusResponse{}, ErrUnknownServerStatus
 	}
 	var status dtos.ServerStatusResponse
 	err = json.NewDecoder(resp.Body).Decode(&status)

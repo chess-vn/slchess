@@ -114,13 +114,16 @@ func handler(
 	}
 
 	// Retrieve ip address of an available server
-	var serverIp string
-	for range 5 {
-		serverIp, err = computeClient.GetAvailableServerIp(ctx, clusterName, serviceName)
+	var (
+		serverIp     string
+		pendingCount int
+	)
+	for range 10 {
+		serverIp, pendingCount, err = computeClient.GetAvailableServerIp(ctx, clusterName, serviceName)
 		if err == nil {
 			break
 		}
-		if err == compute.ErrNoServerAvailable {
+		if err == compute.ErrNoServerAvailable && pendingCount == 0 {
 			computeClient.StartNewTask(ctx, clusterName, serviceName)
 		}
 		time.Sleep(5 * time.Second)
@@ -148,14 +151,6 @@ func handler(
 			return events.APIGatewayProxyResponse{
 				StatusCode: http.StatusInternalServerError,
 			}, fmt.Errorf("failed to marshal response: %w", err)
-		}
-
-		// Notify the opponent about the match
-		err = notifyQueueingUser(ctx, opponentId, matchRespJson)
-		if err != nil {
-			return events.APIGatewayProxyResponse{
-				StatusCode: http.StatusInternalServerError,
-			}, fmt.Errorf("failed to notify queueing user: %w", err)
 		}
 
 		return events.APIGatewayProxyResponse{
