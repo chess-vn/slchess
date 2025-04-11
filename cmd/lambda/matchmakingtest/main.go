@@ -17,7 +17,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
-	"github.com/chess-vn/slchess/internal/aws/auth"
 	"github.com/chess-vn/slchess/internal/aws/compute"
 	"github.com/chess-vn/slchess/internal/aws/storage"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
@@ -37,9 +36,9 @@ var (
 	websocketApiStage = os.Getenv("WEBSOCKET_API_STAGE")
 	deploymentStage   = os.Getenv("DEPLOYMENT_STAGE")
 
-	ErrNoMatchFound       = errors.New("failed to matchmaking")
-	ErrInvalidGameMode    = errors.New("invalid game mode")
-	ErrServerNotAvailable = errors.New("server not available")
+	ErrNoMatchFound           = errors.New("failed to matchmaking")
+	ErrInvalidGameMode        = errors.New("invalid game mode")
+	ErrServertestNotAvailable = errors.New("servertest not available")
 
 	timeLayout  = "2006-01-02 15:04:05.999999999 -0700 MST"
 	apiEndpoint = fmt.Sprintf("https://%s.execute-api.%s.amazonaws.com/%s", websocketApiId, region, websocketApiStage)
@@ -66,7 +65,7 @@ func handler(
 	events.APIGatewayProxyResponse,
 	error,
 ) {
-	userId := auth.MustAuth(event.RequestContext.Authorizer)
+	userId := event.QueryStringParameters["userId"]
 
 	// Start game server beforehand if none available
 	err := computeClient.CheckAndStartNewTask(ctx, clusterName, serviceName)
@@ -84,54 +83,18 @@ func handler(
 			StatusCode: http.StatusBadRequest,
 		}, fmt.Errorf("failed to validate request: %w", err)
 	}
-	userRating, err := storageClient.GetUserRating(ctx, userId)
-	if err != nil {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("failed to get user rating: %w", err)
+
+	userRating := entities.UserRating{
+		UserId:       userId,
+		PartitionKey: "UserRatings",
+		Rating:       1200,
+		RD:           200,
 	}
 	ticket := dtos.MatchmakingRequestToEntity(userRating, matchmakingReq)
 	if err := ticket.Validate(); err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusBadRequest,
 		}, fmt.Errorf("invalid ticket: %w", err)
-	}
-
-	// Check if user already in a activeMatch
-	activeMatch, err := storageClient.CheckForActiveMatch(ctx, userId)
-	if err != nil {
-		if !errors.Is(err, storage.ErrUserMatchNotFound) &&
-			!errors.Is(err, storage.ErrActiveMatchNotFound) {
-			return events.APIGatewayProxyResponse{
-				StatusCode: http.StatusInternalServerError,
-			}, fmt.Errorf("failed to check for active match: %w", err)
-		}
-	} else {
-		var serverIp string
-		for range 5 {
-			serverIp, err = computeClient.CheckAndGetNewServerIp(
-				ctx,
-				clusterName,
-				serviceName,
-				activeMatch.Server,
-			)
-			if err == nil {
-				break
-			}
-			time.Sleep(5 * time.Second)
-		}
-		if err != nil {
-			return events.APIGatewayProxyResponse{
-				StatusCode: http.StatusInternalServerError,
-			}, fmt.Errorf("failed to get server ip: %w", err)
-		}
-		activeMatch.Server = serverIp
-		matchResp := dtos.ActiveMatchResponseFromEntity(activeMatch)
-		matchRespJson, _ := json.Marshal(matchResp)
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusOK,
-			Body:       string(matchRespJson),
-		}, nil
 	}
 
 	// Attempt matchmaking
@@ -172,7 +135,6 @@ func handler(
 	for _, opponentId := range opponentIds {
 		match, err := createMatch(
 			ctx,
-			userRating,
 			opponentId,
 			ticket.GameMode,
 			serverIp,
@@ -238,7 +200,6 @@ func findOpponents(
 
 func createMatch(
 	ctx context.Context,
-	userRating entities.UserRating,
 	opponentId,
 	gameMode string,
 	serverIp string,
@@ -255,69 +216,8 @@ func createMatch(
 		CreatedAt:      time.Now(),
 	}
 
-	// Associate the players with created match to kind of mark them as matched
-	err := storageClient.PutUserMatch(ctx, entities.UserMatch{
-		UserId:  opponentId,
-		MatchId: match.MatchId,
-	})
-	if err != nil {
-		return entities.ActiveMatch{}, err
-	}
-
-	err = storageClient.PutUserMatch(ctx, entities.UserMatch{
-		UserId:  userRating.UserId,
-		MatchId: match.MatchId,
-	})
-	if err != nil {
-		return entities.ActiveMatch{}, err
-	}
-
-	// Pre-calculate players' rating in each possible outcome
-	opponentRating, err := storageClient.GetUserRating(ctx, opponentId)
-	if err != nil {
-		return entities.ActiveMatch{},
-			fmt.Errorf("failed to get user rating: %w", err)
-	}
-
-	newUserRatings, newUserRDs, err := calculateNewRatings(
-		ctx,
-		userRating,
-		opponentRating,
-	)
-	if err != nil {
-		return entities.ActiveMatch{}, err
-	}
-
-	newOpponentRatings, newOpponentRatingsRDs, err := calculateNewRatings(
-		ctx,
-		opponentRating,
-		userRating,
-	)
-	if err != nil {
-		return entities.ActiveMatch{}, err
-	}
-
-	match.Player1 = entities.Player{
-		Id:         userRating.UserId,
-		Rating:     userRating.Rating,
-		RD:         userRating.RD,
-		NewRatings: newUserRatings,
-		NewRDs:     newUserRDs,
-	}
-	match.Player2 = entities.Player{
-		Id:         opponentRating.UserId,
-		Rating:     opponentRating.Rating,
-		RD:         opponentRating.RD,
-		NewRatings: newOpponentRatings,
-		NewRDs:     newOpponentRatingsRDs,
-	}
-	match.AverageRating = (match.Player1.Rating + match.Player2.Rating) / 2
-
-	// Save match information
-	storageClient.PutActiveMatch(ctx, match)
-
 	// Match created, remove opponent ticket from the queue
-	err = storageClient.DeleteMatchmakingTickets(ctx, opponentId)
+	err := storageClient.DeleteMatchmakingTickets(ctx, opponentId)
 	if err != nil {
 		return entities.ActiveMatch{},
 			fmt.Errorf(
@@ -325,18 +225,6 @@ func createMatch(
 				opponentId,
 				err,
 			)
-	}
-
-	// Create a conversation for spectators
-	err = storageClient.PutSpectatorConversation(
-		ctx,
-		entities.SpectatorConversation{
-			MatchId:        match.MatchId,
-			ConversationId: utils.GenerateUUID(),
-		},
-	)
-	if err != nil {
-		return entities.ActiveMatch{}, err
 	}
 
 	return match, nil

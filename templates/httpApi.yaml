@@ -114,6 +114,76 @@ Resources:
             Method: POST
             ApiId: !Ref HttpApi
 
+  MatchmakingtestFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: !Sub "${StackName}-${DeploymentStage}-Matchmakingtest"
+      CodeUri: ../cmd/lambda/matchmakingtest/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Timeout: 60
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !ImportValue ConnectionsTableName
+        - DynamoDBCrudPolicy:
+            TableName: !ImportValue MatchmakingTicketsTableName
+        - DynamoDBCrudPolicy:
+            TableName: !ImportValue UserMatchesTableName
+        - DynamoDBCrudPolicy:
+            TableName: !ImportValue ActiveMatchesTableName
+        - DynamoDBCrudPolicy:
+            TableName: !ImportValue UserRatingsTableName
+        - DynamoDBCrudPolicy:
+            TableName: !ImportValue MatchResultsTableName
+        - DynamoDBCrudPolicy:
+            TableName: !ImportValue SpectatorConversationsTableName
+        - EcsRunTaskPolicy:
+            TaskDefinition: !ImportValue ServertestDefinitionArn
+        - Statement:
+            - Effect: Allow
+              Action:
+                - "ecs:ListTasks"
+                - "ecs:DescribeTasks"
+                - "ecs:UpdateService"
+              Resource: "*"
+        - Statement:
+            - Effect: Allow
+              Action:
+                - "ec2:DescribeNetworkInterfaces"
+              Resource: "*"
+        - Statement:
+            - Effect: Allow
+              Action:
+                - "execute-api:ManageConnections"
+              Resource: !Sub
+                - "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebsocketApiId}/*"
+                - WebsocketApiId: !ImportValue WebsocketApiId
+      Environment:
+        Variables:
+          SERVER_CLUSTER_NAME: !ImportValue ServerClusterName
+          SERVER_SERVICE_NAME: !ImportValue ServertestServiceName
+          WEBSOCKET_API_ID: !ImportValue WebsocketApiId
+          WEBSOCKET_API_STAGE: !Ref DeploymentStage
+          DEPLOYMENT_STAGE: !Ref DeploymentStage
+          CONNECTIONS_TABLE_NAME: !ImportValue ConnectionsTableName
+          MATCHMAKING_TICKETS_TABLE_NAME: !ImportValue MatchmakingTicketsTableName
+          USER_MATCHES_TABLE_NAME: !ImportValue UserMatchesTableName
+          ACTIVE_MATCHES_TABLE_NAME: !ImportValue ActiveMatchesTableName
+          USER_RATINGS_TABLE_NAME: !ImportValue UserRatingsTableName
+          MATCH_RESULTS_TABLE_NAME: !ImportValue MatchResultsTableName
+          SPECTATOR_CONVERSATIONS_TABLE_NAME: !ImportValue SpectatorConversationsTableName
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /matchmakingtest
+            Method: POST
+            Auth:
+              Authorizer: NONE
+            ApiId: !Ref HttpApi
+
   UserGetFunction:
     Type: AWS::Serverless::Function
     Metadata:

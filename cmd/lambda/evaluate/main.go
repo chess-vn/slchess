@@ -164,7 +164,7 @@ func handler(
 	}
 
 	// Check and start an analysis node
-	err := computeClient.CheckAndStartTask(ctx, clusterName, serviceName)
+	err := computeClient.CheckAndStartNewTask(ctx, clusterName, serviceName)
 	if err != nil {
 		logging.Info("failed to check and start task", zap.Error(err))
 	}

@@ -14,6 +14,8 @@ import (
 	"github.com/chess-vn/slchess/pkg/logging"
 )
 
+var ErrNoServerAvailable = fmt.Errorf("no server available")
+
 type TaskMetadata struct {
 	TaskArn     string `json:"TaskARN"`
 	ClusterName string `json:"Cluster"`
@@ -84,7 +86,7 @@ func (client *Client) GetAvailableServerIp(
 		}
 	}
 
-	return "", fmt.Errorf("all servers are busy")
+	return "", ErrNoServerAvailable
 }
 
 func (client *Client) CheckAndGetNewServerIp(
@@ -160,10 +162,10 @@ func (client *Client) CheckAndGetNewServerIp(
 		}
 	}
 
-	return "", fmt.Errorf("all servers are busy")
+	return "", ErrNoServerAvailable
 }
 
-func (client *Client) CheckAndStartTask(
+func (client *Client) CheckAndStartNewTask(
 	ctx context.Context,
 	clusterName,
 	serviceName string,
@@ -190,6 +192,32 @@ func (client *Client) CheckAndStartTask(
 		if err != nil {
 			return fmt.Errorf("failed to update ECS desired count: %w", err)
 		}
+	}
+
+	return nil
+}
+
+func (client *Client) StartNewTask(
+	ctx context.Context,
+	clusterName,
+	serviceName string,
+) error {
+	listTasksOutput, err := client.ecs.ListTasks(ctx, &ecs.ListTasksInput{
+		Cluster:       aws.String(clusterName),
+		ServiceName:   aws.String(serviceName),
+		DesiredStatus: "RUNNING",
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list ECS tasks: %w", err)
+	}
+
+	_, err = client.ecs.UpdateService(ctx, &ecs.UpdateServiceInput{
+		Cluster:      aws.String(clusterName),
+		Service:      aws.String(serviceName),
+		DesiredCount: aws.Int32(int32(len(listTasksOutput.TaskArns)) + 1),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update ECS desired count: %w", err)
 	}
 
 	return nil

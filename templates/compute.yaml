@@ -333,6 +333,29 @@ Resources:
         ScaleInCooldown: 1800
         ScaleOutCooldown: 60
 
+  ServertestAutoScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: 10
+      MinCapacity: 0
+      ResourceId: !Sub service/${ServerCluster}/${ServertestService.Name}
+      RoleARN: !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+
+  ServertestAutoScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: ServertestAutoScalingPolicy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ServertestAutoScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70.0
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        ScaleInCooldown: 300
+        ScaleOutCooldown: 60
+
   ### Lambda ###
   EndGameFunction:
     Type: AWS::Serverless::Function
@@ -420,3 +443,13 @@ Outputs:
     Value: !Ref StofinetDefinition
     Export:
       Name: StofinetDefinitionArn
+
+  ServertestServiceName:
+    Value: !GetAtt ServertestService.Name
+    Export:
+      Name: ServertestServiceName
+
+  ServertestDefinitionArn:
+    Value: !Ref ServertestDefinition
+    Export:
+      Name: ServertestDefinitionArn
