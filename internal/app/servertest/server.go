@@ -76,6 +76,15 @@ func NewServer() *server {
 
 // Start method    starts the game server
 func (s *server) Start() error {
+	http.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+		count := s.totalMatches.Load()
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"activeMatches": count,
+			"maxMatches":    100,
+			"canAccept":     count < 100,
+		})
+	})
+
 	http.HandleFunc("/game/{matchId}", func(w http.ResponseWriter, r *http.Request) {
 		playerId := r.URL.Query().Get("playerId")
 
