@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"time"
@@ -68,17 +69,9 @@ func handler(
 ) {
 	userId := auth.MustAuth(event.RequestContext.Authorizer)
 
-	// Start game server beforehand if none available
-	err := computeClient.CheckAndStartNewTask(ctx, clusterName, serviceName)
-	if err != nil {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("failed to start game server: %w", err)
-	}
-
 	// Extract and validate matchmaking ticket
 	var matchmakingReq dtos.MatchmakingRequest
-	err = json.Unmarshal([]byte(event.Body), &matchmakingReq)
+	err := json.Unmarshal([]byte(event.Body), &matchmakingReq)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusBadRequest,
@@ -118,7 +111,7 @@ func handler(
 			if err == nil {
 				break
 			}
-			time.Sleep(5 * time.Second)
+			time.Sleep(5 + time.Duration(rand.IntN(5))*time.Second)
 		}
 		if err != nil {
 			return events.APIGatewayProxyResponse{
@@ -151,8 +144,10 @@ func handler(
 	}
 
 	// Retrieve ip address of an available server
-	var serverIp string
-	var pendingCount int
+	var (
+		serverIp     string
+		pendingCount int
+	)
 	for range 5 {
 		serverIp, pendingCount, err = computeClient.GetAvailableServerIp(ctx, clusterName, serviceName)
 		if err == nil {
@@ -161,7 +156,7 @@ func handler(
 		if err == compute.ErrNoServerAvailable && pendingCount == 0 {
 			computeClient.StartNewTask(ctx, clusterName, serviceName)
 		}
-		time.Sleep(5 * time.Second)
+		time.Sleep(5 + time.Duration(rand.IntN(5))*time.Second)
 	}
 	if err != nil {
 		return events.APIGatewayProxyResponse{

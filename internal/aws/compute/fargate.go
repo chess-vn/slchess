@@ -10,7 +10,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
-	"github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	"github.com/chess-vn/slchess/internal/domains/dtos"
 	"github.com/chess-vn/slchess/pkg/logging"
 )
@@ -56,7 +55,7 @@ func (client *Client) GetAvailableServerIp(
 
 	pendingCount := 0
 	for _, task := range describeTasksOutput.Tasks {
-		if task.StartedAt == nil || task.HealthStatus != types.HealthStatusHealthy {
+		if task.StartedAt == nil {
 			pendingCount += 1
 		}
 	}

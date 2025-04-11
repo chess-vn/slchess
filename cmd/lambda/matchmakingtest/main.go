@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"time"
@@ -67,17 +68,9 @@ func handler(
 ) {
 	userId := event.QueryStringParameters["userId"]
 
-	// Start game server beforehand if none available
-	err := computeClient.CheckAndStartNewTask(ctx, clusterName, serviceName)
-	if err != nil {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("failed to start game server: %w", err)
-	}
-
 	// Extract and validate matchmaking ticket
 	var matchmakingReq dtos.MatchmakingRequest
-	err = json.Unmarshal([]byte(event.Body), &matchmakingReq)
+	err := json.Unmarshal([]byte(event.Body), &matchmakingReq)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusBadRequest,
@@ -95,6 +88,24 @@ func handler(
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusBadRequest,
 		}, fmt.Errorf("invalid ticket: %w", err)
+	}
+
+	// Check if user already in a activeMatch
+	activeMatch, err := storageClient.CheckForActiveMatch(ctx, userId)
+	if err != nil {
+		if !errors.Is(err, storage.ErrUserMatchNotFound) &&
+			!errors.Is(err, storage.ErrActiveMatchNotFound) {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusInternalServerError,
+			}, fmt.Errorf("failed to check for active match: %w", err)
+		}
+	} else {
+		matchResp := dtos.ActiveMatchResponseFromEntity(activeMatch)
+		matchRespJson, _ := json.Marshal(matchResp)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusOK,
+			Body:       string(matchRespJson),
+		}, nil
 	}
 
 	// Attempt matchmaking
@@ -118,15 +129,15 @@ func handler(
 		serverIp     string
 		pendingCount int
 	)
-	for range 10 {
+	for range 5 {
 		serverIp, pendingCount, err = computeClient.GetAvailableServerIp(ctx, clusterName, serviceName)
 		if err == nil {
 			break
 		}
-		if err == compute.ErrNoServerAvailable && pendingCount == 0 {
+		if errors.Is(err, compute.ErrNoServerAvailable) && pendingCount == 0 {
 			computeClient.StartNewTask(ctx, clusterName, serviceName)
 		}
-		time.Sleep(5 * time.Second)
+		time.Sleep(5 + time.Duration(rand.IntN(5))*time.Second)
 	}
 	if err != nil {
 		return events.APIGatewayProxyResponse{
@@ -138,6 +149,7 @@ func handler(
 	for _, opponentId := range opponentIds {
 		match, err := createMatch(
 			ctx,
+			userId,
 			opponentId,
 			ticket.GameMode,
 			serverIp,
@@ -195,6 +207,7 @@ func findOpponents(
 
 func createMatch(
 	ctx context.Context,
+	userId,
 	opponentId,
 	gameMode string,
 	serverIp string,
@@ -211,8 +224,26 @@ func createMatch(
 		CreatedAt:      time.Now(),
 	}
 
+	err := storageClient.PutUserMatch(ctx, entities.UserMatch{
+		UserId:  opponentId,
+		MatchId: match.MatchId,
+	})
+	if err != nil {
+		return entities.ActiveMatch{}, err
+	}
+
+	err = storageClient.PutUserMatch(ctx, entities.UserMatch{
+		UserId:  userId,
+		MatchId: match.MatchId,
+	})
+	if err != nil {
+		return entities.ActiveMatch{}, err
+	}
+
+	storageClient.PutActiveMatch(ctx, match)
+
 	// Match created, remove opponent ticket from the queue
-	err := storageClient.DeleteMatchmakingTickets(ctx, opponentId)
+	err = storageClient.DeleteMatchmakingTickets(ctx, opponentId)
 	if err != nil {
 		return entities.ActiveMatch{},
 			fmt.Errorf(
