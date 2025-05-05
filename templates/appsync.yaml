@@ -115,11 +115,12 @@ Resources:
           "version": "2018-05-29",
           "operation": "PutItem",
           "key": {
-            "Id": { "S": "$context.arguments.input.id" }
+            "Id": { "S": "$util.autoId()" }
           },
           "attributeValues": {
             "ConversationId": { "S": "$context.arguments.input.conversationId" },
             "SenderId": { "S": "$context.arguments.input.senderId" },
+            "Username": { "S": "$context.arguments.input.username" },
             "Content": { "S": "$context.arguments.input.content" },
             "CreatedAt": { "S": "$util.time.nowISO8601()" }
           }
