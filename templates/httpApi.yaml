@@ -985,10 +985,8 @@ Resources:
               Resource: "*"
       Environment:
         Variables:
-          SERVER_CLUSTER_NAME:
-            Fn::ImportValue: !Sub "${StackName}-ServerClusterName"
-          SERVER_SERVICE_NAME:
-            Fn::ImportValue: !Sub "${StackName}-ServerServiceName"
+          SERVER_CLUSTER_NAME: !ImportValue ServerClusterName
+          SERVER_SERVICE_NAME: !ImportValue ServerServiceName
       Events:
         ApiEvent:
           Type: HttpApi

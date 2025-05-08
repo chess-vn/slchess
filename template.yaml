@@ -120,6 +120,10 @@ Outputs:
     Description: "Endpoint URL for matchmaking"
     Value: !Sub "POST ${HttpApiStack.Outputs.HttpApiEndpoint}/matchmaking"
 
+  MatchmakingCancelEndpointUrl:
+    Description: "Endpoint URL for cancel matchmaking"
+    Value: !Sub "DELETE ${HttpApiStack.Outputs.HttpApiEndpoint}/matchmaking"
+
   UserGetEndpointUrl:
     Description: "Endpoint URL for get user information"
     Value: !Sub "GET ${HttpApiStack.Outputs.HttpApiEndpoint}/user"
@@ -199,3 +203,7 @@ Outputs:
   EvaluationWorkSubmitEndpointUrl:
     Description: "Endpoint URL for submit evaluation work"
     Value: !Sub "POST ${HttpApiStack.Outputs.HttpApiEndpoint}/stofinet/submit"
+
+  MetricsGetEndpointUrl:
+    Description: "Endpoint URL for getting backend metrics"
+    Value: !Sub "GET ${HttpApiStack.Outputs.HttpApiEndpoint}/metrics"
