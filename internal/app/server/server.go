@@ -79,6 +79,7 @@ func NewServer() *server {
 		computeClient: compute.NewClient(
 			ecs.NewFromConfig(awsCfg),
 			nil,
+			nil,
 		),
 		lambdaClient: lambda.NewFromConfig(awsCfg),
 	}

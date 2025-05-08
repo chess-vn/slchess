@@ -16,12 +16,69 @@ import (
 
 var (
 	ErrNoServerAvailable   = fmt.Errorf("no server available")
+	ErrNoServerRunning     = fmt.Errorf("no server running")
 	ErrUnknownServerStatus = fmt.Errorf("unknown server status")
 )
 
 type TaskMetadata struct {
 	TaskArn     string `json:"TaskARN"`
 	ClusterName string `json:"Cluster"`
+}
+
+func (client *Client) GetServerIps(
+	ctx context.Context,
+	clusterName,
+	serviceName string,
+) ([]string, error) {
+	// List tasks in the cluster
+	listTasksOutput, err := client.ecs.ListTasks(ctx, &ecs.ListTasksInput{
+		Cluster:       &clusterName,
+		ServiceName:   &serviceName,
+		DesiredStatus: "RUNNING",
+	})
+	if err != nil || len(listTasksOutput.TaskArns) == 0 {
+		return nil, ErrNoServerRunning
+	}
+
+	describeTasksOutput, err := client.ecs.DescribeTasks(
+		ctx,
+		&ecs.DescribeTasksInput{
+			Cluster: aws.String(clusterName),
+			Tasks:   listTasksOutput.TaskArns,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe ECS tasks: %w", err)
+	}
+
+	serverIps := make([]string, 0, len(listTasksOutput.TaskArns))
+	for _, task := range describeTasksOutput.Tasks {
+		for _, attachment := range task.Attachments {
+			for _, detail := range attachment.Details {
+				if *detail.Name == "networkInterfaceId" {
+					eniID := *detail.Value
+
+					eniOutput, err := client.ec2.DescribeNetworkInterfaces(
+						ctx,
+						&ec2.DescribeNetworkInterfacesInput{
+							NetworkInterfaceIds: []string{eniID},
+						},
+					)
+					if err != nil {
+						return nil, fmt.Errorf("failed to describe ENI: %w", err)
+					}
+
+					for _, eni := range eniOutput.NetworkInterfaces {
+						if eni.Association != nil && eni.Association.PublicIp != nil {
+							serverIps = append(serverIps, *eni.Association.PublicIp)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return serverIps, nil
 }
 
 func (client *Client) GetAvailableServerIp(
@@ -254,27 +311,27 @@ func (client *Client) UpdateServerProtection(
 	return nil
 }
 
-func (client *Client) GetServerStatus(ip string, host int) (dtos.ServerStatusResponse, error) {
+func (client *Client) GetServerStatus(ip string, host int) (dtos.ServerMetricsResponse, error) {
 	req, err := http.NewRequest(
 		http.MethodGet,
 		fmt.Sprintf("http://%s:%d/status", ip, host),
 		nil,
 	)
 	if err != nil {
-		return dtos.ServerStatusResponse{}, fmt.Errorf("failed to create request: %w", err)
+		return dtos.ServerMetricsResponse{}, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	resp, err := client.http.Do(req)
 	if err != nil {
-		return dtos.ServerStatusResponse{}, fmt.Errorf("failed to send request: %w", err)
+		return dtos.ServerMetricsResponse{}, fmt.Errorf("failed to send request: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return dtos.ServerStatusResponse{}, ErrUnknownServerStatus
+		return dtos.ServerMetricsResponse{}, ErrUnknownServerStatus
 	}
-	var status dtos.ServerStatusResponse
+	var status dtos.ServerMetricsResponse
 	err = json.NewDecoder(resp.Body).Decode(&status)
 	if err != nil {
-		return dtos.ServerStatusResponse{}, fmt.Errorf("failed to decode body: %w", err)
+		return dtos.ServerMetricsResponse{}, fmt.Errorf("failed to decode body: %w", err)
 	}
 	return status, nil
 }

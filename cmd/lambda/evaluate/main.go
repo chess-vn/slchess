@@ -51,6 +51,7 @@ func init() {
 	computeClient = compute.NewClient(
 		ecs.NewFromConfig(cfg),
 		ec2.NewFromConfig(cfg),
+		nil,
 	)
 	analysisClient = analysis.NewClient(
 		nil,

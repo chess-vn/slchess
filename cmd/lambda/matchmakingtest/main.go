@@ -51,6 +51,7 @@ func init() {
 	computeClient = compute.NewClient(
 		ecs.NewFromConfig(cfg),
 		ec2.NewFromConfig(cfg),
+		nil,
 	)
 	apigatewayClient = apigatewaymanagementapi.New(apigatewaymanagementapi.Options{
 		BaseEndpoint: aws.String(apiEndpoint),
@@ -243,7 +244,7 @@ func createMatch(
 	storageClient.PutActiveMatch(ctx, match)
 
 	// Match created, remove opponent ticket from the queue
-	err = storageClient.DeleteMatchmakingTickets(ctx, opponentId)
+	err = storageClient.DeleteMatchmakingTicket(ctx, opponentId)
 	if err != nil {
 		return entities.ActiveMatch{},
 			fmt.Errorf(
