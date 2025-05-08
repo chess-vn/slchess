@@ -58,12 +58,6 @@ func calculateNewRatings(
 	[]float64,
 	error,
 ) {
-	if deploymentStage == "dev" {
-		return []float64{userRating.Rating, userRating.Rating, userRating.Rating},
-			[]float64{userRating.RD, userRating.RD, userRating.RD},
-			nil
-	}
-
 	matchResults, _, err := storageClient.FetchMatchResults(ctx, userRating.UserId, nil, 5)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to fetch match results: %w", err)

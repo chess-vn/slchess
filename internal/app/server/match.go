@@ -248,22 +248,34 @@ func (m *Match) notifyAboutDeclinedOffer(resp playerStatusResponse) {
 }
 
 func (m *Match) syncPlayer(player *player) {
-	err := player.writeJson(matchResponse{
+	resp := matchResponse{
 		Type: "gameState",
 		GameState: gameStateResponse{
 			Outcome: m.game.outcome().String(),
 			Method:  m.game.method(),
 			Fen:     m.game.FEN(),
-			Clocks: []string{
-				m.players[0].Clock.String(),
-				m.players[1].Clock.String(),
-			},
+			Clocks:  make([]string, len(m.players)),
 			Statuses: []string{
 				m.players[0].Status.String(),
 				m.players[1].Status.String(),
 			},
 		},
-	})
+	}
+	currentTurnPlayer := m.getCurrentTurnPlayer()
+	timePassed := time.Since(currentTurnPlayer.TurnStartedAt)
+	for i, player := range m.players {
+		if player.Id == currentTurnPlayer.Id {
+			clock := player.Clock - timePassed
+			if clock > 0 {
+				resp.GameState.Clocks[i] = clock.String()
+			} else {
+				resp.GameState.Clocks[i] = (0 * time.Second).String()
+			}
+		} else {
+			resp.GameState.Clocks[i] = player.Clock.String()
+		}
+	}
+	err := player.writeJson(resp)
 	if err != nil {
 		logging.Error(
 			"couldn't sync player: ",
