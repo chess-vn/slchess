@@ -44,7 +44,7 @@ func handler(
 	// Initial puzzle profile
 	err = storageClient.PutPuzzleProfile(ctx, entities.PuzzleProfile{
 		UserId: userId,
-		Rating: 300,
+		Rating: 300.0,
 	})
 	if err != nil {
 		return event, fmt.Errorf("failed to put puzzle profile: %w", err)
@@ -53,8 +53,8 @@ func handler(
 	// Default user rating
 	err = storageClient.PutUserRating(ctx, entities.UserRating{
 		UserId:       userId,
-		Rating:       1200,
-		RD:           200,
+		Rating:       1200.0,
+		RD:           200.0,
 		PartitionKey: "UserRatings",
 	})
 	if err != nil {
