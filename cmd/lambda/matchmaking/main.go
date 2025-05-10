@@ -47,7 +47,7 @@ var (
 )
 
 func init() {
-	cfg, _ := config.LoadDefaultConfig(context.TODO())
+	cfg, _ := config.LoadDefaultConfig(context.Background())
 	storageClient = storage.NewClient(dynamodb.NewFromConfig(cfg))
 	computeClient = compute.NewClient(
 		ecs.NewFromConfig(cfg),
@@ -296,6 +296,7 @@ func createMatch(
 
 	match.Player1 = entities.Player{
 		Id:         userRating.UserId,
+		Username:   userRating.Username,
 		Rating:     userRating.Rating,
 		RD:         userRating.RD,
 		NewRatings: newUserRatings,
@@ -303,12 +304,15 @@ func createMatch(
 	}
 	match.Player2 = entities.Player{
 		Id:         opponentRating.UserId,
+		Username:   opponentRating.Username,
 		Rating:     opponentRating.Rating,
 		RD:         opponentRating.RD,
 		NewRatings: newOpponentRatings,
 		NewRDs:     newOpponentRatingsRDs,
 	}
 	match.AverageRating = (match.Player1.Rating + match.Player2.Rating) / 2
+
+	fmt.Println(userRating.Username)
 
 	// Save match information
 	storageClient.PutActiveMatch(ctx, match)

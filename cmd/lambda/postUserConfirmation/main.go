@@ -53,6 +53,7 @@ func handler(
 	// Default user rating
 	err = storageClient.PutUserRating(ctx, entities.UserRating{
 		UserId:       userId,
+		Username:     username,
 		Rating:       1200.0,
 		RD:           100.0,
 		PartitionKey: "UserRatings",
