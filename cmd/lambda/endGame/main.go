@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/chess-vn/slchess/internal/aws/storage"
@@ -50,13 +51,10 @@ func handler(ctx context.Context, event json.RawMessage) error {
 	}
 
 	for i, player := range matchRecordReq.Players {
-		playerRating := entities.UserRating{
-			UserId:       player.Id,
-			PartitionKey: "UserRatings",
-			Rating:       player.NewRating,
-			RD:           player.NewRD,
-		}
-		err = storageClient.PutUserRating(ctx, playerRating)
+		err = storageClient.UpdateUserRating(ctx, player.Id, storage.UserRatingUpdateOptions{
+			Rating: aws.Float64(player.NewRating),
+			RD:     aws.Float64(player.NewRD),
+		})
 		if err != nil {
 			return fmt.Errorf(
 				"failed to put player rating: [userId: %s] - %w",

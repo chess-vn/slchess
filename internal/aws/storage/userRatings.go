@@ -3,6 +3,8 @@ package storage
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -91,5 +93,49 @@ func (client *Client) PutUserRating(
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+type UserRatingUpdateOptions struct {
+	Rating *float64
+	RD     *float64
+}
+
+func (client *Client) UpdateUserRating(
+	ctx context.Context,
+	userId string,
+	opts UserRatingUpdateOptions,
+) error {
+	updateExpression := []string{}
+	expressionAttributeValues := map[string]types.AttributeValue{}
+
+	if opts.Rating != nil {
+		updateExpression = append(updateExpression, "Rating = :rating")
+		expressionAttributeValues[":rating"] = &types.AttributeValueMemberN{
+			Value: strconv.FormatFloat(*opts.Rating, 'f', 2, 64),
+		}
+	}
+
+	if opts.RD != nil {
+		updateExpression = append(updateExpression, "RD = :rd")
+		expressionAttributeValues[":rd"] = &types.AttributeValueMemberN{
+			Value: strconv.FormatFloat(*opts.RD, 'f', 2, 64),
+		}
+	}
+
+	_, err := client.dynamodb.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: client.cfg.UserRatingsTableName,
+		Key: map[string]types.AttributeValue{
+			"UserId": &types.AttributeValueMemberS{
+				Value: userId,
+			},
+		},
+		UpdateExpression:          aws.String("SET " + strings.Join(updateExpression, ", ")),
+		ExpressionAttributeValues: expressionAttributeValues,
+	})
+	if err != nil {
+		return err
+	}
+
 	return nil
 }

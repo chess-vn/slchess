@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math/rand/v2"
 	"net/http"
 	"os"
@@ -312,7 +313,8 @@ func createMatch(
 	}
 	match.AverageRating = (match.Player1.Rating + match.Player2.Rating) / 2
 
-	fmt.Println(userRating.Username)
+	log.Println(match)
+	log.Println(userRating, opponentRating)
 
 	// Save match information
 	storageClient.PutActiveMatch(ctx, match)
