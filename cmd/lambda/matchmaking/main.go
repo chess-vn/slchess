@@ -102,6 +102,12 @@ func handler(
 			}, fmt.Errorf("failed to check for active match: %w", err)
 		}
 	} else {
+		err := computeClient.CheckAndStartNewTask(ctx, clusterName, serviceName)
+		if err != nil {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusInternalServerError,
+			}, fmt.Errorf("failed to check and start new task: %w", err)
+		}
 		var serverIp string
 		for range 5 {
 			serverIp, err = computeClient.CheckAndGetNewServerIp(
