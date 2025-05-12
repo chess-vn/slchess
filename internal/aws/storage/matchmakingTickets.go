@@ -18,7 +18,7 @@ func (client *Client) ScanMatchmakingTickets(
 	[]entities.MatchmakingTicket,
 	error,
 ) {
-	filter := "MinRating >= :min AND MaxRating <= :max AND GameMode = :mode"
+	filter := "UserRating >= :min AND UserRating <= :max AND MinRating <= :rating AND MaxRating >= :rating AND GameMode = :mode"
 	output, err := client.dynamodb.Scan(ctx, &dynamodb.ScanInput{
 		TableName:        client.cfg.MatchmakingTicketsTableName,
 		FilterExpression: aws.String(filter),
@@ -28,6 +28,9 @@ func (client *Client) ScanMatchmakingTickets(
 			},
 			":max": &types.AttributeValueMemberN{
 				Value: strconv.Itoa(int(ticket.MaxRating)),
+			},
+			":rating": &types.AttributeValueMemberN{
+				Value: strconv.Itoa(int(ticket.UserRating)),
 			},
 			":mode": &types.AttributeValueMemberS{
 				Value: ticket.GameMode,
